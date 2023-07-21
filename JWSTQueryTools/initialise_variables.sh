@@ -1,0 +1,14 @@
+export JWST_QUERY_TOOLS_MAST_TOKEN=9999
+#export JWST_QUERY_TOOLS_DOWNLOAD_DIR='/Documents/JWST-DATA/JWSTQueryTools'
+export JWST_QUERY_TOOLS_DOWNLOAD_DIR=$(pwd)
+
+#export JWST_QUERY_TOOLS_REF_DIR='/Volumes/JWST/calweb'
+export JWST_QUERY_TOOLS_REF_DIR=$(pwd)
+
+export JWST_QUERY_TOOLS_CRDS_PATH=$(pwd)+/crds
+
+export JWST_QUERY_TOOLS_CRDS_CONTEXT='jwst_1100.pmap'
+
+
+
+
