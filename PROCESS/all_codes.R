@@ -1060,13 +1060,12 @@ do_wisp_rem = function(filelist, VID, median_dir, cores = 1, poly = poly){
     return(NULL)
   }
 }
-do_patch = function(VID, FILT, invar_dir, median_dir, patch_dir, cores = 1){
+do_patch = function(VID, FILT, invar_dir, median_dir, patch_dir, cores = 1, do_NIRISS = F){
   
   registerDoParallel(cores = cores)
   patch_stub = patch_dir
   
-  do_niriss = F
-  if(do_niriss){
+  if(do_NIRISS){
     pixscale_list = c("NIS")
   }else{
     pixscale_list = c("short", "long")
@@ -1082,7 +1081,7 @@ do_patch = function(VID, FILT, invar_dir, median_dir, patch_dir, cores = 1){
     }else{
       file_names = list.files(path=invar_dir, pattern = paste0(j, ".fits$"), full.names = F)
       file_names=file_names[grepl(VID, file_names) & grepl(FILT, file_names)]
-      registerDoParallel(cores = 8)
+      
       foreach(i = 1:length(invar_files))%dopar%{
         message(paste0("Patching: ", invar_files[i]))
         load_invar = Rfits_read(invar_files[i], pointer=F)
