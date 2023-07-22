@@ -1001,7 +1001,7 @@ do_gen_stack = function(VID, FILT, ref_dir, do_niriss = F, magzero_out = 23.9, c
   }
   
 }
-do_wisp_rem = function(filelist, VID, median_dir, cores = 1){
+do_wisp_rem = function(filelist, VID, median_dir, cores = 1, poly = poly){
   filelist = grep(VID, filelist, value = T)
   cat(filelist, sep = "\n")
   
@@ -1025,6 +1025,7 @@ do_wisp_rem = function(filelist, VID, median_dir, cores = 1){
     message(paste("Loading reference for:", paste0(mod_visit_grid$VISIT_ID[ii]), paste0("NRC", mod_visit_grid$MODULE[ii])))
   }
   
+  registerDoParallel(cores = cores)  
   temp = foreach(ii = 1:dim(info_wisp)[1])%dopar%{
     ## copy original data to directory where we keep the wisps
     vid = paste0(info_wisp$VISIT_ID[ii])
@@ -1045,7 +1046,7 @@ do_wisp_rem = function(filelist, VID, median_dir, cores = 1){
     # Rfits_write_image(data = wisp_frame, paste0(keep_wisp_stub, "/", vid, "/", info_wisp$file[ii]))
     
     ref_im = ref_im_list[[vid]][[modl]]
-    wisp_fix = wispFixer(wisp_im = wisp_frame, ref_im = ref_im)
+    wisp_fix = wispFixer(wisp_im = wisp_frame, ref_im = ref_im, poly = poly)
     Rfits_write_pix(data = wisp_fix$wisp_fix$imDat, filename = info_wisp$full[ii], ext = 2)
     
     check_Nhdu = Rfits_nhdu(info_wisp$full[ii])

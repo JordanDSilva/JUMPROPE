@@ -112,6 +112,11 @@ main = function(){
   do_cal_sky_info(cal_sky_renorm_dir = cal_sky_renorm_dir, cal_sky_info_save_dir = cal_sky_info_save_dir, cores = cores_pro)
   do_gen_stack(VID = VID, FILT = FILT, ref_dir = ref_dir, do_niriss = do_NIRISS, magzero_out = 23.9, cores = cores_stack, tasks = tasks_stack)
 
+  if(do_NIRISS){
+  do_patch(VID, 'CLEAR', invar_dir = invar_dir, median_dir = median_dir, patch_dir = patch_dir, cores = cores_stack)
+  q()
+  }
+
   if(length(args) <= 1){
     FILT = "F070W|F090W|F115W|F150W|F200W|F140M|F162M|F182M|F210M"
   }
