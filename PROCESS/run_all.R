@@ -85,6 +85,12 @@ main = function(){
     ref_dir = make_directory_structure()
   }
   
+  if(exists('do_NIRISS')){
+    if(do_NIRISS){
+      FILT = "CLEAR|NIS"
+    }
+  }
+  
   cal_sky_info_save_dir = paste0(ref_dir, "/Pro1oF/")
   Pro1oF_dir = paste0(ref_dir, "/Pro1oF/cal/")
   cal_sky_dir = paste0(ref_dir, "/Pro1oF/cal_sky/")

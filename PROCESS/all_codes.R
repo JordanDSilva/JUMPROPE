@@ -1001,7 +1001,7 @@ do_gen_stack = function(VID, FILT, ref_dir, do_niriss = F, magzero_out = 23.9, c
   }
   
 }
-do_wisp_rem = function(filelist, VID, median_dir, cores = 1, poly = poly){
+do_wisp_rem = function(filelist, VID, median_dir, cores = 1, poly = NULL){
   filelist = grep(VID, filelist, value = T)
   cat(filelist, sep = "\n")
   
