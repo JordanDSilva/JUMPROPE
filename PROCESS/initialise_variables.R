@@ -7,7 +7,7 @@ initialise_params = function(){
   ## Edit this:
   #ref_dir = "~/Desktop/pro/" #Commented out as the scripts will prompt you to create the correct directory structure
   
-  dir_raw =  "~/Desktop/pro/Imaging/" # Important thing to edit/check. Tells us where the input CAL files are stored. Usually the result of stage 2 of the JWST Calibration Pipeline.
+  dir_raw =  "Imaging" # Important thing to edit/check. Tells us where the input CAL files are stored. Usually the result of stage 2 of the JWST Calibration Pipeline.
   
   do_NIRISS = F
   cores_pro = 6

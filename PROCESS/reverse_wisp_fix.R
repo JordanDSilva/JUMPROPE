@@ -17,7 +17,7 @@ if(length(args)==0){
 registerDoParallel(cores = 6)
 
 filelist_all = c(
-  list.files("~/Desktop/pro/Imaging/" , recursive = TRUE, pattern = ".fits$", full.names = TRUE)
+  list.files("Imaging/" , recursive = TRUE, pattern = ".fits$", full.names = TRUE)
 )
 filelist = grep(VID, filelist_all, value = T)
 cat(filelist, sep = "\n")

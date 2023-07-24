@@ -1001,7 +1001,12 @@ do_gen_stack = function(VID, FILT, ref_dir, do_niriss = F, magzero_out = 23.9, c
   }
   
 }
-do_wisp_rem = function(filelist, VID, median_dir, cores = 1, poly = NULL){
+do_wisp_rem = function(filelist, VID, median_dir, cores = 1){
+  
+  wisp_poly = Rfits_read("wisp_poly.fits")
+  
+  print(wisp_poly)
+  
   filelist = grep(VID, filelist, value = T)
   cat(filelist, sep = "\n")
   
@@ -1046,7 +1051,7 @@ do_wisp_rem = function(filelist, VID, median_dir, cores = 1, poly = NULL){
     # Rfits_write_image(data = wisp_frame, paste0(keep_wisp_stub, "/", vid, "/", info_wisp$file[ii]))
     
     ref_im = ref_im_list[[vid]][[modl]]
-    wisp_fix = wispFixer(wisp_im = wisp_frame, ref_im = ref_im, poly = poly)
+    wisp_fix = wispFixer(wisp_im = wisp_frame, ref_im = ref_im, poly = wisp_poly[[ info_wisp$DETECTOR[ii] ]], sigma_lo = NULL)
     Rfits_write_pix(data = wisp_fix$wisp_fix$imDat, filename = info_wisp$full[ii], ext = 2)
     
     check_Nhdu = Rfits_nhdu(info_wisp$full[ii])
@@ -1057,6 +1062,16 @@ do_wisp_rem = function(filelist, VID, median_dir, cores = 1, poly = NULL){
     }else{
       Rfits_write_pix(wisp_fix$ref_im_warp$imDat, filename = info_wisp$full[ii], ext = extloc)
     }
+    
+    check_Nhdu = Rfits_nhdu(info_wisp$full[ii])
+    extloc = Rfits_extname_to_ext(info_wisp$full[ii], 'WISP_TEMPLATE')
+    if(is.na(extloc)){
+      Rfits_write_image(wisp_fix$wisp_template, filename=info_wisp$full[ii], create_file=FALSE)
+      Rfits_write_key(filename=info_wisp$full[ii], ext=check_Nhdu+1, keyname='EXTNAME', keyvalue='WISP_TEMPLATE', keycomment='Wisp template')
+    }else{
+      Rfits_write_pix(wisp_fix$wisp_template, filename = info_wisp$full[ii], ext = extloc)
+    }
+
     return(NULL)
   }
 }
@@ -1287,12 +1302,16 @@ wispFixer = function(wisp_im, ref_im,
   wisp_template[is.na(wisp_im$imDat) | is.na(ref_im_warp$imDat)] = NA
   wisp_template[wisp_template < 0] = NA
   
-  #Step 7
-  wisp_template_lo = profoundImBlur(wisp_template, sigma=sigma_lo)
-  
-  #Step 8
-  sel = which(is.na(wisp_template) | wisp_template_lo > wisp_template)
-  wisp_template[sel] = wisp_template_lo[sel]
+  if(!is.null(sigma_lo)){
+    #Step 7
+    wisp_template_lo = profoundImBlur(wisp_template, sigma=sigma_lo)
+    
+    #Step 8
+    sel = which(is.na(wisp_template) | wisp_template_lo > wisp_template)
+    wisp_template[sel] = wisp_template_lo[sel]
+  }else{
+    wisp_template[is.na(wisp_template)] = 0
+  }
   
   if(!is.null(poly)){
     wisp_mask = profoundDrawMask(wisp_im$imDat, poly=poly, mode='apply')$mask
@@ -1304,40 +1323,7 @@ wispFixer = function(wisp_im, ref_im,
   #wisp_template[is.na(wisp_im$imDat) | is.na(ref_im_warp$imDat)] = 0
   
   #Step 9
-  wisp_im$imDat  = wisp_im$imDat - wisp_template
+  wisp_im$imDat  = wisp_im$imDat - wisp_template + sky_level
   
   return(list(wisp_fix=wisp_im, wisp_template=wisp_template, ref_im_warp=ref_im_warp))
-}
-
-
-main = function(){
-  library("Rfits")
-  library("Rwcs")
-  library("data.table")
-  library("ProFound")
-  library("foreach")
-  library("doParallel")
-  library("Cairo")
-  library("ProPane")
-  library("magicaxis")
-  
-  args = commandArgs(trailingOnly = T)
-  if(length(args)==0){
-    message("Specify VID")
-    message("Running all")
-    VIDD = ""
-    FILT =""
-  }
-  if(length(args)==1){
-    VIDD = toString(args[1])
-    FILT = ""
-  }
-  if(length(args)==2){
-    VIDD = toString(args[1])
-    FILT = toString(args[2])
-  }
-}
-
-if (sys.nframe() == 0){
-  main()
 }
