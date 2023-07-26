@@ -7,13 +7,13 @@ initialise_params = function(){
   ## Edit this:
   #ref_dir = "~/Desktop/pro/" #Commented out as the scripts will prompt you to create the correct directory structure
   
-  dir_raw =  "Imaging" # Important thing to edit/check. Tells us where the input CAL files are stored. Usually the result of stage 2 of the JWST Calibration Pipeline.
-  
-  do_NIRISS = F
-  cores_pro = 6
-  cores_stack = 4
-  tasks_stack = 1
-  
+  # dir_raw =  "Imaging" # Important thing to edit/check. Tells us where the input CAL files are stored. Usually the result of stage 2 of the JWST Calibration Pipeline.
+  # 
+  # do_NIRISS = F
+  # cores_pro = 6
+  # cores_stack = 4
+  # tasks_stack = 1
+  # 
   ## set up the keep_trend data
   keep_trend_data = list(
     ## Keep trend data determines the aggressiveness of the 1/f. If nothing in this data frame, then default 1/f proceeds. 

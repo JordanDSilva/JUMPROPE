@@ -39,6 +39,16 @@ make_directory_structure = function(){
     dir.create(paste0(ref_dir, "/InVar_Stacks/"), recursive = T, showWarnings = F)
     dir.create(paste0(ref_dir, "/Median_Stacks/"), recursive = T, showWarnings = F)
     dir.create(paste0(ref_dir, "/Patch_Stacks/"), recursive = T, showWarnings = F)
+    
+    dir.create(paste0(ref_dir, "/ProFound/Data/"), recursive = T, showWarnings = F)
+    dir.create(paste0(ref_dir, "/ProFound/GAIA_Cats/"), recursive = T, showWarnings = F)
+    dir.create(paste0(ref_dir, "/ProFound/Star_Masks/"), recursive = T, showWarnings = F)
+    dir.create(paste0(ref_dir, "/ProFound/HST_cutout/"), recursive = T, showWarnings = F)
+    dir.create(paste0(ref_dir, "/ProFound/Detects/"), recursive = T, showWarnings = F)
+    dir.create(paste0(ref_dir, "/ProFound/Sampling/"), recursive = T, showWarnings = F)
+    dir.create(paste0(ref_dir, "/ProFound/Inspect/"), recursive = T, showWarnings = F)
+    dir.create(paste0(ref_dir, "/ProFound/Measurements/"), recursive = T, showWarnings = F)
+    
     return(ref_dir)
   }else{
     message("Continuing...")
@@ -62,10 +72,6 @@ load_raw_files = function(dir_raw){
 }
 
 main = function(){
-  
-  config_var = initialise_params()
-  list2env(config_var, .GlobalEnv)
-  
   args = commandArgs(trailingOnly = T)
   if (length(args)==0) {
     message("Specify VID")
@@ -81,15 +87,39 @@ main = function(){
     q()
   }
   
-  if(!exists("ref_dir")){
+  keep_trend_var = initialise_params()
+  list2env(keep_trend_var, .GlobalEnv)
+  
+  env_var = Sys.getenv(
+    x = c('JUMPROPE_RAW_DIR', 
+          'JUMPROPE_do_NIRISS', 
+          'JUMPROPE_cores_pro',
+          'JUMPROPE_cores_stack',
+          'JUMPROPE_tasks_stack')
+  )
+  
+  if(any(env_var == "")){
+    message("Please set the env variables.")
+    q()
+  }
+  
+  do_NIRISS = ifelse(grepl("T|TRUE|True", env_var['JUMPROPE_do_NIRISS']), T, F) 
+  
+  cores_pro = as.integer(env_var['JUMPROPE_cores_pro'])
+  cores_stack = as.integer(env_var['JUMPROPE_cores_stack'])
+  tasks_stack = as.integer(env_var['JUMPROPE_tasks_stack'])
+  
+  dir_raw = env_var['JUMPROPE_RAW_DIR']
+  
+  ref_dir = Sys.getenv(x = 'JUMPROPE_REF_DIR')
+
+  if(ref_dir == ""){
     ref_dir = make_directory_structure()
   }
   
-  if(exists('do_NIRISS')){
-    if(do_NIRISS){
+  if(do_NIRISS){
       FILT = "CLEAR|NIS"
     }
-  }
   
   cal_sky_info_save_dir = paste0(ref_dir, "/Pro1oF/")
   Pro1oF_dir = paste0(ref_dir, "/Pro1oF/cal/")

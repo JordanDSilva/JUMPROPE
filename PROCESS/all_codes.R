@@ -1156,6 +1156,9 @@ do_RGB = function(VID, ref_dir, patch_dir){
   locut = c(1e-4, 2e-4, 2e-4)*3.0
   hicut = c(0.01, 0.02, 0.02)*5.0
   
+  RGB_dir = paste0(ref_dir, "/RGB/", VID, "/")
+  dir.create(RGB_dir, showWarnings = F, recursive = T)
+  
   cal_sky_info = fread(paste0(ref_dir, "/Pro1oF/cal_sky_info.csv"))
   vid_temp = VID
   unique_visits = grep(vid_temp, unique(cal_sky_info$VISIT_ID), value = T)
@@ -1235,11 +1238,13 @@ do_RGB = function(VID, ref_dir, patch_dir){
     G_patch = propanePatchPix(G_stack$image[,], mask = edge_mask)
     B_patch = propanePatchPix(B_stack$image[,], mask = edge_mask)
     
+    Rfits_write_image(R_patch, paste0(RGB_dir, "/", VID, "_R.fits"))
+    Rfits_write_image(G_patch, paste0(RGB_dir, "/", VID, "_G.fits"))
+    Rfits_write_image(B_patch, paste0(RGB_dir, "/", VID, "_B.fits"))
+    
     im_width = 12 #inches
     im_height = im_width * (temp_proj$NAXIS2 / temp_proj$NAXIS1)
     
-    locut = 0.6
-    hicut = 0.9999
     filestub = paste0(patch_dir, '/patch_RGB_stack_',VID, "_all", "_clear.png")
     CairoPNG(filename = filestub, width=im_width, height=im_height, 
              units='in', res=400, quality=100)
@@ -1250,7 +1255,7 @@ do_RGB = function(VID, ref_dir, patch_dir){
       B = B_patch,
       locut=locut,
       hicut=hicut,
-      # type='num',
+      type='num',
       sparse=1,
       decorate=F)
     dev.off()

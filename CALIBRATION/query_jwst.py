@@ -80,9 +80,8 @@ def read_table():
         count_unique(file['obs_id'])
 
 
-def query_filename(visit_id, stage, instrument, filename):
+def query_filename(dl_dir, visit_id, stage, instrument, filename):
     pid = str(visit_id)[0:4]
-    dl_dir = "/Volumes/GAMA/jwst/MAST-Query/"+pid + "/" + stage + "/" + instrument + "/"
     obs_table = Observations.query_criteria(proposal_id=pid,
                                             project='JWST',
                                             dataproduct_type="IMAGE",
@@ -162,20 +161,21 @@ def check_files(dl_dir, csv_file, visit_id, stage, instrument):
         if check_temp['size'].values != temp_size:
             print(check_temp['size'].values, temp_size)
             print("File wrong size, redownloading: " + file)
-            query_filename(visit_id, stage, instrument, filename=base_name)
+            query_filename(dl_dir, stage, instrument, filename=base_name)
 
 
 def main(visit_id, stage, instrument, check_miri):
 
-    JWST_QUERY_TOOLS_MAST_TOKEN = os.getenv('JWST_QUERY_TOOLS_MAST_TOKEN')
-    JWST_QUERY_TOOLS_DOWNLOAD_DIR = os.getenv('JWST_QUERY_TOOLS_DOWNLOAD_DIR')
-    if None in [JWST_QUERY_TOOLS_MAST_TOKEN, JWST_QUERY_TOOLS_DOWNLOAD_DIR]:
+    JUMPROPE_MAST_TOKEN = os.getenv('JUMPROPE_MAST_TOKEN')
+    JUMPROPE_DOWNLOAD_DIR = os.getenv('JUMPROPE_DOWNLOAD_DIR')
+
+    if None in [JUMPROPE_MAST_TOKEN, JUMPROPE_DOWNLOAD_DIR]:
         print("Please set ENV variables. ")
         exit()
 
-    my_session = Observations.login(token=str(JWST_QUERY_TOOLS_MAST_TOKEN))
+    my_session = Observations.login(token=str(JUMPROPE_MAST_TOKEN))
     pid = str(visit_id)[0:4]
-    ref_dir = str(JWST_QUERY_TOOLS_DOWNLOAD_DIR)
+    ref_dir = str(JUMPROPE_DOWNLOAD_DIR)
 
     dl_dir = os.path.join(ref_dir, pid, stage, instrument)
     os.makedirs(dl_dir, exist_ok=True)

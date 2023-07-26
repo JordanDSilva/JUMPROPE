@@ -22,9 +22,7 @@ parser.add_argument('--INSTRUMENT', type=str, nargs="+", help="JWST Detector (e.
 
 args = parser.parse_args()
 
-def query_filename(pid, stage, instrument, filenames):
-    dl_dir = "/Volumes/GAMA/jwst/MAST-Query/"+pid + "/" + stage + "/" + instrument + "/"
-    my_session = Observations.login(token="6ff31bec13ae4e0eb16d90e0103969e9")
+def query_filename(dl_dir, pid, stage, instrument, filenames):
     obs_table = Observations.query_criteria(proposal_id=pid,
                                             project='JWST',
                                             dataproduct_type="IMAGE",
@@ -59,7 +57,7 @@ def query(pid, instrument):
                                             )
     return obs_table
 
-def check_all_files_downloaded(all_files, csv_file, query_obj, stage, instrument):
+def check_all_files_downloaded(dl_dir, all_files, csv_file, query_obj, stage, instrument):
 
     pid = str(*set(query_obj["proposal_id"]))
     files_in_csv = csv_file["productFilename"]
@@ -71,12 +69,12 @@ def check_all_files_downloaded(all_files, csv_file, query_obj, stage, instrument
             print(file)
             files_to_download.append(file)
     if len(files_to_download)>0:
-        query_filename(pid, stage, instrument, filenames=files_to_download)
+        query_filename(dl_dir, pid, stage, instrument, filenames=files_to_download)
     else:
         pass
 
 
-def check_files(all_files, csv_file, query_obj, stage, instrument):
+def check_files(dl_dir, all_files, csv_file, query_obj, stage, instrument):
     files_to_download = []
     pid = str(*set(query_obj["proposal_id"]))
     for file in all_files:
@@ -89,32 +87,34 @@ def check_files(all_files, csv_file, query_obj, stage, instrument):
             files_to_download.append(base_name)
 
     if len(files_to_download)>0:
-        query_filename(pid, stage, instrument, filenames=files_to_download)
+        query_filename(dl_dir, pid, stage, instrument, filenames=files_to_download)
     else:
         pass
 
 def main(pid, stage, instrument):
 
-    JWST_QUERY_TOOLS_MAST_TOKEN = os.getenv('JWST_QUERY_TOOLS_MAST_TOKEN')
-    JWST_QUERY_TOOLS_DOWNLOAD_DIR = os.getenv('JWST_QUERY_TOOLS_DOWNLOAD_DIR')
-    if None in [JWST_QUERY_TOOLS_MAST_TOKEN, JWST_QUERY_TOOLS_DOWNLOAD_DIR]:
+    JUMPROPE_MAST_TOKEN = os.getenv('JUMPROPE_MAST_TOKEN')
+    JUMPROPE_DOWNLOAD_DIR = os.getenv('JUMPROPE_DOWNLOAD_DIR')
+    if None in [JUMPROPE_MAST_TOKEN, JUMPROPE_DOWNLOAD_DIR]:
         print("Please set ENV variables. ")
         exit()
 
-    my_session = Observations.login(token=str(JWST_QUERY_TOOLS_MAST_TOKEN))
+    my_session = Observations.login(token=str(JUMPROPE_MAST_TOKEN))
 
-    ref_dir = str(JWST_QUERY_TOOLS_DOWNLOAD_DIR)
+    ref_dir = str(JUMPROPE_DOWNLOAD_DIR)
     dl_dir = os.path.join(ref_dir, pid, stage, instrument)
     os.makedirs(dl_dir, exist_ok=True)
     qpid = query(pid, instrument)
 
     all_files = glob.glob(dl_dir + "*fits")
     check_csv = pd.read_csv(*glob.glob(dl_dir + "*csv"))
-    check_all_files_downloaded(all_files=all_files,
-                csv_file=check_csv,
-                query_obj=qpid,
-                stage=stage,
-                instrument=instrument)
+    check_all_files_downloaded(
+        dl_dir = dl_dir,
+        all_files=all_files,
+        csv_file=check_csv,
+        query_obj=qpid,
+        stage=stage,
+        instrument=instrument)
 #    check_files(all_files=all_files,
 #                csv_file=check_csv,
 #                query_obj=qpid,

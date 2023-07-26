@@ -52,14 +52,15 @@ def run1(input_data):
 
 if __name__ == "__main__":
 
-    JWST_QUERY_TOOLS_REF_DIR = os.getenv('JWST_QUERY_TOOLS_REF_DIR')
-    CRDS_PATH = os.getenv('JWST_QUERY_TOOLS_CRDS_PATH')
-    CRDS_CONTEXT = os.getenv('JWST_QUERY_TOOLS_CRDS_CONTEXT')
+    JUMPROPE_DOWNLOAD_DIR = os.getenv('JUMPROPE_DOWNLOAD_DIR')
 
-    os.environ['CRDS_PATH'] = CRDS_PATH
-    os.environ['CRDS_CONTEXT'] = CRDS_CONTEXT
+    JUMPROPE_CRDS_PATH = os.getenv('JUMPROPE_CRDS_PATH')
+    JUMPROPE_CRDS_CONTEXT = os.getenv('JUMPROPE_CRDS_CONTEXT')
 
-    if None in [JWST_QUERY_TOOLS_REF_DIR, CRDS_PATH, CRDS_CONTEXT]:
+    os.environ['CRDS_PATH'] = JUMPROPE_CRDS_PATH
+    os.environ['CRDS_CONTEXT'] = JUMPROPE_CRDS_CONTEXT
+
+    if None in [JUMPROPE_DOWNLOAD_DIR, JUMPROPE_CRDS_PATH, JUMPROPE_CRDS_CONTEXT]:
         print("Please set ENV variables. ")
         exit()
 
@@ -72,7 +73,7 @@ if __name__ == "__main__":
     if args.VISITID is not None:
         visitid = args.VISITID
         PID = str(visitid)[0:4]
-        ref_dir = JWST_QUERY_TOOLS_REF_DIR
+        ref_dir = JUMPROPE_DOWNLOAD_DIR
         uncal_dir = os.path.join(ref_dir, PID, 'UNCAL/NIRCAM') # folder must  be present in input directory
         print(uncal_dir)
         files = glob.glob(uncal_dir + "/*fits")
