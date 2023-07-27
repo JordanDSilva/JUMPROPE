@@ -9,7 +9,14 @@ library(ProPane)
 
 pipe_version = 2.0
 
-do_1of = function(keep_trend_data, filelist, Pro1oF_dir, VID, FILT, cores = 1){
+do_1of = function(input_args){
+  
+  keep_trend_data = input_args$keep_trend_data
+  filelist = input_args$filelist
+  Pro1oF_dir = input_args$Pro1oF_dir
+  VID = input_args$VID
+  FILT = input_args$FILT
+  cores = input_args$cores_pro
   
   #very large sources
   # 1176341001 A
@@ -122,7 +129,14 @@ do_1of = function(keep_trend_data, filelist, Pro1oF_dir, VID, FILT, cores = 1){
     return(NULL)
   }
 }
-do_cal_process = function(Pro1oF_dir, sky_frames_dir, VID, FILT, cores = 1, do_NIRISS = F){
+do_cal_process = function(input_args){
+  
+  Pro1oF_dir = input_args$Pro1oF_dir
+  sky_frames_dir = input_args$sky_frames_dir
+  VID = input_args$VID
+  FILT = input_args$FILT
+  cores = input_args$cores_pro
+  do_NIRISS = input_args$do_NIRISS
   
   filelist = c(
     list.files(Pro1oF_dir, full.names = TRUE) #If running Pro1/F outputs
@@ -282,7 +296,10 @@ do_cal_process = function(Pro1oF_dir, sky_frames_dir, VID, FILT, cores = 1, do_N
   }
   
 }
-do_regen_sky_info = function(sky_pro_dir, cores = 1){
+do_regen_sky_info = function(input_args){
+  
+  sky_pro_dir = input_args$sky_pro_dir
+  cores = input_args$cores_pro
   
   registerDoParallel(cores=cores)
   
@@ -306,7 +323,15 @@ do_regen_sky_info = function(sky_pro_dir, cores = 1){
   write.csv(sky_info, paste0(sky_pro_dir, '/sky_info.csv'), row.names=FALSE)
   
 }
-do_super_sky = function(sky_pro_dir, VID, cores = 1, sky_ChiSq_cut = 1.1, good_pix_cut = 0.15, do_NIRISS = F){
+do_super_sky = function(input_args){
+  
+  sky_pro_dir = input_args$sky_pro_dir
+  VID = input_args$VID
+  cores = input_args$cores_pro
+  do_NIRISS = input_args$do_NIRISS
+  
+  sky_ChiSq_cut = 1.1
+  good_pix_cut = 0.15
   
   registerDoParallel(cores=cores)
   
@@ -402,7 +427,14 @@ do_super_sky = function(sky_pro_dir, VID, cores = 1, sky_ChiSq_cut = 1.1, good_p
     }
   }
 }
-do_apply_super_sky = function(Pro1oF_dir, cal_sky_dir, sky_pro_dir, VID, FILT, cores = 1){
+do_apply_super_sky = function(input_args){
+  
+  Pro1oF_dir = input_args$Pro1oF_dir
+  cal_sky_dir = input_args$cal_sky_dir
+  sky_pro_dir = input_args$sky_pro_dir
+  VID = input_args$VID
+  FILT = input_args$FILT
+  cores = input_args$cores_pro
   
   registerDoParallel(cores=cores)
   
@@ -558,7 +590,14 @@ do_apply_super_sky = function(Pro1oF_dir, cal_sky_dir, sky_pro_dir, VID, FILT, c
   }
   
 }
-do_modify_pedestal = function(cal_sky_dir, cal_sky_renorm_dir, VID, FILT, cores = 1, do_NIRISS = F){
+do_modify_pedestal = function(input_args){
+  
+  cal_sky_dir = input_args$cal_sky_dir
+  cal_sky_renorm_dir = input_args$cal_sky_renorm_dir
+  VID = input_args$VID
+  FILT = input_args$FILT
+  cores = input_args$cores_pro
+  do_NIRISS = input_args$do_NIRISS
   
   filelist = c(
     list.files(cal_sky_dir, full.names = TRUE) #If running Pro1/F outputs
@@ -698,8 +737,12 @@ do_modify_pedestal = function(cal_sky_dir, cal_sky_renorm_dir, VID, FILT, cores 
     }
   }
 }
-do_cal_sky_info = function(cal_sky_renorm_dir, cal_sky_info_save_dir, cores = cores){
+do_cal_sky_info = function(input_args){
 
+  cal_sky_renorm_dir = input_args$cal_sky_renorm_dir
+  cal_sky_info_save_dir = input_args$cal_sky_info_save_dir
+  cores = input_args$cores_pro
+  
   cal_sky_info_WCS = Rfits_key_scan(dirlist=cal_sky_renorm_dir,
                                     keylist = c('PHOTMJSR','PIXAR_SR','CRVAL1', 'CRVAL2', 'CD1_1', 'CD1_2', 'CD2_1', 'CD2_2'),
                                     extlist = 2,
@@ -744,7 +787,15 @@ do_cal_sky_info = function(cal_sky_renorm_dir, cal_sky_info_save_dir, cores = co
   
   write.csv(cal_sky_info, paste0(cal_sky_info_save_dir, '/cal_sky_info.csv'), row.names = FALSE)
 }
-do_gen_stack = function(VID, FILT, ref_dir, do_niriss = F, magzero_out = 23.9, cores = 8, tasks = 1){
+do_gen_stack = function(input_args){
+  
+  VID = input_args$VID
+  FILT = input_args$FILT
+  ref_dir = input_args$ref_dir
+  do_NIRISS = input_args$do_NIRISS
+  magzero = input_args$magzero
+  cores = input_args$cores_stack
+  tasks = input_args$tasks_stack
   
   ## Optional editable params
   clip_tol = c(40,20) #default (80,40) hot and cold
@@ -767,7 +818,7 @@ do_gen_stack = function(VID, FILT, ref_dir, do_niriss = F, magzero_out = 23.9, c
   message("Now running stack!")
   for(VID in grep(temp_vid, unique_visits, value = T)){
     
-    if(do_niriss){
+    if(do_NIRISS){
       cal_sky_info = orig_cal_sky_info[grepl(VID, orig_cal_sky_info$VISIT_ID) & grepl("NIS", orig_cal_sky_info$DETECTOR),]
     }else{
       cal_sky_info = orig_cal_sky_info[grepl(VID, orig_cal_sky_info$VISIT_ID) & !grepl("NIS", orig_cal_sky_info$DETECTOR),]
@@ -935,7 +986,7 @@ do_gen_stack = function(VID, FILT, ref_dir, do_niriss = F, magzero_out = 23.9, c
           inVar_list = inVar_list,
           exp_list = input_info$EFFEXPTM,
           magzero_in = input_info$MAGZERO_FIX,
-          magzero_out = magzero_out,
+          magzero_out = magzero,
           keyvalues_out = temp_proj,
           cores = cores, 
           direction = 'backward',
@@ -963,7 +1014,7 @@ do_gen_stack = function(VID, FILT, ref_dir, do_niriss = F, magzero_out = 23.9, c
         output_stack$image$keyvalues$MASK_FRC = mask_frc
         output_stack$image$keyvalues$EXP_MIN = exp_min
         output_stack$image$keyvalues$EXP_MAX = exp_max
-        output_stack$image$keyvalues$MAGZERO = 23.9
+        output_stack$image$keyvalues$MAGZERO = magzero
         output_stack$image$keyvalues$BUNIT = "microJy"
         
         rms_min = 1/sqrt(max(output_stack$inVar$imDat[output_stack$weight$imDat > 0], na.rm=TRUE))
@@ -1001,11 +1052,16 @@ do_gen_stack = function(VID, FILT, ref_dir, do_niriss = F, magzero_out = 23.9, c
   }
   
 }
-do_wisp_rem = function(filelist, VID, median_dir, cores = 1){
+do_wisp_rem = function(input_args){
+  
+  filelist = input_args$filelist
+  VID = input_args$VID
+  median_dir = input_args$median_dir
+  cores = input_args$cores_pro
+  
+  input_args$keep_trend_data
   
   wisp_poly = Rfits_read("wisp_poly.fits")
-  
-  print(wisp_poly)
   
   filelist = grep(VID, filelist, value = T)
   cat(filelist, sep = "\n")
@@ -1051,7 +1107,18 @@ do_wisp_rem = function(filelist, VID, median_dir, cores = 1){
     # Rfits_write_image(data = wisp_frame, paste0(keep_wisp_stub, "/", vid, "/", info_wisp$file[ii]))
     
     ref_im = ref_im_list[[vid]][[modl]]
-    wisp_fix = wispFixer(wisp_im = wisp_frame, ref_im = ref_im, poly = wisp_poly[[ info_wisp$DETECTOR[ii] ]], sigma_lo = NULL)
+    
+    if(any( (vid == keep_trend_data$ID_vlarge$VISIT_ID & modl == keep_trend_data$ID_vlarge$MODULE) | 
+            (vid == keep_trend_data$ID_large$VISIT_ID & modl == keep_trend_data$ID_large$MODULE)) ){
+      sigma_lo = NULL
+    }else{
+      sigma_lo = 20
+    }
+    
+    message("I am using this sigma_lo = ", sigma_lo)
+    Sys.sleep(time = 2)
+    
+    wisp_fix = wispFixer(wisp_im = wisp_frame, ref_im = ref_im, poly = wisp_poly[[ info_wisp$DETECTOR[ii] ]], sigma_lo = sigma_lo)
     Rfits_write_pix(data = wisp_fix$wisp_fix$imDat, filename = info_wisp$full[ii], ext = 2)
     
     check_Nhdu = Rfits_nhdu(info_wisp$full[ii])
@@ -1075,7 +1142,15 @@ do_wisp_rem = function(filelist, VID, median_dir, cores = 1){
     return(NULL)
   }
 }
-do_patch = function(VID, FILT, invar_dir, median_dir, patch_dir, cores = 1, do_NIRISS = F){
+do_patch = function(input_args){
+  
+  VID = input_args$VID
+  FILT = input_args$FILT
+  invar_dir = input_args$invar_dir
+  median_dir = input_args$median_dir
+  patch_dir = input_args$patch_dir
+  cores = input_args$cores_stack
+  do_NIRISS = input_args$do_NIRISS
   
   registerDoParallel(cores = cores)
   patch_stub = patch_dir
@@ -1148,7 +1223,11 @@ do_patch = function(VID, FILT, invar_dir, median_dir, patch_dir, cores = 1, do_N
     }
   }
 }
-do_RGB = function(VID, ref_dir, patch_dir){
+do_RGB = function(input_args){
+  
+  VID = input_args$VID
+  ref_dir = input_args$ref_dir
+  patch_dir = input_args$patch_dir
   
   blue_filters = "F070W|F090W|F115W|F150W|F140M|F162"
   green_filters = "F200W|F277W|F182M|F210M"

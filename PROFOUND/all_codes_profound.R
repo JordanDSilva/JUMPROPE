@@ -12,14 +12,15 @@ library(stringr)
 library(checkmate)
 
 frame_info = function(ref_dir){
-
+  
+  message("Running frame_info")
+  
   patch_stack_dir = paste0(ref_dir, "/Patch_Stacks/")
   filelist = list.files(
     path = patch_stack_dir,
     pattern = glob2rx("*long*.fits"),
     full.names = T
   )
-  print(filelist)
   filenames = list.files(
     path = patch_stack_dir,
     pattern = glob2rx("*long*.fits"),
@@ -42,7 +43,7 @@ frame_info = function(ref_dir){
       rad = 2*pi*3600,
       filelist = filelist[
         grepl(stack_grid$VISIT_ID[i], filelist) & grepl(stack_grid$MODULE[i], filelist)
-          ][1],
+      ][1],
       plot = F
     )
     
@@ -51,31 +52,31 @@ frame_info = function(ref_dir){
       cbind("RA_MTL" = (wcs_info$centre_RA + wcs_info$corner_TL_RA)/2.0, "DEC_MTL" = (wcs_info$centre_Dec + wcs_info$corner_TL_Dec)/2.0),
       cbind("RA_MTR" = (wcs_info$centre_RA + wcs_info$corner_BR_RA)/2.0, "DEC_MTR" = (wcs_info$centre_Dec + wcs_info$corner_BR_Dec)/2.0),
       cbind("RA_MBR" = (wcs_info$centre_RA + wcs_info$corner_TR_RA)/2.0, "DEC_MBR" = (wcs_info$centre_Dec + wcs_info$corner_TR_Dec)/2.0)
-      )
+    )
     
     mid_corner_info = data.frame(
-     cbind( "RA_CL" = (wcs_info$corner_BL_RA + wcs_info$corner_TL_RA)/2.0,  "DEC_CL" = (wcs_info$corner_BL_Dec + wcs_info$corner_TL_Dec)/2.0),
-     cbind( "RA_CT" = (wcs_info$corner_TL_RA + wcs_info$corner_TR_RA)/2.0,  "DEC_CT" = (wcs_info$corner_TL_Dec + wcs_info$corner_TR_Dec)/2.0),
-     cbind( "RA_CR" = (wcs_info$corner_TR_RA + wcs_info$corner_BR_RA)/2.0,  "DEC_CR" = (wcs_info$corner_TR_Dec + wcs_info$corner_BR_Dec)/2.0),
-     cbind( "RA_CB" = (wcs_info$corner_BL_RA + wcs_info$corner_BR_RA)/2.0,  "DEC_CB" = (wcs_info$corner_BL_Dec + wcs_info$corner_BR_Dec)/2.0)
+      cbind( "RA_CL" = (wcs_info$corner_BL_RA + wcs_info$corner_TL_RA)/2.0,  "DEC_CL" = (wcs_info$corner_BL_Dec + wcs_info$corner_TL_Dec)/2.0),
+      cbind( "RA_CT" = (wcs_info$corner_TL_RA + wcs_info$corner_TR_RA)/2.0,  "DEC_CT" = (wcs_info$corner_TL_Dec + wcs_info$corner_TR_Dec)/2.0),
+      cbind( "RA_CR" = (wcs_info$corner_TR_RA + wcs_info$corner_BR_RA)/2.0,  "DEC_CR" = (wcs_info$corner_TR_Dec + wcs_info$corner_BR_Dec)/2.0),
+      cbind( "RA_CB" = (wcs_info$corner_BL_RA + wcs_info$corner_BR_RA)/2.0,  "DEC_CB" = (wcs_info$corner_BL_Dec + wcs_info$corner_BR_Dec)/2.0)
     )
     
     wcs_info_trim = wcs_info[, c("centre_RA", "centre_Dec", 
-                                "corner_BL_RA", "corner_BL_Dec",
-                                "corner_TL_RA", "corner_TL_Dec",
-                                "corner_TR_RA", "corner_TR_Dec",
-                                "corner_BR_RA", "corner_BR_Dec")]
+                                 "corner_BL_RA", "corner_BL_Dec",
+                                 "corner_TL_RA", "corner_TL_Dec",
+                                 "corner_TR_RA", "corner_TR_Dec",
+                                 "corner_BR_RA", "corner_BR_Dec")]
     names(wcs_info_trim) = c("RA_CEN", "DEC_CEN", 
                              "RA_BL", "DEC_BL", 
                              "RA_TL", "DEC_TL",
                              "RA_TR", "DEC_TR",
                              "RA_BR", "DEC_BR")
-
+    
     ret = cbind(
       stack_grid[i, c("PROPOSAL_ID","VISIT_ID", "MODULE")],
       
       mid_info,
-
+      
       wcs_info_trim,
       
       mid_corner_info
@@ -85,7 +86,13 @@ frame_info = function(ref_dir){
   fwrite(foo, paste0(ref_dir, "/ProFound/long_warp_info.csv"))
 } ##<-- Compute the long warp frame info needed for querying GAIA and HST via MAST
 
-warp_short_to_long = function(ref_dir, VID, MODULE){
+warp_short_to_long = function(input_args){
+  
+  message("Running warp_short_to_long")
+  
+  ref_dir = input_args$ref_dir
+  VID = input_args$VID
+  MODULE = input_args$MODULE
   
   if(!(grepl("NRC", MODULE, fixed = T))){
     MODULE = paste0("NRC", MODULE)
@@ -138,7 +145,13 @@ warp_short_to_long = function(ref_dir, VID, MODULE){
   # return(c(frames_short_to_long, frames_long))
 } ##<-- Downwarp the short wavelength, short pixel scale to long
 
-star_mask = function(ref_dir, VID, MODULE){
+star_mask = function(input_args){
+  
+  message("Running star mask")
+  
+  ref_dir = input_args$ref_dir
+  VID = input_args$VID
+  MODULE = input_args$MODULE
   
   if(!(grepl("NRC", MODULE, fixed = T))){
     MODULE = paste0("NRC", MODULE)
@@ -161,9 +174,9 @@ star_mask = function(ref_dir, VID, MODULE){
   
   if(sum(file_idx) == 0){
     file_list = file_list[grepl(VID, file_list) & 
-                                 grepl(MODULE, file_list)][1]
+                            grepl(MODULE, file_list)][1]
     file_names = file_names[grepl(VID, file_names) & 
-                            grepl(MODULE, file_names)][1]
+                              grepl(MODULE, file_names)][1]
   }else{
     file_list = file_list[file_idx]
     file_names = file_names[file_idx]
@@ -181,8 +194,8 @@ star_mask = function(ref_dir, VID, MODULE){
   gaia = data.frame(
     fread(
       file = gaia_files
-      )
     )
+  )
   
   gaia[, c("xpix", "ypix")] = Rwcs_s2p(RA = gaia$ra, Dec = gaia$dec, keyvalues = f200w_ref$image$keyvalues)
   
@@ -203,17 +216,17 @@ star_mask = function(ref_dir, VID, MODULE){
   
   star_mask_list = {}
   for(k in 1:dim(gaia_trim)[1]){
-    print(k)
     box = 800
     star_test = f200w_ref$image[gaia_trim$ra[k], gaia_trim$dec[k], box = box, type='coord']
-    if(sum(is.na(star_test$imDat))>0.6*prod(dim(star_test))){
+    if(sum(is.na(star_test$imDat)) == prod(dim(star_test))){
       next
     }
     pro_objects = profoundProFound(image = star_test,
                                    skycut = 1.0,
                                    rem_mask = T, 
-                                   box = 50, grid = 5, 
+                                   box = 50, grid = 5,
                                    tolerance = Inf)
+    
     find_star_objects_idx = coordmatch(coordref = cbind(gaia_trim$ra[k], gaia_trim$dec[k]),
                                        coordcompare = pro_objects$segstats[,c("RAmax", "Decmax")],
                                        rad = 1.0)
@@ -331,14 +344,20 @@ profound_detect_master = function(frame, skyRMS, star_mask, pix_mask=NULL, segim
   message("Finished profound")
   return(pro)
 }
-do_detect = function(ref_dir, VID, MODULE, detect_bands = "ALL", profound_function = profound_detect_master){
+do_detect = function(input_args, detect_bands = "ALL", profound_function = profound_detect_master){
+  
+  message("Running ProDetect")
+  
+  ref_dir = input_args$ref_dir
+  VID = input_args$VID
+  MODULE = input_args$MODULE
   
   if(!(grepl("NRC", MODULE, fixed = T))){
     MODULE = paste0("NRC", MODULE)
   }
   
   star_mask_dir = paste0(ref_dir, "/ProFound/Star_Masks/", VID, "/", MODULE, "/")
-
+  
   data_dir = paste0(ref_dir, "/ProFound/Data/", VID, "/", MODULE, "/") 
   
   detect_dir = paste0(ref_dir, "/ProFound/Detects/", VID, "/", MODULE, "/") 
@@ -361,7 +380,7 @@ do_detect = function(ref_dir, VID, MODULE, detect_bands = "ALL", profound_functi
   message(paste0("Running ", N_frames, " frames from ", "VISIT: ", VID, ", module: ", MODULE))
   
   star_mask_file = list.files(star_mask_dir, pattern = "mask.rds", full.names = T)
-
+  
   if(length(star_mask_file>0)){
     message(paste0("Load in star mask from: ", star_mask_file))
     star_mask = readRDS(star_mask_file)
@@ -401,7 +420,7 @@ do_detect = function(ref_dir, VID, MODULE, detect_bands = "ALL", profound_functi
   magimage(profound$objects_redo)
   legend(x = "bottomleft", legend = "Objects_redo")
   dev.off()
-
+  
   stack_stub = paste0(detect_dir, "/", VID, "_", MODULE, "_profound_stack.fits")
   profound_stack = list(
     stack = stack_image$image[,],
@@ -409,7 +428,7 @@ do_detect = function(ref_dir, VID, MODULE, detect_bands = "ALL", profound_functi
     segim_orig = profound$segim_orig
   )
   Rfits_write(data = profound_stack, filename = stack_stub)
-
+  
   catalogue_stub = paste0(detect_dir, "/", VID, "_", MODULE, "_segstats.csv")
   fwrite(profound$segstats, file = catalogue_stub)
   
@@ -522,7 +541,15 @@ measure_profound = function(super_img = super_img, segim=segim, mask=mask, redos
   )
   return(super_pro)
 }
-do_measure = function(ref_dir, VID, MODULE, profound_tweak = T, sampling_cores = 4){
+do_measure = function(input_args){
+  
+  message("Running ProMeasure")
+  
+  ref_dir = input_args$ref_dir
+  VID = input_args$VID
+  MODULE = input_args$MODULE
+  profound_tweak = input_args$profound_tweak
+  sampling_cores = input_args$sampling_cores
   
   if(!(grepl("NRC", MODULE, fixed = T))){
     MODULE = paste0("NRC", MODULE)
@@ -625,12 +652,12 @@ do_measure = function(ref_dir, VID, MODULE, profound_tweak = T, sampling_cores =
     profoundSegimPlot(dum_pro_col, sparse=1)
     legend(x="topleft", legend="Colour photometry")
     dev.off()
-
+    
     img = filt$imDat - dum_pro$sky
     img[img == 0L] = NA
     img[mask] = NA
     sample_mask = (dum_pro$objects_redo | mask)
-
+    
     registerDoParallel(cores = sampling_cores)
     row=foreach(rr = r, .combine="c")%dopar%{
       dum = err_sampler(rr, img, ff, mask = sample_mask, root=sampling_dir)
@@ -669,8 +696,15 @@ do_measure = function(ref_dir, VID, MODULE, profound_tweak = T, sampling_cores =
 }
 
 ## HST codes
-hst_warp_stack = function(ref_dir, VID, MODULE, cores_stack = 1){
-
+hst_warp_stack = function(input_args){
+  
+  message("Running hst_warp_stack")
+  
+  ref_dir = input_args$ref_dir
+  VID = input_args$VID
+  MODULE = input_args$MODULE
+  cores_stack = input_args$cores_stack
+  
   if(!(grepl("NRC", MODULE, fixed = T))){
     MODULE = paste0("NRC", MODULE)
   }
@@ -682,7 +716,7 @@ hst_warp_stack = function(ref_dir, VID, MODULE, cores_stack = 1){
   #load in the target reference frame
   jwst_ls = list.files(data_dir, pattern = 'warp_stack', full.names = T)
   target_path = jwst_ls[grepl(MODULE, jwst_ls) & grepl("F200W", jwst_ls)]
-  if(is.null(target_path)){
+  if(length(target_path)==0){
     target = Rfits_read(jwst_ls[1])
   }else{
     target = Rfits_read(target_path)
@@ -699,7 +733,7 @@ hst_warp_stack = function(ref_dir, VID, MODULE, cores_stack = 1){
                              rem_mask = T)
   
   files_temp_temp = list.files(path = HST_cutout_dir, pattern = ".fits$", recursive = T, full.names = T)
-
+  
   get_rid_of_combined = grepl("combined", files_temp_temp)
   HST_files = files_temp_temp[!get_rid_of_combined]
   
@@ -794,7 +828,7 @@ hst_warp_stack = function(ref_dir, VID, MODULE, cores_stack = 1){
                                      image_pre_fix = temp_pre_fix,
                                      WCS_match = T, quan_cut = 0.95, 
                                      delta_max = c(5,0.2), shift_int = F,
-                                     cutcheck = F, return_image = F, cores = cores, verbose = F)
+                                     cutcheck = T, return_image = F, cores = cores, verbose = F)
       message("Tweaking integer shift")
       align_image_int = propaneTweak(image_ref = temp_targ,
                                      image_pre_fix = temp_pre_fix,
@@ -881,5 +915,24 @@ hst_warp_stack = function(ref_dir, VID, MODULE, cores_stack = 1){
   }
 }
 
+## python codes. Super sketchy :P
+query_gaia = function(input_args){
+  
+  message("Running query_gaia")
+  
+  VID = input_args$VID
+  system( paste0("python3 query_gaia.py --PID ", substr(VID, 1, 4)) )
+  return(NULL)
+}
+query_hst = function(input_args){
+  
+  message("Running query_hst")
+  
+  VID = input_args$VID
+  MODULE = input_args$MODULE
+  
+  system( paste0("python3 request_hap.py --VID ", VID, " --MODULE ", MODULE) )
+  return(NULL)
+}
 
 

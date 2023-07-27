@@ -22,20 +22,20 @@ initialise_params = function(){
     ## vlarge for big objects that fill frame e.g., VV191. Least aggressive 1/f.
     ID_vlarge = data.frame(
       VISIT_ID = c(
-        NULL #<-- Put 10 digit VISITIDs here, e.g., 1176341001, 1176361001
+        2561001003 #<-- Put 10 digit VISITIDs here, e.g., 1176341001, 1176361001
       ),
       MODULE = c(
-       NULL   #<-- Put 'A'/'B' here 
+       'A'   #<-- Put 'A'/'B' here 
       )
     ),
     
     ## large for crowded fields or wispy fields e.g., SMACS Cluster Module B. Less aggressive 1/f.
     ID_large = data.frame(
       VISIT_ID = c(
-        NULL
+        2561001003
       ),
       MODULE = c(
-       NULL 
+       'B' 
       )
     )
     

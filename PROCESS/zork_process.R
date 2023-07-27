@@ -16,7 +16,7 @@ library(doParallel)
 library(utils)
 library(Cairo)
 
-source("all_codes.R")
+source("all_codes_process.R")
 source("initialise_variables.R")
 
 select_code_func = function(){
@@ -27,24 +27,34 @@ select_code_func = function(){
           ## Press:                                                 ##
           ## 1 = Pro1oF                                             ##
           ## 2 = Create sky                                         ##
-          ## 3 = Make super sky                                     ##
-          ## 4 = Remove super sky                                   ##
-          ## 5 = Modify pedestal                                    ##
-          ## 6 = Stack                                              ##
-          ## 7 = Patch                                              ##
-          ## 8 = RGB                                                ##
-          ## 9 = Wisp remove                                        ##
-          ## CONTROL + \ to EXIT                                    ##
+          ## 3 = Regen sky info                                     ##
+          ## 4 = Make super sky                                     ##
+          ## 5 = Remove super sky                                   ##
+          ## 6 = Modify pedestal                                    ##
+          ## 7 = Cal sky info                                       ##
+          ## 8 = Stack                                              ##
+          ## 9 = Patch                                              ##
+          ## 10 = RGB                                               ##
+          ## 11 = Wisp remove                                       ##
+          ##                                                        ##
+          ##  e.g., 1,2,3,4,5,6,7,8,11 for everything + wisp rem    ##
+          ## CONTROL + /\ to EXIT                                   ##
           ############################################################
           ############################################################"
   )
   select_code = toString(readLines("stdin", n=1))
-  if(!any(grepl(select_code, paste0(1:9)))){
+  select_vector = as.integer(
+    strsplit(
+      select_code, ","
+    )[[1]]
+  )
+
+  if( sum(select_vector %in% 1:11) == 0){
     message("Oops, I think you made a mistake. Trying again.")
     select_code_func()
   }
   else{
-    return(select_code)
+    return(c(1:11)[1:11 %in% select_vector])
   }
   
 }
@@ -171,36 +181,84 @@ zork = function(){
   raw_files = load_raw_files(dir_raw = dir_raw)
   
   select_code = select_code_func()
-  if(select_code == "1"){
-    do_1of(filelist = raw_files, keep_trend_data = keep_trend_data, Pro1oF_dir = Pro1oF_dir, VID = VID, FILT = FILT, cores = cores_pro)
-  }
-  if(select_code == "2"){
-    do_cal_process(Pro1oF_dir = Pro1oF_dir, sky_frames_dir = sky_frames_dir, VID = VID, FILT = FILT, cores = cores_pro, do_NIRISS = do_NIRISS)
-    do_regen_sky_info(sky_pro_dir = sky_pro_dir, cores = cores_pro)
-  }
-  if(select_code == "3"){
-    do_super_sky(sky_pro_dir = sky_pro_dir, VID = VID, cores = cores_pro, do_NIRISS = do_NIRISS)
-  }
-  if(select_code == "4"){
-    do_apply_super_sky(Pro1oF_dir = Pro1oF_dir, cal_sky_dir = cal_sky_dir, sky_pro_dir = sky_pro_dir, VID = VID, FILT = FILT, cores = cores_pro)
-  }
-  if(select_code == "5"){
-    do_modify_pedestal(cal_sky_dir = cal_sky_dir, cal_sky_renorm_dir = cal_sky_renorm_dir, VID = VID, FILT = FILT, cores = cores_pro, do_NIRISS = do_NIRISS)
-    do_cal_sky_info(cal_sky_renorm_dir = cal_sky_renorm_dir, cal_sky_info_save_dir = cal_sky_info_save_dir, cores = cores_pro)
-  }
-  if(select_code == "6"){
-    do_gen_stack(VID = VID, FILT = FILT, ref_dir = ref_dir, do_niriss = do_NIRISS, magzero_out = 23.9, cores = cores_stack, tasks = tasks_stack)
-  }
-  if(select_code == "7"){
-    do_patch(VID, FILT, invar_dir = invar_dir, median_dir = median_dir, patch_dir = patch_dir, cores = cores_stack)
-  }
-  if(select_code == "8"){
-    do_RGB(VID = VID, patch_dir = patch_dir, ref_dir = ref_dir)
-  }
-  if(select_code == "9"){
-    wisp_fix_files = load_raw_files(dir_raw = dir_raw)
-    do_wisp_rem(filelist = raw_files, VID = VID, median_dir = median_dir, cores = cores_pro)
-  }
+
+  code_organiser = list(
+    'do_1oF'=do_1of,
+    'do_cal_process'=do_cal_process,
+    'do_regen_sky_info' = do_regen_sky_info,
+    'do_super_sky'=do_super_sky,
+    'do_apply_super_sky' = do_apply_super_sky,
+    'do_modify_pedestal' = do_modify_pedestal,
+    'do_cal_sky_info' = do_cal_sky_info,
+    'do_gen_stack' = do_gen_stack,
+    'do_patch' = do_patch,
+    'do_rgb' = do_RGB,
+    'do_wisp_rem' = do_wisp_rem
+  )
+  
+  input_args = list(
+    filelist = raw_files,
+    keep_trend_data = keep_trend_data,
+    
+    Pro1oF_dir = Pro1oF_dir,
+    sky_frames_dir = sky_frames_dir,
+    sky_pro_dir = sky_pro_dir,
+    cal_sky_dir = cal_sky_dir,
+    cal_sky_renorm_dir = cal_sky_renorm_dir,
+    cal_sky_info_save_dir = cal_sky_info_save_dir,
+    ref_dir = ref_dir,
+    invar_dir = invar_dir, 
+    median_dir = median_dir, 
+    patch_dir = patch_dir,
+    
+    magzero = 23.9,
+    
+    VID = VID,
+    FILT = FILT,
+    
+    do_NIRISS = do_NIRISS,
+    
+    cores_pro = cores_pro,
+    cores_stack = cores_stack,
+    tasks_stack = tasks_stack
+  )
+  
+  lapply(select_code,
+         function(x){
+           code_organiser[[x]](input_args)
+         })
+
+  
+  # if(select_code == "1"){
+  #   do_1of(filelist = raw_files, keep_trend_data = keep_trend_data, Pro1oF_dir = Pro1oF_dir, VID = VID, FILT = FILT, cores = cores_pro)
+  # }
+  # if(select_code == "2"){
+  #   do_cal_process(Pro1oF_dir = Pro1oF_dir, sky_frames_dir = sky_frames_dir, VID = VID, FILT = FILT, cores = cores_pro, do_NIRISS = do_NIRISS)
+  #   do_regen_sky_info(sky_pro_dir = sky_pro_dir, cores = cores_pro)
+  # }
+  # if(select_code == "3"){
+  #   do_super_sky(sky_pro_dir = sky_pro_dir, VID = VID, cores = cores_pro, do_NIRISS = do_NIRISS)
+  # }
+  # if(select_code == "4"){
+  #   do_apply_super_sky(Pro1oF_dir = Pro1oF_dir, cal_sky_dir = cal_sky_dir, sky_pro_dir = sky_pro_dir, VID = VID, FILT = FILT, cores = cores_pro)
+  # }
+  # if(select_code == "5"){
+  #   do_modify_pedestal(cal_sky_dir = cal_sky_dir, cal_sky_renorm_dir = cal_sky_renorm_dir, VID = VID, FILT = FILT, cores = cores_pro, do_NIRISS = do_NIRISS)
+  #   do_cal_sky_info(cal_sky_renorm_dir = cal_sky_renorm_dir, cal_sky_info_save_dir = cal_sky_info_save_dir, cores = cores_pro)
+  # }
+  # if(select_code == "6"){
+  #   do_gen_stack(VID = VID, FILT = FILT, ref_dir = ref_dir, do_niriss = do_NIRISS, magzero_out = 23.9, cores = cores_stack, tasks = tasks_stack)
+  # }
+  # if(select_code == "7"){
+  #   do_patch(VID, FILT, invar_dir = invar_dir, median_dir = median_dir, patch_dir = patch_dir, cores = cores_stack)
+  # }
+  # if(select_code == "8"){
+  #   do_RGB(VID = VID, patch_dir = patch_dir, ref_dir = ref_dir)
+  # }
+  # if(select_code == "9"){
+  #   wisp_fix_files = load_raw_files(dir_raw = dir_raw)
+  #   do_wisp_rem(filelist = raw_files, VID = VID, median_dir = median_dir, cores = cores_pro)
+  # }
 
 }
 

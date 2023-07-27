@@ -16,7 +16,7 @@ library(doParallel)
 library(utils)
 library(Cairo)
 
-source("all_codes.R")
+source("all_codes_process.R")
 source("initialise_variables.R")
 
 make_directory_structure = function(){
@@ -79,6 +79,7 @@ main = function(){
     VID = ""
   } else if (length(args)==1) {
     VID = toString(args[1])
+    FILT = ""
   } else if (length(args)==2) {
     VID = toString(args[1])
     FILT = toString(args[2])
@@ -134,43 +135,74 @@ main = function(){
   patch_dir = paste0(ref_dir, "/Patch_Stacks/")
   
   raw_files = load_raw_files(dir_raw = dir_raw)
+  
+  input_args = list(
+    filelist = raw_files,
+    keep_trend_data = keep_trend_data,
+    
+    Pro1oF_dir = Pro1oF_dir,
+    sky_frames_dir = sky_frames_dir,
+    sky_pro_dir = sky_pro_dir,
+    cal_sky_dir = cal_sky_dir,
+    cal_sky_renorm_dir = cal_sky_renorm_dir,
+    cal_sky_info_save_dir = cal_sky_info_save_dir,
+    ref_dir = ref_dir,
+    invar_dir = invar_dir, 
+    median_dir = median_dir, 
+    patch_dir = patch_dir,
+    
+    magzero = 23.9,
+    
+    VID = VID,
+    FILT = FILT,
+    
+    do_NIRISS = do_NIRISS,
+    
+    cores_pro = cores_pro,
+    cores_stack = cores_stack,
+    tasks_stack = tasks_stack
+  )
  
   if(length(args) <= 1){
-    FILT = ""
+    input_args$FILT = ""
   }
   
-  do_1of(filelist = raw_files, keep_trend_data = keep_trend_data, Pro1oF_dir = Pro1oF_dir, VID = VID, FILT = FILT, cores = cores_pro)
-  do_cal_process(Pro1oF_dir = Pro1oF_dir, sky_frames_dir = sky_frames_dir, VID = VID, FILT = FILT, cores = cores_pro, do_NIRISS = do_NIRISS)
-  do_regen_sky_info(sky_pro_dir = sky_pro_dir, cores = cores_pro)
-  do_super_sky(sky_pro_dir = sky_pro_dir, VID = VID, cores = cores_pro, do_NIRISS = do_NIRISS)
-  do_apply_super_sky(Pro1oF_dir = Pro1oF_dir, cal_sky_dir = cal_sky_dir, sky_pro_dir = sky_pro_dir, VID = VID, FILT = FILT, cores = cores_pro)
-  do_modify_pedestal(cal_sky_dir = cal_sky_dir, cal_sky_renorm_dir = cal_sky_renorm_dir, VID = VID, FILT = FILT, cores = cores_pro, do_NIRISS = do_NIRISS)
-  do_cal_sky_info(cal_sky_renorm_dir = cal_sky_renorm_dir, cal_sky_info_save_dir = cal_sky_info_save_dir, cores = cores_pro)
-  do_gen_stack(VID = VID, FILT = FILT, ref_dir = ref_dir, do_niriss = do_NIRISS, magzero_out = 23.9, cores = cores_stack, tasks = tasks_stack)
+  do_1of(input_args)
+  do_cal_process(input_args)
+  do_regen_sky_info(input_args)
+  do_super_sky(input_args)
+  do_apply_super_sky(input_args)
+  do_modify_pedestal(input_args)
+  do_cal_sky_info(input_args)
+  do_gen_stack(input_args)
 
-  if(do_NIRISS){
-  do_patch(VID, 'CLEAR', invar_dir = invar_dir, median_dir = median_dir, patch_dir = patch_dir, cores = cores_stack)
-  q()
+  if(input_args$do_NIRISS){
+    input_args$FILT = "CLEAR"
+    do_patch(input_args)
+    q()
   }
 
   if(length(args) <= 1){
-    FILT = "F070W|F090W|F115W|F150W|F200W|F140M|F162M|F182M|F210M"
+    input_args$FILT = "F070W|F090W|F115W|F150W|F200W|F140M|F162M|F182M|F210M"
   }
   
-  do_wisp_rem(filelist = raw_files, VID = VID, median_dir = median_dir, cores = cores_pro)
+  do_wisp_rem(input_args)
+  
   wisp_fix_files = load_raw_files(dir_raw = dir_raw)
-  do_1of(filelist = wisp_fix_files, keep_trend_data = keep_trend_data, Pro1oF_dir = Pro1oF_dir, VID = VID, FILT = FILT, cores = cores_pro)
-  do_cal_process(Pro1oF_dir = Pro1oF_dir, sky_frames_dir = sky_frames_dir, VID = VID, FILT = FILT, cores = cores_pro, do_NIRISS = do_NIRISS)
-  do_regen_sky_info(sky_pro_dir = sky_pro_dir, cores = cores_pro)
-  do_super_sky(sky_pro_dir = sky_pro_dir, VID = VID, cores = cores_pro, do_NIRISS = do_NIRISS)
-  do_apply_super_sky(Pro1oF_dir = Pro1oF_dir, cal_sky_dir = cal_sky_dir, sky_pro_dir = sky_pro_dir, VID = VID, FILT = FILT, cores = cores_pro)
-  do_modify_pedestal(cal_sky_dir = cal_sky_dir, cal_sky_renorm_dir = cal_sky_renorm_dir, VID = VID, FILT = FILT, cores = cores_pro, do_NIRISS = do_NIRISS)
-  do_cal_sky_info(cal_sky_renorm_dir = cal_sky_renorm_dir, cal_sky_info_save_dir = cal_sky_info_save_dir, cores = cores_pro)
-  do_gen_stack(VID = VID, FILT = FILT, ref_dir = ref_dir, magzero_out = 23.9, cores = cores_stack, tasks = tasks_stack, do_niriss = do_NIRISS)
-
-  FILT = ""
-  do_patch(VID, FILT, invar_dir = invar_dir, median_dir = median_dir, patch_dir = patch_dir, cores = cores_stack)
-  do_RGB(VID = VID, patch_dir = patch_dir, ref_dir = ref_dir)
+  input_args$filelist = wisp_fix_files
+  
+  do_1of(input_args)
+  do_cal_process(input_args)
+  do_regen_sky_info(input_args)
+  do_super_sky(input_args)
+  do_apply_super_sky(input_args)
+  do_modify_pedestal(input_args)
+  do_cal_sky_info(input_args)
+  do_gen_stack(input_args)
+  
+  input_args$FILT = ""
+  do_patch(input_args)
+  do_RGB(input_args)
 
 }
 

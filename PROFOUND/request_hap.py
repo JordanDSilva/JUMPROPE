@@ -20,7 +20,7 @@ parser.add_argument('--VID', type=str, help='Observation ID (e.g., 2736001001 fo
 parser.add_argument('--MODULE', type=str, help='Targeted channel of NIRCam (A or B, case insensitive)')
 args = parser.parse_args()
 
-ref_dir = os.getenv('JUMPROPE_PROFOUND_REF_DIR')
+ref_dir = os.getenv('JUMPROPE_REF_DIR')
 
 lookup_path = os.path.join(ref_dir, 'ProFound', 'long_warp_info.csv')
 
