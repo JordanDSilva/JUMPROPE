@@ -1235,14 +1235,15 @@ do_RGB = function(input_args){
   locut = c(1e-4, 2e-4, 2e-4)*3.0
   hicut = c(0.01, 0.02, 0.02)*5.0
   
-  RGB_dir = paste0(ref_dir, "/RGB/", VID, "/")
-  dir.create(RGB_dir, showWarnings = F, recursive = T)
-  
   cal_sky_info = fread(paste0(ref_dir, "/Pro1oF/cal_sky_info.csv"))
   vid_temp = VID
   unique_visits = grep(vid_temp, unique(cal_sky_info$VISIT_ID), value = T)
   
   for(VID in unique_visits){
+    
+    RGB_dir = paste0(ref_dir, "/RGB/", VID, "/")
+    dir.create(RGB_dir, showWarnings = F, recursive = T)
+    
     file_list = list.files(patch_dir, 
                            pattern = glob2rx(paste0("*", VID, "*short*fits")),
                            full.names = T)

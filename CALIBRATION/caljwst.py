@@ -10,8 +10,6 @@ os.environ["CRDS_SERVER_URL"] = "https://jwst-crds.stsci.edu" #where to download
 from jwst.pipeline import calwebb_detector1 #import detector processor, uncal-->rates
 from jwst.pipeline import calwebb_image2 #import image processor, rates-->cal
 
-from pathos import multiprocessing as mp #multiprocessing utility
-from pathos.pools import ThreadPool as Pool
 import glob
 import sys
 import argparse #to run from command line, run <python3 calwebb.py -h> to display help

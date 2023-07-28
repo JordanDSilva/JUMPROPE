@@ -705,6 +705,8 @@ hst_warp_stack = function(input_args){
   MODULE = input_args$MODULE
   cores_stack = input_args$cores_stack
   
+  registerDoParallel(cores = cores_stack)
+  
   if(!(grepl("NRC", MODULE, fixed = T))){
     MODULE = paste0("NRC", MODULE)
   }
@@ -828,7 +830,7 @@ hst_warp_stack = function(input_args){
                                      image_pre_fix = temp_pre_fix,
                                      WCS_match = T, quan_cut = 0.95, 
                                      delta_max = c(5,0.2), shift_int = F,
-                                     cutcheck = T, return_image = F, cores = cores, verbose = F)
+                                     cutcheck = F, return_image = F, cores = cores, verbose = F)
       message("Tweaking integer shift")
       align_image_int = propaneTweak(image_ref = temp_targ,
                                      image_pre_fix = temp_pre_fix,
