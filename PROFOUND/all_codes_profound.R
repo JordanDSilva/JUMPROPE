@@ -557,13 +557,13 @@ do_measure = function(input_args){
   
   data_dir = paste0(ref_dir, "/ProFound/Data/", VID, "/", MODULE, "/") #directory with the propanes
   
-  detect_dir = paste0(ref_dir, "/ProFound/Detects/", VID, "/", MODULE, "/")
+  detect_dir = paste0(ref_dir, "/ProFound/Detects/", VID, "/", MODULE)
   
-  inspect_dir = paste0(ref_dir, "/ProFound/Inspect/", VID, "/", MODULE, "/")
+  inspect_dir = paste0(ref_dir, "/ProFound/Inspect/", VID, "/", MODULE)
   
-  sampling_dir = paste0(ref_dir, "/ProFound/Sampling/", VID, "/", MODULE, "/")
+  sampling_dir = paste0(ref_dir, "/ProFound/Sampling/", VID, "/", MODULE)
   
-  measurements_dir = paste0(ref_dir, "/ProFound/Measurements/", VID, "/", MODULE, "/")
+  measurements_dir = paste0(ref_dir, "/ProFound/Measurements/", VID, "/", MODULE)
   
   ######## Load segim and mask ####################
   pro_path = list.files(detect_dir, pattern = glob2rx(paste0("*", VID, "*", MODULE, "*rds")), full.names = T)
@@ -614,6 +614,8 @@ do_measure = function(input_args){
   }                           # Create directory for the sampling stuff
   
   error_file = file.path(sampling_dir,paste(VID,MODULE,'error_fit.txt', sep='_'))
+  # error_file = paste0(sampling_dir, "/", VID, "_", MODULE, "_error_fit.txt")
+  # error_file = "/Volumes/RAIDY/JWST/ProFound/Sampling/2738001001/NRCA/2738001001_NRCA_error_fit.txt"
   cat('Filters','Slopes','Intercepts','\n', file = error_file, sep='\t')          # Create file for the fitted relation of error sampling
   
   ####### Initiate csv for saving output ##########
@@ -658,8 +660,7 @@ do_measure = function(input_args){
     img[mask] = NA
     sample_mask = (dum_pro$objects_redo | mask)
     
-    registerDoParallel(cores = sampling_cores)
-    row=foreach(rr = r, .combine="c")%dopar%{
+    row=foreach(rr = r, .combine="c")%do%{
       dum = err_sampler(rr, img, ff, mask = sample_mask, root=sampling_dir)
       q = unname(quantile(dum$sum, probs=c(0.5, 0.16), na.rm=F))
       sig = q[1]-q[2]
@@ -667,8 +668,7 @@ do_measure = function(input_args){
       # print(c(sig,std))
       sig
     }
-    stopImplicitCluster()
-    
+
     master[ff] = row
     Nsam = sample(length(dum_pro$segstats$segID), 200)
     fit_samp = lm(log10(master[[ff]]) ~ poly(log10(master$a), 1, raw = T))
@@ -704,8 +704,6 @@ hst_warp_stack = function(input_args){
   VID = input_args$VID
   MODULE = input_args$MODULE
   cores_stack = input_args$cores_stack
-  
-  registerDoParallel(cores = cores_stack)
   
   if(!(grepl("NRC", MODULE, fixed = T))){
     MODULE = paste0("NRC", MODULE)
@@ -753,7 +751,7 @@ hst_warp_stack = function(input_args){
                                   extlist = extloc,
                                   RAcen = target$image$keyvalues$CRVAL1, 
                                   Deccen = target$image$keyvalues$CRVAL2, 
-                                  plot = F)$full
+                                  plot = T)$full
   
   hst_key_scan = Rfits_key_scan(files_temp, keylist = c("FILTER", "DETECTOR", "INSTRUME"))
   hst_filters = unique(hst_key_scan$FILTER)
@@ -779,36 +777,25 @@ hst_warp_stack = function(input_args){
     }
     
     #prepare input frames for stacking
-    profound_start_time = Sys.time()
-    image_list = {}
-    inVar_list = {}
     magzero_list = c()
+    image_list = {}
     for(i in 1:length(frames)){
       message(paste0("Profound: ", files[i]))
       hst_magzero = -2.5*log10(frames[[i]]$keyvalues$PHOTFLAM)-5*log10(frames[[i]]$keyvalues$PHOTPLAM)-2.408
-      
-      pro = profoundProFound(image = frames[[i]],
-                             box = 100,
-                             grid = 100,
-                             roughpedestal = T,
-                             magzero = hst_magzero,
-                             rem_mask = T,
-                             mask = frames[[i]]$imDat == 0 | is.na(frames[[i]]$imDat))
-      image_list = c(list(frames[[i]] - pro$sky), image_list)
-      
-      inVar_list = c(list(pro$skyRMS^-2), inVar_list)
-      
       magzero_list = c(magzero_list, hst_magzero)
+      
+      temp = frames[[i]]
+
+      image_list = c(list(temp), image_list)
     }
     
-    message(paste0("ProFound done in ", round(Sys.time()-profound_start_time,4)))
     #stack
     output_stack = propaneStackWarpInVar(image_list = image_list,
-                                         inVar_list = inVar_list,
                                          magzero_in = hst_magzero,
                                          magzero_out = 23.9,
                                          keyvalues_out = target$image$keyvalues,
-                                         cores = cores_stack)
+                                         cores = as.numeric(cores_stack),
+                                         cores_warp = 1)
     if(sum(is.na(output_stack$image$imDat))/prod(dim(output_stack$image$imDat))>0.8){
       message("Not enough coverage")
     }else{
@@ -907,7 +894,7 @@ hst_warp_stack = function(input_args){
       
       file_name = paste0(data_dir, 
                          "/warp_hst_", 
-                         hst_instrume, "_", hst_detector, "_", hst_filter, "_", 
+                         hst_instrume, "_", hst_detector, "_", VID, "_", hst_filter, "_", 
                          MODULE, "_long.fits")
       Rfits_write(final_output, filename = file_name)
     }

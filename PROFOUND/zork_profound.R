@@ -67,7 +67,7 @@ select_code_func = function(){
       select_code, ","
     )[[1]]
   )
-
+  
   if( sum(select_vector %in% 1:7) == 0){
     message("Oops, I think you made a mistake. Trying again.")
     select_code_func()
@@ -103,7 +103,7 @@ main = function(){
           'JUMPROPE_cores_stack',
           'JUMPROPE_tasks_stack')
   )
-  
+
   if(any(env_var == "")){
     message("Please set the env variables.")
     q()
@@ -130,8 +130,13 @@ main = function(){
     grepl(VID, frame_grid$VISIT_ID) & grepl(MODULE, frame_grid$MODULE),
   ]
   
+  message("Using this frame grid:")
+  print(
+    frame_grid
+  )
+  
   select_code = select_code_func()
-
+  
   code_organiser = list(
     'warp_short_to_long'=warp_short_to_long,
     'query_gaia'=query_gaia,
@@ -140,28 +145,27 @@ main = function(){
     'query_hst'=query_hst,
     'warp_stack_hst'=hst_warp_stack,
     'do_measure'=do_measure
-    )
+  )
   
-  for(VID in grep(VID, frame_grid$VISIT_ID, value = T)){
-    for(MODULE in grep(MODULE, frame_grid$MODULE, value = T)){
+  for(i in 1:dim(frame_grid)[1]){
+    input_args = list(
+      VID = frame_grid$VISIT_ID[i],
+      MODULE = frame_grid$MODULE[i],
+      ref_dir = ref_dir,
       
-      input_args = list(
-        VID = VID,
-        MODULE = MODULE,
-        ref_dir = ref_dir,
-        
-        sampling_cores = env_var[["JUMPROPE_cores_stack"]],
-        
-        cores_stack = env_var[["JUMPROPE_cores_stack"]],
-        profound_tweak = T
-      )
+      sampling_cores = as.numeric(env_var[["JUMPROPE_cores_stack"]]),
       
-      lapply(select_code,
-             function(x){
-               code_organiser[[x]](input_args)
-             })
-    }
+      cores_stack = as.numeric(env_var[["JUMPROPE_cores_stack"]]),
+      
+      profound_tweak = T
+    )
+    
+    lapply(select_code,
+           function(x){
+             code_organiser[[x]](input_args)
+           })
   }
+  
 }
 
 if(sys.nframe()==0){

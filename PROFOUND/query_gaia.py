@@ -54,9 +54,9 @@ def query_gaia(coord_dict, dl_dir = "./"):
 
     for ra, dec, visit, module in zip(centre_ra, centre_dec, visit_id, module_label):
         if visit == -999:
-           fname_temp = "./GAIA_Cats/" + str(ra) + "_" + str(dec)+ ".csv"
+           fname_temp = "./GAIA_" + str(ra) + "_" + str(dec)+ ".csv"
         else:
-           fname_temp = dl_dir + "/GAIA_"+str(int(visit))+"_"+module+".csv"
+           fname_temp = os.path.join(dl_dir, "GAIA_"+str(int(visit))+"_"+module+".csv")
 
         coord = SkyCoord(ra=ra, dec=dec, unit=(u.degree, u.degree), frame="icrs")
         radius = u.Quantity(10.0/60.0, unit = u.degree)
@@ -83,10 +83,10 @@ if __name__ == "__main__":
 
         df = pd.read_csv( os.path.join(ref_dir, 'ProFound', 'long_warp_info.csv') )
         dl_dir = os.path.join(ref_dir, 'ProFound', 'GAIA_Cats', str(args.PID) )
-        print(dl_dir)
         os.makedirs(dl_dir, exist_ok=True)
         
-        dff = df.where(df["PROPOSAL_ID"] == args.PID).dropna()
+        dff = df.where(df["PROPOSAL_ID"] == str(args.PID)).dropna()
+        print(dff)
         coord_dict = {"ra" : dff["RA_CEN"], "dec" : dff["DEC_CEN"], "visit_id" : dff["VISIT_ID"], "module" : dff["MODULE"]}
         query_gaia(coord_dict, dl_dir)
     else:

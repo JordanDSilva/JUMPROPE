@@ -89,6 +89,14 @@ main = function(){
   )
   
   frame_grid = unique(frame_info_file[, c("VISIT_ID", "MODULE")])
+  frame_grid = frame_grid[
+    grepl(VID, frame_grid$VISIT_ID) & grepl(MODULE, frame_grid$MODULE),
+  ]
+  
+  message("Using this frame grid:")
+  print(
+    frame_grid
+  )
   
   code_organiser = list(
     'warp_short_to_long'=warp_short_to_long,
@@ -100,26 +108,23 @@ main = function(){
     'do_measure'=do_measure
   )
   
-  for(VID in grep(VID, frame_grid$VISIT_ID, value = T)){
-    for(MODULE in grep(MODULE, frame_grid$MODULE, value = T)){
+  for(i in 1:dim(frame_grid)[1]){
+    input_args = list(
+      VID = frame_grid$VISIT_ID[i],
+      MODULE = frame_grid$MODULE[i],
+      ref_dir = ref_dir,
       
-      input_args = list(
-        VID = VID,
-        MODULE = MODULE,
-        ref_dir = ref_dir,
-        
-        sampling_cores = env_var[["JUMPROPE_cores_stack"]],
-        
-        cores_stack = env_var[["JUMPROPE_cores_stack"]],
-        profound_tweak = T
-      )
+      sampling_cores = as.numeric(env_var[["JUMPROPE_cores_stack"]]),
       
-      lapply(1:length(code_organiser),
-             function(x){
-               code_organiser[[x]](input_args)
-             })
+      cores_stack = as.numeric(env_var[["JUMPROPE_cores_stack"]]),
       
-    }
+      profound_tweak = T
+    )
+    
+    lapply(select_code,
+           function(x){
+             code_organiser[[x]](input_args)
+           })
   }
   
 }
