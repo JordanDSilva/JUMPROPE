@@ -755,7 +755,7 @@ hst_warp_stack = function(input_args){
                                   extlist = extloc,
                                   RAcen = target$image$keyvalues$CRVAL1, 
                                   Deccen = target$image$keyvalues$CRVAL2, 
-                                  rad = 5.0/60.0,
+                                  rad = 10.0/60.0,
                                   plot = T)$full
   
   if(is.null(files_temp)){

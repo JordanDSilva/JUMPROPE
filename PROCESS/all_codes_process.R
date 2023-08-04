@@ -1232,8 +1232,8 @@ do_RGB = function(input_args){
   blue_filters = "F070W|F090W|F115W|F150W|F140M|F162"
   green_filters = "F200W|F277W|F182M|F210M"
   red_filters = "F356W|F444W|F250M|F300M|F335M|F360M|F410M|F430|F460M|F480M"
-  locut = c(1e-4, 2e-4, 2e-4)*3.0
-  hicut = c(0.01, 0.02, 0.02)*5.0
+  locut = 1e-6
+  hicut = 0.05
   
   cal_sky_info = fread(paste0(ref_dir, "/Pro1oF/cal_sky_info.csv"))
   vid_temp = VID
