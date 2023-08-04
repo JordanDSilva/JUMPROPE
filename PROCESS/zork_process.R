@@ -220,7 +220,9 @@ zork = function(){
     
     cores_pro = cores_pro,
     cores_stack = cores_stack,
-    tasks_stack = tasks_stack
+    tasks_stack = tasks_stack,
+
+    SIGMA_LO = NULL
   )
   
   lapply(select_code,

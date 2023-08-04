@@ -215,7 +215,7 @@ do_cal_process = function(input_args){
     pro = profoundProFound(JWST_cal_image$imDat, mask=JWST_cal_mask,
                            skycut=2, pixcut=5, box=512, redoskysize=101,
                            roughpedestal=TRUE, tolerance=Inf)
-    
+
     #sky_redo = profoundMakeSkyGrid(JWST_cal_image$imDat, objects=pro$objects_redo, mask=JWST_cal_mask, sky=pro$sky, box=256, grid=128, boxiters=3)
     sky_redo = profoundSkyPoly(JWST_cal_image$imDat, objects=pro$objects_redo, degree=2, quancut=0.99, mask=JWST_cal_mask)
     pro_redo = profoundProFound(JWST_cal_image$imDat, mask=JWST_cal_mask, skycut=2, pixcut=5,
@@ -1059,7 +1059,9 @@ do_wisp_rem = function(input_args){
   median_dir = input_args$median_dir
   cores = input_args$cores_pro
   
-  input_args$keep_trend_data
+  keep_trend_data  = input_args$keep_trend_data
+
+  SIGMA_LO = input_args$SIGMA_LO
   
   wisp_poly = Rfits_read("wisp_poly.fits")
   
@@ -1112,7 +1114,7 @@ do_wisp_rem = function(input_args){
             (vid == keep_trend_data$ID_large$VISIT_ID & modl == keep_trend_data$ID_large$MODULE)) ){
       sigma_lo = NULL
     }else{
-      sigma_lo = 20
+      sigma_lo = SIGMA_LO
     }
     
     message("I am using this sigma_lo = ", sigma_lo)

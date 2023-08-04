@@ -16,8 +16,21 @@ if(length(args)==0){
 ## edit this
 registerDoParallel(cores = 6)
 
+env_var = Sys.getenv(
+  x = c('JUMPROPE_RAW_DIR', 
+        'JUMPROPE_do_NIRISS', 
+        'JUMPROPE_cores_pro',
+        'JUMPROPE_cores_stack',
+        'JUMPROPE_tasks_stack')
+)
+
+if(any(env_var == "")){
+  message("Please set the env variables.")
+  q()
+}
+
 filelist_all = c(
-  list.files("Imaging/" , recursive = TRUE, pattern = ".fits$", full.names = TRUE)
+  list.files(env_var['JUMPROPE_RAW_DIR'] , recursive = TRUE, pattern = ".fits$", full.names = TRUE)
 )
 filelist = grep(VID, filelist_all, value = T)
 cat(filelist, sep = "\n")

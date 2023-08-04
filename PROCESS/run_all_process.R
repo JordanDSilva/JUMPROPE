@@ -160,7 +160,9 @@ main = function(){
     
     cores_pro = cores_pro,
     cores_stack = cores_stack,
-    tasks_stack = tasks_stack
+    tasks_stack = tasks_stack,
+
+    SIGMA_LO = NULL #keep blurring at wisp rem stage off by default
   )
  
   if(length(args) <= 1){

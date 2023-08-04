@@ -400,7 +400,7 @@ do_detect = function(input_args, detect_bands = "ALL", profound_function = profo
   stack_image = propaneStackWarpInVar(image_list = lapply(propanes, function(x)x$image[,]),
                                       inVar_list = lapply(propanes, function(x)x$inVar[,]),
                                       keyvalues_out = propanes[[1]]$image$keyvalues,
-                                      magzero_in = 23.9, magzero_out = 23.9)
+                                      magzero_in = 23.9, magzero_out = 23.9, cores = 1, cores_warp = 1)
   
   pix_mask = propanes[[1]]$weight[,]$imDat
   pix_mask[pix_mask<1]=0
