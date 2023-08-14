@@ -77,6 +77,7 @@ main = function(){
     message("Specify VID")
     message("Running all")
     VID = ""
+    FILT = ""
   } else if (length(args)==1) {
     VID = toString(args[1])
     FILT = ""

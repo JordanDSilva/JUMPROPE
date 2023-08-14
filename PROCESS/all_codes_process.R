@@ -1414,3 +1414,4 @@ wispFixer = function(wisp_im, ref_im,
   
   return(list(wisp_fix=wisp_im, wisp_template=wisp_template, ref_im_warp=ref_im_warp))
 }
+
