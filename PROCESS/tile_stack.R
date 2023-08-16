@@ -205,7 +205,7 @@ deep_stacker = function(input_args){
   
   stack_grid = cal_sky_info[paste0(cal_sky_info$VISIT_ID) %in% UNIQUE_VIDS, c("VISIT_ID", "FILTER", "DETECTOR")]
   
-  for(grid_size in c("long")){
+  for(grid_size in c("long", "short")){
     
     file_info = find_frames[grepl(grid_size, find_frames$file), ]
     
