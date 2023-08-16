@@ -1169,7 +1169,7 @@ do_patch = function(input_args){
     median_files=median_files[grepl(VID, median_files) & grepl(FILT, median_files)]
     
     if(length(median_files)==0){
-      continue 
+      message("No frames") 
     }else{
       file_names = list.files(path=invar_dir, pattern = paste0(j, ".fits$"), full.names = F)
       file_names=file_names[grepl(VID, file_names) & grepl(FILT, file_names)]
