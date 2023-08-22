@@ -149,7 +149,7 @@ def check_files(dl_dir, csv_file, visit_id, stage, instrument):
     for file in csv_file_redo:
         if file not in all_files_redo_basenames:
             print("Missing file, downloading: " + file)
-            query_filename(visit_id, stage, instrument, filename=file)
+            query_filename(dl_dir, visit_id, stage, instrument, filename=file)
 
     all_files = glob.glob(dl_dir + "*fits")
     all_files_redo = [ii for ii in all_files if visit_id in ii]
@@ -161,8 +161,7 @@ def check_files(dl_dir, csv_file, visit_id, stage, instrument):
         if check_temp['size'].values != temp_size:
             print(check_temp['size'].values, temp_size)
             print("File wrong size, redownloading: " + file)
-            query_filename(dl_dir, stage, instrument, filename=base_name)
-
+            query_filename(dl_dir, visit_id, stage, instrument, filename=base_name)
 
 def main(visit_id, stage, instrument, check_miri):
 
@@ -177,9 +176,12 @@ def main(visit_id, stage, instrument, check_miri):
     pid = str(visit_id)[0:4]
     ref_dir = str(JUMPROPE_DOWNLOAD_DIR)
 
-    dl_dir = os.path.join(ref_dir, pid, stage, instrument)
+    dl_dir = os.path.join(ref_dir, pid, stage, instrument) + str("/")
+    print(dl_dir)
     os.makedirs(dl_dir, exist_ok=True)
-    all_files = glob.glob(dl_dir + "*fits")
+    all_files = glob.glob(
+        dl_dir + "*fits")
+    print(all_files)
     all_files_redo = [ii for ii in all_files if visit_id in ii]
 
     qpid = query(visit_id, stage, instrument, dl_dir, dl_products=False) ##produce the csv file with all exposure information

@@ -118,7 +118,6 @@ main = function(){
       
       cores_stack = as.numeric(env_var[["JUMPROPE_cores_stack"]]),
       
-      profound_tweak = T
     )
     
     lapply(1:length(code_organiser),

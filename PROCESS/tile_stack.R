@@ -2,12 +2,11 @@
 
 input_args = list(
   ref_dir = "/Volumes/RAIDY/JWST/",
-  RA = 265.0355633,
-  Dec = 68.974166,
-  mosaic_size_deg = 10/60,
-  super_name = "IDF"
+  RA = 64.0370833333333,
+  Dec = -24.0746388888889,
+  mosaic_size_deg = 12/60,
+  super_name = "MACS0416"
 )
-
 propane_tweak_widget = function(load_frames, wcs){
   #chain up tweak solutions
   
@@ -85,10 +84,10 @@ propane_tweak_widget = function(load_frames, wcs){
       )
       
       temp_ref = ref_frame
-      temp_ref$imDat[((xmid_cent-box):(xmid_cent+box)), ((ymid_cent-box):(ymid_cent+box))] = NA
+      temp_ref$imDat[((xmid_cent-box/2.0):(xmid_cent+box/2.0)), ((ymid_cent-box/2.0):(ymid_cent+box/2.0))] = NA
       
       temp_new_frame_translate = new_frame_translate
-      temp_new_frame_translate$imDat[((xmid_cent-box):(xmid_cent+box)), ((ymid_cent-box):(ymid_cent+box))] = NA
+      temp_new_frame_translate$imDat[((xmid_cent-box/2.0):(xmid_cent+box/2.0)), ((ymid_cent-box/2.0):(ymid_cent+box/2.0))] = NA
       
       message("Reference source finding...")
       pro_ref = profoundProFound(
@@ -406,14 +405,28 @@ deep_stacker = function(input_args){
       
       tweaked_frames = tweaked_frames[!sapply(tweaked_frames, is.null)]
       
-      loc = which(!is.na(tweaked_frames[[1]]$image$imDat),arr.ind=TRUE)
+      deep_frame = propaneStackWarpInVar(
+        image_list = lapply(tweaked_frames, function(x)x$image),
+        inVar_list = lapply(tweaked_frames, function(x)x$inVar),
+        weight_list = lapply(tweaked_frames, function(x)x$weight),
+        keyvalues_out = wcs,
+        magzero_in = 23.9,
+        magzero_out = 23.9,
+        direction="backward",
+        dump_frames = T,
+        dump_dir = paste0(dump_dir, "/", input_args$super_name, "/", grid_size, "/", UNIQUE_FILTERS[i], "/"),
+        multitype = "cluster",
+        cores = 1,
+        cores_warp = 1
+      )
+      
+      loc = which(!is.na(deep_frame$image$imDat),arr.ind=TRUE)
       xlo = min(loc[,1])-100
       xhi = max(loc[,1])+100
       ylo = min(loc[,2])-100
       yhi = max(loc[,2])+100
       
-      wcs_crop_temp = tweaked_frames[[1]]$image[xlo:xhi, ylo:yhi]$keyvalues
-      
+      wcs_crop_temp = deep_frame$image[xlo:xhi, ylo:yhi]$keyvalues
       wcs_crop = Rwcs_keypass(
         CRVAL1 = wcs_crop_temp$CRVAL1,
         CRVAL2 = wcs_crop_temp$CRVAL2,
@@ -428,20 +441,11 @@ deep_stacker = function(input_args){
       wcs_crop$CRPIX1 = wcs_crop_temp$CRPIX1
       wcs_crop$CRPIX2 = wcs_crop_temp$CRPIX2
       
-      deep_frame = propaneStackWarpInVar(
-        image_list = lapply(tweaked_frames, function(x)x$image),
-        inVar_list = lapply(tweaked_frames, function(x)x$inVar),
-        weight_list = lapply(tweaked_frames, function(x)x$weight),
-        keyvalues_out = wcs_crop,
-        magzero_in = 23.9,
-        magzero_out = 23.9,
-        direction="backward",
-        dump_frames = T,
-        dump_dir = paste0(dump_dir, "/", input_args$super_name, "/", grid_size, "/", UNIQUE_FILTERS[i], "/"),
-        multitype = "cluster",
-        cores = 1,
-        cores_warp = 1
+      deep_frame_crop = propaneWarpProPane(
+        propane_in = deep_frame,
+        keyvalues_out = wcs_crop
       )
+      
 
       Rfits_write(
         deep_frame,
@@ -451,7 +455,7 @@ deep_stacker = function(input_args){
       med_stack = propaneStackWarpMed(
         dirlist = deep_frame$dump_dir,
         pattern = glob2rx("*image*.fits"),
-        keyvalues_out = deep_frame$image$keyvalues
+        keyvalues_out = deep_frame_crop$image$keyvalues
       )
 
       Rfits_write(
@@ -466,204 +470,5 @@ deep_stacker = function(input_args){
 }
 
 deep_stacker(input_args = input_args)
-
-
-
-## spare stuff
-propane_tweak_widget_2 = function(load_frames, wcs){
-  #chain up tweak solutions
-  
-  N_frames = length(load_frames)
-  tweak_pars = {}
-  counter = 0
-  while(counter < N_frames){
-    message("Counter = ", counter)
-    if(counter == 0){
-      message("Initialise reference frame.")
-      ref_frame = propaneWarp(
-        image_in = load_frames[[1]],
-        keyvalues_out = wcs
-      )
-      tweak_pars = c(tweak_pars, list(c(0,0,0)))
-      counter = counter + 1
-      # store_frames = c(list(ref_frame), store_frames)
-    }else{
-      message("Tweak test frame.")
-      
-      message("Warp test to target WCS")
-      warp_frame = propaneWarp(
-        load_frames[[counter+1]],
-        keyvalues_out = wcs
-      )
-      
-      message("Make initial stack for weight selection")
-      init_stack = propaneStackWarpInVar(
-        image_list = list(ref_frame, warp_frame),
-        cores = 1,
-        keyvalues_out = wcs,
-        magzero_in = 23.9,
-        magzero_out = 23.9
-      )
-      
-      array_idx = which(init_stack$weight$imDat >= 2, arr.ind = T)
-      
-      xmid_cent = quantile(array_idx[,1], 0.5, na.rm = T)
-      ymid_cent = quantile(array_idx[,2], 0.5, na.rm = T)
-      
-      box = c(4000,2000)
-      
-      if(
-        sum(
-          is.na(ref_frame[xmid_cent, ymid_cent, box = box]$imDat)
-        )/prod(
-          dim(
-            ref_frame[xmid_cent, ymid_cent, box = box]$imDat
-          )
-        ) >= 0.8
-      ){
-        xmid_cent = quantile(array_idx[,1], 0.16, na.rm = T)
-        ymid_cent = quantile(array_idx[,2], 0.16, na.rm = T) # should hopefully be robust against fields like the IDF in program 2738 :D
-      }
-      
-      message("Tweaking for integer shifts...")
-      tweak_soln = propaneTweak(
-        image_pre_fix = warp_frame[xmid_cent, ymid_cent, box = box],
-        image_ref = ref_frame[xmid_cent, ymid_cent, box = box],
-        WCS_match = T,
-        cutcheck = F,
-        shift_int = F, 
-        delta_max = c(10, 0.5),
-        cores = 8
-      )
-      
-      tweak_vals = tweak_soln$optim_out$par
-      # tweak_vals = c(tweak_soln$optim_out$par)
-      
-      new_frame = propaneWCSmod(
-        warp_frame,
-        delta_x = tweak_vals[1], 
-        delta_y = tweak_vals[2],
-        delta_rot = tweak_vals[3]
-      )
-      
-      message("Making new super reference frame. Super mosaic.")
-      new_ref_frame = propaneStackWarpInVar(
-        image_list = list(ref_frame, new_frame),
-        cores = 1,
-        keyvalues_out = wcs,
-        magzero_in = 23.9, 
-        magzero_out = 23.9
-      )
-      
-      tweak_pars = c(tweak_pars, list(tweak_vals))
-      
-      ref_frame = new_ref_frame$image
-      counter = counter + 1
-    }
-  }
-  
-  
-  loc = which(!is.na(init_stack$image$imDat),arr.ind=TRUE)
-  xlo = min(loc[,1])-100
-  xhi = max(loc[,1])+100
-  ylo = min(loc[,2])-100
-  yhi = max(loc[,2])+100
-  
-  png("~/Desktop/foo2_align.png", width = dim(new_ref_frame$image)[1], height = dim(new_ref_frame$image)[2]/2.0, units="px", res = 100)
-  par(mar = rep(0,4), oma = rep(0,4))
-  plot(new_ref_frame$image[xlo:xhi, ylo:yhi], qdiff=T, sparse = 1)
-  dev.off()
-  
-  return(tweak_pars)
-}
-profound_tweak_widget = function(load_frames, wcs){
-  
-  N_frames = length(load_frames)
-  
-  tweak_pars = {}
-  counter = 0
-  profound_tweak_pars = while(counter < N_frames){
-    message("Counter = ", counter)
-    if(counter == 0){
-      message("Initialise reference frame.")
-      ref_frame = propaneWarp(
-        image_in = load_frames[[1]],
-        keyvalues_out = wcs
-      )
-      tweak_pars = c(tweak_pars, list(c(0,0,0)))
-      counter = counter + 1
-      # store_frames = c(list(ref_frame), store_frames)
-    }else{
-      message("Tweak test frame.")
-      message("ProFound ref.")
-      pro_ref = profoundProFound(
-        image = ref_frame,
-        skycut = 5.0,
-        pixcut = 20,
-        cliptol = 100,
-        tolerance = Inf,
-        box = 100,
-        magzero = 23.9,
-        rem_mask = T
-      )
-      
-      message("Warp test to target WCS")
-      warp_frame = propaneWarp(
-        load_frames[[counter+1]],
-        keyvalues_out = wcs
-      )
-      
-      message("ProFound test.")
-      pro = profoundProFound(
-        image = warp_frame,
-        skycut = 5.0,
-        pixcut = 20,
-        cliptol = 100,
-        tolerance = Inf,
-        box = 100,
-        magzero = 23.9,
-        rem_mask = T
-      )
-      
-      match_idx = coordmatch(
-        coordref = pro_ref$segstats[, c("RAmax", "Decmax")],
-        coordcompare = pro$segstats[, c("RAmax", "Decmax")],
-        rad = 0.5
-      )
-      
-      match_ref = pro_ref$segstats[match_idx$bestmatch$refID, ]
-      match_test = pro$segstats[match_idx$bestmatch$compareID, ]
-      
-      dx = -median(match_test$xcen - match_ref$xcen, na.rm = T)
-      dy = -median(match_test$ycen - match_ref$ycen, na.rm = T)
-      dphi = 0 ## Ignore rotations.
-      
-      new_frame_imdat = propaneTran(
-        image = warp_frame$imDat, 
-        delta_x = dx, 
-        delta_y = dy,
-        delta_rot = dphi
-      )
-      new_frame = Rfits_create_image(
-        image = new_frame_imdat,
-        keyvalues = wcs
-      )
-      
-      new_ref_frame = propaneStackWarpInVar(
-        image_list = list(ref_frame, new_frame),
-        keyvalues_out = wcs,
-        magzero_in = 23.9, 
-        magzero_out = 23.9
-      )
-      
-      tweak_pars = c(tweak_pars, list(c(dx,dy,dphi)))
-      
-      ref_frame = new_ref_frame$image
-      counter = counter + 1
-    }
-  }
-  return(tweak_pars)
-}
-
 
 
