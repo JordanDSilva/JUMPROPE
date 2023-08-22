@@ -49,8 +49,10 @@ main = function(){
   if (length(args)==0) {
     message("Specify VID")
     VID = ""
+    MODULE = "NRCA|NRCB"
   } else if (length(args)==1) {
     VID = toString(args[1])
+    MODULE = "NRCA|NRCB"
   } else if (length(args)==2) {
     VID = toString(args[1])
     MODULE = toupper(toString(args[2]))
@@ -116,7 +118,7 @@ main = function(){
       
       sampling_cores = as.numeric(env_var[["JUMPROPE_cores_stack"]]),
       
-      cores_stack = as.numeric(env_var[["JUMPROPE_cores_stack"]]),
+      cores_stack = as.numeric(env_var[["JUMPROPE_cores_stack"]])
       
     )
     
