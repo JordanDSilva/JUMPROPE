@@ -110,6 +110,11 @@ warp_short_to_long = function(input_args){
   
   patch_stack_dir = paste0(ref_dir, "/Patch_Stacks/")
   warp_dir = paste0(ref_dir, "/ProFound/Data/", VID, "/", MODULE, "/")
+  
+  if(dir.exists(warp_dir)){
+    unlink(warp_dir, recursive = T)
+  }
+  
   dir.create(warp_dir, recursive = T)
   
   ## here we read in the Patched_Stacks
@@ -166,6 +171,11 @@ star_mask = function(input_args){
   }
   
   star_mask_dir = paste0(ref_dir, "/ProFound/Star_Masks/", VID, "/", MODULE, "/")
+  
+  if(dir.exists(star_mask_dir)){
+    unlink(star_mask_dir, recursive = T)
+  }
+  
   dir.create(star_mask_dir, showWarnings = F, recursive = T)
   
   data_dir = paste0(ref_dir, "/ProFound/Data/", VID, "/", MODULE, "/") #directory with the propanes
@@ -369,6 +379,11 @@ do_detect = function(input_args, detect_bands = "ALL", profound_function = profo
   data_dir = paste0(ref_dir, "/ProFound/Data/", VID, "/", MODULE, "/") 
   
   detect_dir = paste0(ref_dir, "/ProFound/Detects/", VID, "/", MODULE, "/") 
+  
+  if(dir.exists(detect_dir)){
+    unlink(detect_dir, recursive = T)
+  }
+  
   dir.create(detect_dir, recursive = T, showWarnings = F)
   
   message("Start detect!")
@@ -463,7 +478,7 @@ err_sampler = function(r, imdat, fname, mask, root=root_sample){
   set.seed(r)
   collect = c()
   n=1
-  whilebreak_thresh = 1000
+  whilebreak_thresh = 10000
   whilebreak = 0
   dum_imdat = imdat
   dum_imdat[mask] = NA
@@ -472,8 +487,9 @@ err_sampler = function(r, imdat, fname, mask, root=root_sample){
   magimage(dum_imdat, qdiff=T)
   xy = dim(imdat)
   while(n <= 200){
-    if(whilebreak==whilebreak_thresh){
+    if(whilebreak>=whilebreak_thresh){
       message(paste0("Can't find a spot for the ", n, "th aperture in ", whilebreak_thresh, " tries :("))
+      break
     }
     x = sample(1:xy[1], 1)
     y = sample(1:xy[2], 1)
@@ -481,17 +497,10 @@ err_sampler = function(r, imdat, fname, mask, root=root_sample){
       next
     }
     mask2d = mask[(x-1.5*r):(x+1.5*r-1),(y-1.5*r):(y+1.5*r-1)]
-    if(any(is.na(mask2d[check])) | any(is.nan(mask2d[check]))){
-      whilebreak = whilebreak + 1
-      next
-    }
-    if(any(mask2d[check])){
-      whilebreak = whilebreak + 1
-      next
-    }
+    
     cut2d = imdat[(x-r):(x+r-1), (y-r):(y+r-1)]
     out = cut2d[use]
-    if((any(is.na(out)) | any(is.nan(out)))){
+    if( any(is.na(mask2d[check])) | any(is.nan(mask2d[check])) | any(mask2d[check]) | (any(is.na(out)) | any(is.nan(out))) ){
       whilebreak = whilebreak + 1
       next
     }else{
@@ -520,7 +529,7 @@ measure_profound = function(super_img = super_img, segim=segim, mask=mask, redos
   super_pro = profoundProFound(
     super_img,
     magzero = 23.9,
-    mask = mask | super_img$imDat == 0 | is.na(super_img$imDat),
+    mask = mask | super_img$imDat == 0 | is.na(super_img$imDat) | is.infinite(super_img$imDat),
     # detection, segmentation and dilation
     segim = segim,
     redosegim = redosegim,
@@ -699,234 +708,6 @@ do_measure = function(input_args){
 }
 
 ## HST codes
-hst_warp_stack_old = function(input_args){
-  
-  message("Running hst_warp_stack")
-  
-  ref_dir = input_args$ref_dir
-  VID = input_args$VID
-  MODULE = input_args$MODULE
-  cores_stack = input_args$cores_stack
-  
-  if(!(grepl("NRC", MODULE, fixed = T))){
-    MODULE = paste0("NRC", MODULE)
-  }
-  
-  data_dir = paste0(ref_dir, "/ProFound/Data/", VID, "/", MODULE, "/") #directory with the propanes
-  
-  HST_cutout_dir = paste0(ref_dir, "/ProFound/HST_cutout/", VID, "/", MODULE, "/") ## Holding pen for the MAST Hubble MVMs / HAPs
-  
-  #load in the target reference frame
-  jwst_ls = list.files(data_dir, pattern = 'warp_stack', full.names = T)
-  target_path = jwst_ls[grepl(MODULE, jwst_ls) & grepl("F200W", jwst_ls)]
-  if(length(target_path)==0){
-    target = Rfits_read(jwst_ls[1])
-  }else{
-    target = Rfits_read(target_path)
-  }
-  
-  pro_ref = profoundProFound(image = target$image[,], 
-                             magzero = 23.9, 
-                             skycut = 5.0, 
-                             box = 100,
-                             tolernace = Inf,
-                             cliptol = Inf,
-                             rem_mask = T,
-                             roughpedestal = T)
-  
-  files_temp_temp = list.files(path = HST_cutout_dir, pattern = ".fits$", recursive = T, full.names = T)
-  
-  get_rid_of_combined = grepl("combined", files_temp_temp)
-  HST_files = files_temp_temp[!get_rid_of_combined]
-  
-  check_Nhdu = Rfits_nhdu(HST_files[1])
-  if(check_Nhdu == 1){
-    extloc = 1
-  }else{
-    extloc = 2
-  }
-  message(paste0("EXTLOC = ", extloc))
-  # print(HST_files)
-  # extloc = 1
-  
-  files_temp = propaneFrameFinder(filelist = HST_files, 
-                                  extlist = extloc,
-                                  RAcen = target$image$keyvalues$CRVAL1, 
-                                  Deccen = target$image$keyvalues$CRVAL2, 
-                                  rad = 10.0/60.0,
-                                  plot = T)$full
-  
-  if(is.null(files_temp)){
-    message("No HST to fold in!")
-  }else{
-    hst_key_scan = Rfits_key_scan(files_temp, keylist = c("FILTER", "DETECTOR", "INSTRUME"))
-    hst_filters = unique(hst_key_scan$FILTER)
-    NFilters = length(hst_filters)
-    
-    #loop through HST filters
-    foreach(j = 1:NFilters)%do%{
-      hst_info = hst_key_scan[hst_key_scan$FILTER==hst_filters[j], ]
-      hst_filter = unique(hst_info$FILTER)
-      hst_detector = unique(hst_info$DETECTOR)
-      hst_instrume = unique(hst_info$INSTRUME)
-      if(length(hst_instrume) > 1){
-        # just get the acs filters 
-        files_idx = grepl(hst_filters[j], files_temp, ignore.case = T) & grepl("acs", files_temp, ignore.case = T)
-        files = files_temp[files_idx]
-        frames = lapply(files, function(x){Rfits_read_image(x, ext=extloc)})
-        hst_detector = hst_detector[grepl("wfc", hst_detector, ignore.case = T)]
-        hst_instrume = hst_instrume[grepl("acs", hst_instrume, ignore.case = T)]
-      }else{
-        files_idx = grepl(hst_filters[j], files_temp, ignore.case = T)
-        files = files_temp[files_idx]
-        frames = lapply(files, function(x){Rfits_read_image(x, ext=extloc)})
-      }
-      
-      #prepare input frames for stacking
-      magzero_list = c()
-      image_list = {}
-      for(i in 1:length(frames)){
-        message(paste0("Profound: ", files[i]))
-        hst_magzero = -2.5*log10(frames[[i]]$keyvalues$PHOTFLAM)-5*log10(frames[[i]]$keyvalues$PHOTPLAM)-2.408
-        magzero_list = c(magzero_list, hst_magzero)
-        
-        temp = frames[[i]]
-        
-        pro = profoundProFound(
-          image = temp,
-          box = 100,
-          roughpedestal = T,
-          redosky = F,
-          rem_mask = T
-        )
-        
-        image_list = c(list(temp-pro$sky), image_list)
-      }
-      
-      #stack
-      output_stack = propaneStackWarpInVar(image_list = image_list,
-                                           magzero_in = hst_magzero,
-                                           magzero_out = 23.9,
-                                           keyvalues_out = target$image$keyvalues,
-                                           cores = cores_stack,
-                                           cores_warp = 1)
-      if(sum(is.na(output_stack$image$imDat))/prod(dim(output_stack$image$imDat))>0.8){
-        message("Not enough coverage")
-      }else{
-        
-        RAcen = target$image$keyvalues$CRVAL1
-        Deccen = target$image$keyvalues$CRVAL2
-        box = 2000
-        
-        temp_targ = target$image[RAcen,Deccen,box=box,type="coord"]$imDat
-        temp_pre_fix = output_stack$image[RAcen,Deccen,box=box,type="coord"]$imDat
-        
-        # center_mask = profoundApplyMask(image = matrix(0, dim(temp_targ)[1], dim(temp_targ)[2]),
-        #                                 xcen = dim(temp_targ)[1]/2.0, ycen = dim(temp_targ)[2]/2.0, xsize = 201, ysize=201)
-        # temp_targ[center_mask$mask==1] = NA
-        # temp_pre_fix[center_mask$mask==1] = NA
-        
-        message("Tweaking decimal shift")
-        align_image_sub = propaneTweak(image_ref = temp_targ,
-                                       image_pre_fix = temp_pre_fix,
-                                       WCS_match = T, 
-                                       quan_cut = 0.95, 
-                                       delta_max = c(5,0.2), 
-                                       shift_int = F,
-                                       cutcheck = F, 
-                                       return_image = F, 
-                                       cores = cores_stack, 
-                                       verbose = F)
-        message("Tweaking integer shift")
-        align_image_int = propaneTweak(image_ref = temp_targ,
-                                       image_pre_fix = temp_pre_fix,
-                                       WCS_match = T, 
-                                       quan_cut = 0.95, 
-                                       delta_max = 5, 
-                                       shift_int = T,
-                                       cutcheck = F, 
-                                       return_image = F, 
-                                       cores = cores_stack, 
-                                       verbose = F)
-        
-        message("Tweaking ProFound source shift")
-        pro_test = profoundProFound(image = output_stack$image,
-                                    magzero = 23.9,
-                                    skycut = 5.0,
-                                    box = 100,
-                                    tolernace = Inf,
-                                    cliptol = Inf,
-                                    rem_mask = T,
-                                    roughpedestal = T)
-        
-        match_idx = coordmatch(coordref = pro_ref$segstats[,c("RAmax", "Decmax")],
-                               coordcompare = pro_test$segstats[,c("RAmax", "Decmax")])
-        mag_match = pro_test$segstats$mag[match_idx$bestmatch$compareID]
-        deltax = 1*(pro_ref$segstats$xcen[match_idx$bestmatch$refID] - pro_test$segstats$xcen[match_idx$bestmatch$compareID])
-        deltay = 1*(pro_ref$segstats$ycen[match_idx$bestmatch$refID] - pro_test$segstats$ycen[match_idx$bestmatch$compareID])
-        dx = median(deltax, na.rm=T)
-        dy = median(deltay, na.rm=T)
-        phi_ref = atan2(pro_ref$segstats$ycen[match_idx$bestmatch$refID], pro_ref$segstats$xcen[match_idx$bestmatch$refID])
-        phi_test = atan2(pro_test$segstats$ycen[match_idx$bestmatch$compareID], pro_test$segstats$xcen[match_idx$bestmatch$compareID])
-        deltaphi = 1*(phi_ref-phi_test)
-        dphi = median(deltaphi, na.rm=T) * 180/pi
-        
-        tweak_sol = align_image_sub$optim_out$par
-        tweak_sol_int = align_image_int$optim_out$par
-        
-        name_exts = c("image")
-        # tweaked_output = lapply(name_exts, function(x)propaneWCSmod(output_stack[[x]],
-        #                                                             delta_x = align_image_shift_int$optim_out$par[1]+align_image$optim_out$par[1],
-        #                                                             delta_y = align_image_shift_int$optim_out$par[2]+align_image$optim_out$par[2],
-        #                                                             delta_rot = align_image$optim_out$par[3]))
-        
-        tweaked_output_imDat = propaneTran(output_stack[["image"]][,]$imDat,
-                                           delta_x = tweak_sol[1],
-                                           delta_y = tweak_sol[2],
-                                           delta_rot = tweak_sol[3])
-        
-        tweaked_output_int_imDat = propaneTran(output_stack[["image"]][,]$imDat,
-                                               delta_x = tweak_sol_int[1],
-                                               delta_y = tweak_sol_int[2],
-                                               delta_rot = 0)
-        
-        tweaked_output_profound_imDat = propaneTran(output_stack[["image"]][,]$imDat,
-                                                    delta_x = dx,
-                                                    delta_y = dy,
-                                                    delta_rot = dphi)
-        
-        tweaked_output = Rfits_create_image(image = tweaked_output_imDat, 
-                                            keyvalues = target$image$keyvalues)
-        tweaked_output_int = Rfits_create_image(image = tweaked_output_int_imDat, 
-                                                keyvalues = target$image$keyvalues)
-        tweaked_output_profound = Rfits_create_image(image = tweaked_output_profound_imDat, 
-                                                     keyvalues = target$image$keyvalues)
-        final_output = list()
-        final_output$image = tweaked_output
-        final_output$image$keyvalues$EXTNAME = "image"
-        final_output$NOALIGN = output_stack$image
-        final_output$NOALIGN$keyvalues$EXTNAME = "NOALIGN"
-        final_output$PROFOUNDTWEAK = tweaked_output_profound
-        final_output$PROFOUNDTWEAK$keyvalues$EXTNAME = "PROFOUNDTWEAK"
-        final_output$INTSHIFT = tweaked_output_int
-        final_output$INTSHIFT$keyvalues$EXTNAME = "INTSHIFT"
-        final_output$tweak_sol = tweak_sol
-        final_output$tweak_sol_int = c(tweak_sol_int,0)
-        final_output$tweak_sol_prof = c(dx,dy,dphi)
-        class(final_output) = "Rfits_list"
-        
-        file_name = paste0(data_dir, 
-                           "/warp_hst_", 
-                           hst_instrume, "_", hst_detector, "_", VID, "_", hst_filter, "_", 
-                           MODULE, "_long.fits")
-        Rfits_write(final_output, filename = file_name)
-      }
-      rm(image_list)
-      rm(output_stack)
-      rm(tweaked_output)
-    }
-  }
-}
 hst_warp_stack = function(input_args){
   
   message("Running hst_warp_stack")
