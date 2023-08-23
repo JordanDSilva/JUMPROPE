@@ -36,7 +36,7 @@ os.makedirs(zip_dir, exist_ok=True)
 
 if os.path.isfile(lookup_path):
     df = pd.read_csv(lookup_path)
-    cat = df.loc[df['VISIT_ID'] == args.VID, :]
+    cat = df.loc[df['VISIT_ID'] == int(args.VID), :]
     # print(cat)
     targ_ra = cat.loc[cat['MODULE']==args.MODULE.upper(), 'RA_CEN'].values[0]
     targ_dec = cat.loc[cat['MODULE']==args.MODULE.upper(), 'DEC_CEN'].values[0]

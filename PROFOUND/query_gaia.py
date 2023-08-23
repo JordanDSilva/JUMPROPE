@@ -16,7 +16,7 @@ parser = argparse.ArgumentParser(description='Query GAIA')
 parser.add_argument('--RA', type=float, nargs='+',
                     help='Central right ascension of catalogue (deg)', default=110.8375)
 parser.add_argument('--DEC', type=float, nargs="+", help="Central declination of catalogue (deg)", default=-73.4391)
-parser.add_argument('--PID', type=int, help="Proposal ID (e.g., 2736 for SMACS)", default = None)
+parser.add_argument('--PID', type=int, help="VISIT ID (e.g., 2736 for SMACS)", default = None)
 args = parser.parse_args()
 
 Gaia.MAIN_GAIA_TABLE = "gaiadr3.gaia_source"
@@ -84,9 +84,9 @@ if __name__ == "__main__":
         df = pd.read_csv( os.path.join(ref_dir, 'ProFound', 'long_warp_info.csv') )
         dl_dir = os.path.join(ref_dir, 'ProFound', 'GAIA_Cats', str(args.PID) )
         os.makedirs(dl_dir, exist_ok=True)
-        
-        dff = df.where(df["PROPOSAL_ID"] == str(args.PID)).dropna()
-        print(dff)
+
+        dff = df.where(df["PROPOSAL_ID"] == args.PID).dropna()
+
         coord_dict = {"ra" : dff["RA_CEN"], "dec" : dff["DEC_CEN"], "visit_id" : dff["VISIT_ID"], "module" : dff["MODULE"]}
         query_gaia(coord_dict, dl_dir)
     else:

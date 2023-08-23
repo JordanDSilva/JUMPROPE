@@ -1,6 +1,6 @@
 export JUMPROPE_MAST_TOKEN=9999 #Only needed for exclusive access data. 
-export JUMPROPE_DOWNLOAD_DIR=''
-export JUMPROPE_CRDS_PATH=''
+export JUMPROPE_DOWNLOAD_DIR='/Volumes/Expansion/JWST'
+export JUMPROPE_CRDS_PATH='/Volumes/Expansion/crds'
 export JUMPROPE_CRDS_CONTEXT='jwst_1112.pmap'
 
 
