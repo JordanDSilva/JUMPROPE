@@ -1091,7 +1091,7 @@ query_gaia = function(input_args){
   message("Running query_gaia")
   
   VID = input_args$VID
-  system( paste0("python3 query_gaia.py --VID ", substr(VID, 1, 4) ) )
+  system( paste0("python3 query_gaia.py --PID ", substr(VID, 1, 4) ) )
   return(NULL)
 }
 query_hst = function(input_args){
