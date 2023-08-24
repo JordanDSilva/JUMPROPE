@@ -134,7 +134,10 @@ warp_short_to_long = function(input_args){
   names(frames_long) = fitsnames[long_idx]
   
   frames_short_to_long = lapply(frames_short, function(x){
-    warp = propaneWarpProPane(x, keyvalues_out = frames_long[[1]]$image$keyvalues)
+    warp = propaneWarpProPane(x, 
+                              keyvalues_out = frames_long[[1]]$image$keyvalues, 
+                              direction = "backwards", 
+                              magzero_out = 23.9, magzero_in = 23.9)
     warp$info = x$info
     warp
   })
@@ -234,12 +237,14 @@ star_mask = function(input_args){
   
   star_mask_list = {}
   for(k in 1:dim(gaia_trim)[1]){
+    # print(k)
     box = 800
     star_test = f200w_ref$image[gaia_trim$ra[k], gaia_trim$dec[k], box = box, type='coord']
     if(sum(is.na(star_test$imDat)) == prod(dim(star_test))){
       next
     }
     pro_objects = profoundProFound(image = star_test,
+                                   mask = ( is.na(star_test$imDat) | (star_test$imDat)==0 | is.infinite(star_test$imDat) ),
                                    skycut = 1.0,
                                    rem_mask = T, 
                                    box = 50, grid = 5,
@@ -254,6 +259,7 @@ star_mask = function(input_args){
       rad = pro_objects$segstats$R100[median(find_star_objects_idx$bestmatch$compareID, na.rm=T)]
     }
     pro_star = profoundProFound(image = star_test, 
+                                mask = ( is.na(star_test$imDat) | (star_test$imDat)==0 | is.infinite(star_test$imDat) ),
                                 # mask = obj_temp,
                                 sigma = 2.5,
                                 rem_mask = T, 
@@ -265,7 +271,9 @@ star_mask = function(input_args){
                                 size = 1,
                                 redosegim = F,
                                 skycut = 0.5,
-                                magzero = 23.9)
+                                magzero = 23.9,
+                                sky = 0,
+                                redosky = F)
     find_star_idx = coordmatch(coordref = cbind(star_test$keyvalues$CRVAL1, star_test$keyvalues$CRVAL2),
                                coordcompare = pro_star$segstats[,c("RAmax", "Decmax")],
                                rad = 5.0, radunit = "asec")
@@ -325,7 +333,7 @@ profound_detect_master = function(frame, skyRMS, star_mask, pix_mask=NULL, segim
   }
   pro = profoundProFound(
     image = frame,
-    mask = mask,
+    mask = mask | (frame$imDat == 0) | (is.na(frame$imDat) | (is.infinite(frame$imDat))),
     segim = segim,
     rem_mask = T,
     magzero = 23.9,
@@ -735,6 +743,7 @@ hst_warp_stack = function(input_args){
   }
   
   pro_ref = profoundProFound(image = target$image[,], 
+                             mask = (is.na(target$image[,]$imDat) | (is.infinite(target$image[,]$imDat)) ),
                              magzero = 23.9, 
                              skycut = 5.0, 
                              box = 100,
@@ -763,7 +772,7 @@ hst_warp_stack = function(input_args){
                                   RAcen = target$image$keyvalues$CRVAL1, 
                                   Deccen = target$image$keyvalues$CRVAL2, 
                                   rad = 10.0/60.0,
-                                  plot = T)$full
+                                  plot = F)$full
   
   if(is.null(files_temp)){
     message("No HST to fold in!")
@@ -860,7 +869,6 @@ hst_warp_stack = function(input_args){
       }
       rm(image_list)
       rm(output_stack)
-      rm(tweaked_output)
     }
   }
 }

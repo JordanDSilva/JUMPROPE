@@ -14,6 +14,8 @@ import requests
 import argparse
 import os
 import glob
+from http.client import IncompleteRead
+
 
 parser = argparse.ArgumentParser(description='Getting HAP cutout from MAST with HTTP request')
 parser.add_argument('--VID', type=str, help='Observation ID (e.g., 2736001001 for SMACS)')
@@ -36,37 +38,38 @@ os.makedirs(zip_dir, exist_ok=True)
 
 if os.path.isfile(lookup_path):
     df = pd.read_csv(lookup_path)
-    cat = df.loc[df['VISIT_ID'] == int(args.VID), :]
-    # print(cat)
-    targ_ra = cat.loc[cat['MODULE']==args.MODULE.upper(), 'RA_CEN'].values[0]
-    targ_dec = cat.loc[cat['MODULE']==args.MODULE.upper(), 'DEC_CEN'].values[0]
+    cat = df.loc[(df['VISIT_ID'] == int(args.VID)) &
+                 (df['MODULE'] == args.MODULE.upper()), :]
+    print(cat)
+    targ_ra = cat['RA_CEN'].values[0]
+    targ_dec = cat['DEC_CEN'].values[0]
 
-    targ_ra_tl = cat.loc[cat['MODULE']==args.MODULE.upper(), 'RA_TL'].values[0]
-    targ_dec_tl = cat.loc[cat['MODULE']==args.MODULE.upper(), 'DEC_TL'].values[0]
-    targ_ra_tr = cat.loc[cat['MODULE']==args.MODULE.upper(), 'RA_TR'].values[0]
-    targ_dec_tr = cat.loc[cat['MODULE']==args.MODULE.upper(), 'DEC_TR'].values[0]
-    targ_ra_br = cat.loc[cat['MODULE']==args.MODULE.upper(), 'RA_BR'].values[0]
-    targ_dec_br = cat.loc[cat['MODULE']==args.MODULE.upper(), 'DEC_BR'].values[0]
-    targ_ra_bl = cat.loc[cat['MODULE']==args.MODULE.upper(), 'RA_BL'].values[0]
-    targ_dec_bl = cat.loc[cat['MODULE']==args.MODULE.upper(), 'DEC_BL'].values[0]
+    targ_ra_tl = cat['RA_TL'].values[0]
+    targ_dec_tl = cat['DEC_TL'].values[0]
+    targ_ra_tr = cat['RA_TR'].values[0]
+    targ_dec_tr = cat['DEC_TR'].values[0]
+    targ_ra_br = cat['RA_BR'].values[0]
+    targ_dec_br = cat['DEC_BR'].values[0]
+    targ_ra_bl = cat['RA_BL'].values[0]
+    targ_dec_bl = cat['DEC_BL'].values[0]
 
-    targ_ra_mbl = cat.loc[cat['MODULE']==args.MODULE.upper(), 'RA_MBL'].values[0]
-    targ_dec_mbl = cat.loc[cat['MODULE']==args.MODULE.upper(), 'DEC_MBL'].values[0]
-    targ_ra_mtl = cat.loc[cat['MODULE']==args.MODULE.upper(), 'RA_MTL'].values[0]
-    targ_dec_mtl = cat.loc[cat['MODULE']==args.MODULE.upper(), 'DEC_MTL'].values[0]
-    targ_ra_mtr = cat.loc[cat['MODULE']==args.MODULE.upper(), 'RA_MTR'].values[0]
-    targ_dec_mtr = cat.loc[cat['MODULE']==args.MODULE.upper(), 'DEC_MTR'].values[0]
-    targ_ra_mbr = cat.loc[cat['MODULE']==args.MODULE.upper(), 'RA_MBR'].values[0]
-    targ_dec_mbr = cat.loc[cat['MODULE']==args.MODULE.upper(), 'DEC_MBR'].values[0]
+    targ_ra_mbl = cat['RA_MBL'].values[0]
+    targ_dec_mbl = cat['DEC_MBL'].values[0]
+    targ_ra_mtl = cat['RA_MTL'].values[0]
+    targ_dec_mtl = cat['DEC_MTL'].values[0]
+    targ_ra_mtr = cat['RA_MTR'].values[0]
+    targ_dec_mtr = cat['DEC_MTR'].values[0]
+    targ_ra_mbr = cat['RA_MBR'].values[0]
+    targ_dec_mbr = cat['DEC_MBR'].values[0]
 
-    targ_ra_cl = cat.loc[cat['MODULE']==args.MODULE.upper(), 'RA_CL'].values[0]
-    targ_dec_cl = cat.loc[cat['MODULE']==args.MODULE.upper(), 'DEC_CL'].values[0]
-    targ_ra_ct = cat.loc[cat['MODULE']==args.MODULE.upper(), 'RA_CT'].values[0]
-    targ_dec_ct = cat.loc[cat['MODULE']==args.MODULE.upper(), 'DEC_CT'].values[0]
-    targ_ra_cb = cat.loc[cat['MODULE']==args.MODULE.upper(), 'RA_CB'].values[0]
-    targ_dec_cb = cat.loc[cat['MODULE']==args.MODULE.upper(), 'DEC_CB'].values[0]
-    targ_ra_cr = cat.loc[cat['MODULE']==args.MODULE.upper(), 'RA_CR'].values[0]
-    targ_dec_cr = cat.loc[cat['MODULE']==args.MODULE.upper(), 'DEC_CR'].values[0]
+    targ_ra_cl = cat['RA_CL'].values[0]
+    targ_dec_cl = cat['DEC_CL'].values[0]
+    targ_ra_ct = cat['RA_CT'].values[0]
+    targ_dec_ct = cat['DEC_CT'].values[0]
+    targ_ra_cb = cat['RA_CB'].values[0]
+    targ_dec_cb = cat['DEC_CB'].values[0]
+    targ_ra_cr = cat['RA_CR'].values[0]
+    targ_dec_cr = cat['DEC_CR'].values[0]
 
     print(targ_ra, targ_dec)
 else:
@@ -100,11 +103,22 @@ link_12 = 'https://mast.stsci.edu/hapcut/api/v0.1/astrocut?ra={0}&dec={1}&x=5000
 #f.close()
 
 import wget
-for link in [link_0,
-link_1, link_2, link_3, link_4,
-link_5, link_6, link_7, link_8,
-link_9, link_10, link_11, link_12]:
-    wget.download(link, out = zip_path)
+for link in [link_0, link_1, link_2,
+             link_3, link_4, link_5,
+             link_6, link_7, link_8,
+             link_9, link_10, link_11,
+             link_12]:
+
+    for ii in range(5):
+        try:
+            wget.download(link, out = zip_path)
+            break
+        except IncompleteRead:
+            if ii == 4:
+                raise
+            else:
+                continue
+
 
     if zipfile.is_zipfile(zip_path):
        with ZipFile(zip_path, 'r') as zip_ref:
@@ -124,3 +138,4 @@ link_9, link_10, link_11, link_12]:
            os.remove(zip_path)
         else:
            pass
+
