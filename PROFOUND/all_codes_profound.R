@@ -12,12 +12,12 @@ library(stringr)
 library(checkmate)
 
 
-# input_args = list(
-#   ref_dir = "/Volumes/RAIDY/JWST/",
-#   VID = 1345001001,
-#   MODULE = "NRCA",
-#   cores_stack = 1
-# )
+input_args = list(
+  ref_dir = "/Volumes/RAIDY/JWST/",
+  VID = 1324001001,
+  MODULE = "NRCA",
+  cores_stack = 1
+)
 
 frame_info = function(ref_dir){
   
@@ -136,11 +136,14 @@ warp_short_to_long = function(input_args){
   frames_short_to_long = lapply(frames_short, function(x){
     warp = propaneWarpProPane(x, 
                               keyvalues_out = frames_long[[1]]$image$keyvalues, 
-                              direction = "backwards", 
                               magzero_out = 23.9, magzero_in = 23.9)
     warp$info = x$info
+    
+    warp$image$imDat[is.infinite(warp$image$imDat)] = NA
+    
     warp
   })
+  
   
   names(frames_short_to_long) = str_replace(names(frames_short), "short", "long")
   for(i in 1:length(frames_short_to_long)){
@@ -189,15 +192,20 @@ star_mask = function(input_args){
   file_names = list.files(data_dir, pattern=".fits", full.names=FALSE)
   
   #make star masks on the F200W filter, and if it's missing use the shortest filter
-  file_idx = grepl("F200W", file_list) & 
+  file_idx = (
+    grepl("F200W", file_list) & 
     grepl(VID, file_list) & 
-    grepl(MODULE, file_list)
+    grepl(MODULE, file_list) &
+    !grepl("hst", file_list)
+    )
   
   if(sum(file_idx) == 0){
     file_list = file_list[grepl(VID, file_list) & 
-                            grepl(MODULE, file_list)][1]
+                            grepl(MODULE, file_list) & 
+                            !grepl("hst", file_list)][1]
     file_names = file_names[grepl(VID, file_names) & 
-                              grepl(MODULE, file_names)][1]
+                              grepl(MODULE, file_names) & 
+                              !grepl("hst", file_names)][1]
   }else{
     file_list = file_list[file_idx]
     file_names = file_names[file_idx]
