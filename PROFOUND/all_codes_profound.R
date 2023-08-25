@@ -112,10 +112,20 @@ warp_short_to_long = function(input_args){
   warp_dir = paste0(ref_dir, "/ProFound/Data/", VID, "/", MODULE, "/")
   
   if(dir.exists(warp_dir)){
-    unlink(warp_dir, recursive = T)
+    warp_propane_files = list.files(
+      path = warp_dir,
+      pattern = ".fits$",
+      full.names = T
+    )
+    warp_propane_files = warp_propane_files[
+      !grepl("hst", warp_propane_files, ignore.case = T)
+    ]
+    file.remove(
+      warp_propane_files
+    )
+  }else{
+    dir.create(warp_dir, recursive = T)
   }
-  
-  dir.create(warp_dir, recursive = T)
   
   ## here we read in the Patched_Stacks
   filepaths <- list.files(patch_stack_dir, pattern=".fits", full.names=TRUE) #list all the .fits files in a directory
@@ -349,18 +359,18 @@ profound_detect_master = function(frame, skyRMS, star_mask, pix_mask=NULL, segim
     skyRMS = skyRMS,
     
     skycut = 1.5,
-    pixcut = 9.0,
+    pixcut = 7.0,
     ext = 1.0,
     
     smooth = T,
-    sigma = 1.0,
+    sigma = 0.8,
     
-    tolerance = 5.0,
+    tolerance = 1.0,
     reltol = -1.0,
     cliptol = 300,
     
     #size = 13,
-    iters = 7,
+    iters = 4,
     
     box = 100,
     grid = 100,
@@ -538,9 +548,9 @@ error_scaling = function(flux_err, N100, m, c){
 }
 measure_profound = function(super_img = super_img, segim=segim, mask=mask, redosegim=T){
   if(redosegim){
-    iters = 4
+    iters = 3
   }else{
-    iters = 1
+    iters = 0
   }
   super_pro = profoundProFound(
     super_img,
@@ -738,6 +748,18 @@ hst_warp_stack = function(input_args){
   }
   
   data_dir = paste0(ref_dir, "/ProFound/Data/", VID, "/", MODULE, "/") #directory with the propanes
+  
+  existing_hst_files = list.files(
+    path = data_dir,
+    pattern = ".fits$",
+    full.names = T
+  )
+  existing_hst_files = existing_hst_files[
+    grepl("hst", existing_hst_files, ignore.case = T)
+  ]
+  file.remove(
+    existing_hst_files
+  )
   
   HST_cutout_dir = paste0(ref_dir, "/ProFound/HST_cutout/", VID, "/", MODULE, "/") ## Holding pen for the MAST Hubble MVMs / HAPs
   
