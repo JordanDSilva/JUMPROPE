@@ -11,10 +11,11 @@ library(Cairo)
 library(stringr)
 library(checkmate)
 
+source("./ProFound_settings.R")
 
 input_args = list(
   ref_dir = "/Volumes/RAIDY/JWST/",
-  VID = 1324001001,
+  VID = 1176221001,
   MODULE = "NRCA",
   cores_stack = 1
 )
@@ -258,7 +259,9 @@ star_mask = function(input_args){
     # print(k)
     box = 800
     star_test = f200w_ref$image[gaia_trim$ra[k], gaia_trim$dec[k], box = box, type='coord']
-    if(sum(is.na(star_test$imDat)) == prod(dim(star_test))){
+    # plot(star_test)
+    NA_check = sum(is.na(star_test$imDat)) >= 0.9*prod(dim(star_test))
+    if(NA_check){
       next
     }
     pro_objects = profoundProFound(image = star_test,
@@ -276,30 +279,43 @@ star_mask = function(input_args){
     }else{
       rad = pro_objects$segstats$R100[median(find_star_objects_idx$bestmatch$compareID, na.rm=T)]
     }
-    pro_star = profoundProFound(image = star_test, 
-                                mask = ( is.na(star_test$imDat) | (star_test$imDat)==0 | is.infinite(star_test$imDat) ),
-                                # mask = obj_temp,
-                                sigma = 2.5,
-                                rem_mask = T, 
-                                box = 25, grid = 5, 
-                                tolerance = 1, 
-                                reltol = 5,
-                                threshold = 1.01,
-                                cliptol = 100,
-                                size = 1,
-                                redosegim = F,
-                                skycut = 0.5,
-                                magzero = 23.9,
-                                sky = 0,
-                                redosky = F)
-    find_star_idx = coordmatch(coordref = cbind(star_test$keyvalues$CRVAL1, star_test$keyvalues$CRVAL2),
-                               coordcompare = pro_star$segstats[,c("RAmax", "Decmax")],
-                               rad = 5.0, radunit = "asec")
     
-    find_central_segim = unique(c(magcutout(pro_star$segim, box = 20)$image))
-    star_temp = pro_star$objects
-    star_temp[!(pro_star$segim %in% find_central_segim)]=0
+    auto_merge = profoundAutoMerge(
+      segim = pro_objects$segim,
+      segstats = pro_objects$segstats, Ncut = 0, spur_lim = 1
+    )
+    segim_fix = profoundSegimKeep(
+      segim = pro_objects$segim,
+      segID_merge = auto_merge$segID
+    )
     
+    # 
+    # pro_star = profoundProFound(image = star_test, 
+    #                             mask = ( is.na(star_test$imDat) | (star_test$imDat)==0 | is.infinite(star_test$imDat) ),
+    #                             # mask = obj_temp,
+    #                             sigma = 2.5,
+    #                             rem_mask = T, 
+    #                             box = 25, grid = 5, 
+    #                             tolerance = 1, 
+    #                             reltol = 5,
+    #                             threshold = 1.01,
+    #                             cliptol = 100,
+    #                             size = 1,
+    #                             redosegim = F,
+    #                             skycut = 0.5,
+    #                             magzero = 23.9,
+    #                             sky = 0,
+    #                             redosky = F)
+    # find_star_idx = coordmatch(coordref = cbind(star_test$keyvalues$CRVAL1, star_test$keyvalues$CRVAL2),
+    #                            coordcompare = pro_star$segstats[,c("RAmax", "Decmax")],
+    #                            rad = 5.0, radunit = "asec")
+    # 
+    find_central_segim = unique(c(magcutout(segim_fix, box = 20)$image))
+    star_temp = segim_fix > 0
+    star_temp[segim_fix != find_central_segim] = 0
+    
+    # magimage(star_temp)
+
     if(sum(find_central_segim > 0)==0){
       temp = matrix(1,box,box) #reduce box size by half
       psf_mask = psf_mask_function(temp)
@@ -325,7 +341,7 @@ star_mask = function(input_args){
   plot_stub = paste0(ref_dir, "/ProFound/Star_Masks/", VID, "/", MODULE, "/", VID, "_", MODULE, "_star_mask.pdf")
   CairoPDF(plot_stub, width = 10, height = 10)
   par(mfrow = c(1,1), mar = rep(0,4), oma = rep(0,4))
-  plot(f200w_ref$image, flip = T, sparse = 1)
+  magimage(f200w_ref$image[,]$imDat, flip = T, sparse = 1)
   magimage(profoundDilate(all_mask, size = 21) - all_mask, col = c(NA, "magenta"), add = T)
   legend(x = "topleft", paste0(VID, "_", MODULE))
   points(gaia_trim$xpix, gaia_trim$ypix, 
@@ -339,55 +355,7 @@ star_mask = function(input_args){
 } ##<-- Create an empirical star mask from GAIA sources 
 
 ## ProFound source detection codes
-profound_detect_master = function(frame, skyRMS, star_mask, pix_mask=NULL, segim = NULL){
-  #Inject this function into the detect runs
-  #frame is the stack with WCS
-  #stack is for the skyRMS matrix
-  #star_mask should be 1 or 0 matrix
-  if(is.null(pix_mask)){
-    mask = is.na(frame$imDat) | star_mask
-  }else{
-    mask = is.na(frame$imDat) | star_mask | pix_mask
-  }
-  pro = profoundProFound(
-    image = frame,
-    mask = mask | (frame$imDat == 0) | (is.na(frame$imDat) | (is.infinite(frame$imDat))),
-    segim = segim,
-    rem_mask = T,
-    magzero = 23.9,
-    
-    skyRMS = skyRMS,
-    
-    skycut = 1.5,
-    pixcut = 7.0,
-    ext = 1.0,
-    
-    smooth = T,
-    sigma = 0.8,
-    
-    tolerance = 1.0,
-    reltol = -1.0,
-    cliptol = 300,
-    
-    #size = 13,
-    iters = 4,
-    
-    box = 100,
-    grid = 100,
-    boxiters = 2,
-    
-    roughpedestal = F,
-    pixelcov = F,
-    boundstats = T,
-    nearstats = T, 
-    redosky = T,
-    # redoskysize = 11,
-    
-    verbose = F,
-  )
-  message("Finished profound")
-  return(pro)
-}
+
 do_detect = function(input_args, detect_bands = "ALL", profound_function = profound_detect_master){
   
   message("Running ProDetect")
@@ -546,44 +514,8 @@ error_scaling = function(flux_err, N100, m, c){
   flux_err[!is.na(flux_err) & (flux_err < N100^m * 10^c)] = N100[!is.na(flux_err) & (flux_err < N100^m * 10^c)]^m * 10^c
   return(flux_err)
 }
-measure_profound = function(super_img = super_img, segim=segim, mask=mask, redosegim=T){
-  if(redosegim){
-    iters = 3
-  }else{
-    iters = 0
-  }
-  super_pro = profoundProFound(
-    super_img,
-    magzero = 23.9,
-    mask = mask | super_img$imDat == 0 | is.na(super_img$imDat) | is.infinite(super_img$imDat),
-    # detection, segmentation and dilation
-    segim = segim,
-    redosegim = redosegim,
-    
-    size = 5,
-    iters = iters,
-    
-    # sky estimate
-    sky = 0,        # Do we model the sky again?
-    box = 100,
-    grid = 100,
-    boxiters = 0,
-    # measurement mode
-    dotot = T,
-    docol = T,
-    dogrp = T,
-    # stats
-    boundstats = T,
-    segstats = T,
-    # misc
-    pixelcov = T,
-    rem_mask = T,
-    verbose = F,
-    redosky = T,
-    redoskysize = 11
-  )
-  return(super_pro)
-}
+
+
 do_measure = function(input_args){
   
   message("Running ProMeasure")

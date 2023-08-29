@@ -1,0 +1,88 @@
+profound_detect_master = function(frame, skyRMS, star_mask, pix_mask=NULL, segim = NULL){
+  #Inject this function into the detect runs
+  #frame is the stack with WCS
+  #stack is for the skyRMS matrix
+  #star_mask should be 1 or 0 matrix
+  if(is.null(pix_mask)){
+    mask = is.na(frame$imDat) | star_mask
+  }else{
+    mask = is.na(frame$imDat) | star_mask | pix_mask
+  }
+  pro = profoundProFound(
+    image = frame,
+    mask = mask | (frame$imDat == 0) | (is.na(frame$imDat) | (is.infinite(frame$imDat))),
+    segim = segim,
+    rem_mask = T,
+    magzero = 23.9,
+    
+    skyRMS = skyRMS,
+    
+    skycut = 1.5,
+    pixcut = 7.0,
+    ext = 1.0,
+    
+    smooth = T,
+    sigma = 0.8,
+    
+    tolerance = 1.0,
+    reltol = -1.0,
+    cliptol = 300,
+    
+    #size = 13,
+    iters = 4,
+    
+    box = 100,
+    grid = 100,
+    boxiters = 2,
+    
+    roughpedestal = F,
+    pixelcov = F,
+    boundstats = T,
+    nearstats = T, 
+    redosky = T,
+    # redoskysize = 11,
+    
+    verbose = F,
+  )
+  message("Finished profound")
+  return(pro)
+}
+
+measure_profound = function(super_img = super_img, segim=segim, mask=mask, redosegim=T){
+  if(redosegim){
+    iters = 3
+  }else{
+    iters = 0
+  }
+  super_pro = profoundProFound(
+    super_img,
+    magzero = 23.9,
+    mask = mask | super_img$imDat == 0 | is.na(super_img$imDat) | is.infinite(super_img$imDat),
+    # detection, segmentation and dilation
+    segim = segim,
+    redosegim = redosegim,
+    
+    size = 5,
+    iters = iters,
+    
+    # sky estimate
+    sky = 0,        # Do we model the sky again?
+    box = 100,
+    grid = 100,
+    boxiters = 0,
+    # measurement mode
+    dotot = T,
+    docol = T,
+    dogrp = T,
+    # stats
+    boundstats = T,
+    segstats = T,
+    # misc
+    pixelcov = T,
+    rem_mask = T,
+    verbose = F,
+    redosky = T,
+    redoskysize = 11
+  )
+  return(super_pro)
+}
