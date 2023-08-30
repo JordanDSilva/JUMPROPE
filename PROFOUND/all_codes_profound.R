@@ -311,6 +311,7 @@ star_mask = function(input_args){
     #                            rad = 5.0, radunit = "asec")
     # 
     find_central_segim = unique(c(magcutout(segim_fix, box = 20)$image))
+    find_central_segim = find_central_segim[find_central_segim != 0]
     star_temp = segim_fix > 0
     star_temp[segim_fix != find_central_segim] = 0
     
@@ -669,6 +670,7 @@ do_measure = function(input_args){
 hst_warp_stack = function(input_args){
   
   message("Running hst_warp_stack")
+  message("Default behaviour is to pick EXT=2 (usually SCI) or EXT=1 if only one extension exists in the fits file.")
   
   ref_dir = input_args$ref_dir
   VID = input_args$VID
@@ -719,118 +721,121 @@ hst_warp_stack = function(input_args){
   get_rid_of_combined = grepl("combined", files_temp_temp)
   HST_files = files_temp_temp[!get_rid_of_combined]
   
-  check_Nhdu = Rfits_nhdu(HST_files[1])
-  if(check_Nhdu == 1){
-    extloc = 1
-  }else{
-    extloc = 2
-  }
-  message(paste0("EXTLOC = ", extloc))
-  # print(HST_files)
-  # extloc = 1
+  extlist = ifelse(
+    sapply(HST_files, Rfits_nhdu) == 1, 1, 2
+  )
   
-  files_temp = propaneFrameFinder(filelist = HST_files, 
-                                  extlist = extloc,
-                                  RAcen = target$image$keyvalues$CRVAL1, 
-                                  Deccen = target$image$keyvalues$CRVAL2, 
-                                  rad = 10.0/60.0,
-                                  plot = F)$full
-  
-  if(is.null(files_temp)){
-    message("No HST to fold in!")
+  if(length(HST_files) == 0){
+    message("No HST in directory!")
+    return(NULL)
   }else{
-    hst_key_scan = Rfits_key_scan(files_temp, keylist = c("FILTER", "DETECTOR", "INSTRUME"))
-    hst_filters = unique(hst_key_scan$FILTER)
-    NFilters = length(hst_filters)
+    files_temp = propaneFrameFinder(filelist = HST_files, 
+                                    extlist = extlist,
+                                    RAcen = target$image$keyvalues$CRVAL1, 
+                                    Deccen = target$image$keyvalues$CRVAL2, 
+                                    rad = 10.0/60.0,
+                                    plot = F)$full
     
-    #loop through HST filters
-    foreach(j = 1:NFilters)%do%{
-      hst_info = hst_key_scan[hst_key_scan$FILTER==hst_filters[j], ]
-      hst_filter = unique(hst_info$FILTER)
-      hst_detector = unique(hst_info$DETECTOR)
-      hst_instrume = unique(hst_info$INSTRUME)
-      if(length(hst_instrume) > 1){
-        # just get the acs filters 
-        files_idx = grepl(hst_filters[j], files_temp, ignore.case = T) & grepl("acs", files_temp, ignore.case = T)
-        files = files_temp[files_idx]
-        frames = lapply(files, function(x){Rfits_read_image(x, ext=extloc)})
-        hst_detector = hst_detector[grepl("wfc", hst_detector, ignore.case = T)]
-        hst_instrume = hst_instrume[grepl("acs", hst_instrume, ignore.case = T)]
-      }else{
-        files_idx = grepl(hst_filters[j], files_temp, ignore.case = T)
-        files = files_temp[files_idx]
-        frames = lapply(files, function(x){Rfits_read_image(x, ext=extloc)})
-      }
+    if(is.null(files_temp)){
+      message("No HST to fold in!")
+    }else{
+      hst_key_scan = Rfits_key_scan(files_temp, keylist = c("FILTER", "DETECTOR", "INSTRUME"))
+      hst_filters = unique(hst_key_scan$FILTER)
+      NFilters = length(hst_filters)
       
-      #prepare input frames for stacking
-      magzero_list = c()
-      image_list = {}
-      for(i in 1:length(frames)){
-        message(paste0("Profound: ", files[i]))
-        hst_magzero = -2.5*log10(frames[[i]]$keyvalues$PHOTFLAM)-5*log10(frames[[i]]$keyvalues$PHOTPLAM)-2.408
-        magzero_list = c(magzero_list, hst_magzero)
+      #loop through HST filters
+      foreach(j = 1:NFilters)%do%{
+        hst_info = hst_key_scan[hst_key_scan$FILTER==hst_filters[j], ]
+        hst_filter = unique(hst_info$FILTER)
+        hst_detector = unique(hst_info$DETECTOR)
+        hst_instrume = unique(hst_info$INSTRUME)
+        if(length(hst_instrume) > 1){
+          # just get the acs filters 
+          files_idx = grepl(hst_filters[j], files_temp, ignore.case = T) & grepl("acs", files_temp, ignore.case = T)
+          files = files_temp[files_idx]
+          frames = lapply(files, function(x){Rfits_read_image(x, ext=extloc)})
+          hst_detector = hst_detector[grepl("wfc", hst_detector, ignore.case = T)]
+          hst_instrume = hst_instrume[grepl("acs", hst_instrume, ignore.case = T)]
+        }else{
+          files_idx = grepl(hst_filters[j], files_temp, ignore.case = T)
+          files = files_temp[files_idx]
+          extlist = ifelse(
+            sapply(files, Rfits_nhdu) == 1, 1, 2
+          )
+          frames = Rfits_make_list(files, extlist = extlist, pointer = F)
+          
+        }
         
-        temp = frames[[i]]
+        #prepare input frames for stacking
+        magzero_list = c()
+        image_list = {}
+        for(i in 1:length(frames)){
+          message(paste0("Profound: ", files[i]))
+          hst_magzero = -2.5*log10(frames[[i]]$keyvalues$PHOTFLAM)-5*log10(frames[[i]]$keyvalues$PHOTPLAM)-2.408
+          magzero_list = c(magzero_list, hst_magzero)
+          
+          temp = frames[[i]]
+          
+          pro = profoundProFound(
+            image = temp,
+            box = 100,
+            roughpedestal = T,
+            redosky = F,
+            rem_mask = T
+          )
+          
+          image_list = c(list(temp-pro$sky), image_list)
+        }
         
-        pro = profoundProFound(
-          image = temp,
-          box = 100,
-          roughpedestal = T,
-          redosky = F,
-          rem_mask = T
-        )
-        
-        image_list = c(list(temp-pro$sky), image_list)
+        #stack
+        output_stack = propaneStackWarpInVar(image_list = image_list,
+                                             magzero_in = hst_magzero,
+                                             magzero_out = 23.9,
+                                             keyvalues_out = target$image$keyvalues,
+                                             cores = cores_stack,
+                                             cores_warp = 1)
+        if(sum(is.na(output_stack$image$imDat))/prod(dim(output_stack$image$imDat))>0.8){
+          message("Not enough coverage")
+        }else{
+          
+          message("Tweaking ProFound source shift")
+          pro_test = profoundProFound(image = output_stack$image,
+                                      magzero = 23.9,
+                                      skycut = 5.0,
+                                      box = 100,
+                                      tolernace = Inf,
+                                      cliptol = Inf,
+                                      rem_mask = T,
+                                      roughpedestal = T)
+          
+          propane_cat_tweak = propaneTweakCat(cat_ref = cbind(pro_ref$segstats$xmax, pro_ref$segstats$ymax),
+                                              cat_pre_fix = cbind(pro_test$segstats$xmax, pro_test$segstats$ymax), 
+                                              delta_max = c(10,1.0))
+          
+          tweaked_output_imDat = propaneTran(output_stack[["image"]][,]$imDat,
+                                             delta_x = propane_cat_tweak$par[1],
+                                             delta_y = propane_cat_tweak$par[2],
+                                             delta_rot = propane_cat_tweak$par[3])
+          
+          tweaked_output = Rfits_create_image(data = tweaked_output_imDat, 
+                                              keyvalues = target$image$keyvalues)
+          
+          final_output = list()
+          final_output$image = tweaked_output
+          final_output$image$keyvalues$EXTNAME = "image"
+          final_output$tweak_sol = propane_cat_tweak$par
+          
+          class(final_output) = "Rfits_list"
+          
+          file_name = paste0(data_dir, 
+                             "/warp_hst_", 
+                             hst_instrume, "_", hst_detector, "_", VID, "_", hst_filter, "_", 
+                             MODULE, "_long.fits")
+          Rfits_write(final_output, filename = file_name)
+        }
+        rm(image_list)
+        rm(output_stack)
       }
-      
-      #stack
-      output_stack = propaneStackWarpInVar(image_list = image_list,
-                                           magzero_in = hst_magzero,
-                                           magzero_out = 23.9,
-                                           keyvalues_out = target$image$keyvalues,
-                                           cores = cores_stack,
-                                           cores_warp = 1)
-      if(sum(is.na(output_stack$image$imDat))/prod(dim(output_stack$image$imDat))>0.8){
-        message("Not enough coverage")
-      }else{
-        
-        message("Tweaking ProFound source shift")
-        pro_test = profoundProFound(image = output_stack$image,
-                                    magzero = 23.9,
-                                    skycut = 5.0,
-                                    box = 100,
-                                    tolernace = Inf,
-                                    cliptol = Inf,
-                                    rem_mask = T,
-                                    roughpedestal = T)
-        
-        propane_cat_tweak = propaneTweakCat(cat_ref = cbind(pro_ref$segstats$xmax, pro_ref$segstats$ymax),
-                                            cat_pre_fix = cbind(pro_test$segstats$xmax, pro_test$segstats$ymax), 
-                                            delta_max = c(10,1.0))
-
-        tweaked_output_imDat = propaneTran(output_stack[["image"]][,]$imDat,
-                                                    delta_x = propane_cat_tweak$par[1],
-                                                    delta_y = propane_cat_tweak$par[2],
-                                                    delta_rot = propane_cat_tweak$par[3])
-        
-        tweaked_output = Rfits_create_image(data = tweaked_output_imDat, 
-                                            keyvalues = target$image$keyvalues)
-
-        final_output = list()
-        final_output$image = tweaked_output
-        final_output$image$keyvalues$EXTNAME = "image"
-        final_output$tweak_sol = propane_cat_tweak$par
-
-        class(final_output) = "Rfits_list"
-        
-        file_name = paste0(data_dir, 
-                           "/warp_hst_", 
-                           hst_instrume, "_", hst_detector, "_", VID, "_", hst_filter, "_", 
-                           MODULE, "_long.fits")
-        Rfits_write(final_output, filename = file_name)
-      }
-      rm(image_list)
-      rm(output_stack)
     }
   }
 }
