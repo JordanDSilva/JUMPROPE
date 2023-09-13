@@ -15,8 +15,8 @@ source("./ProFound_settings.R")
 
 input_args = list(
   ref_dir = "/Volumes/RAIDY/JWST/",
-  VID = 1176221001,
-  MODULE = "NRCA",
+  VID = 2736001001,
+  MODULE = "NRCB",
   cores_stack = 1
 )
 
@@ -224,7 +224,7 @@ star_mask = function(input_args){
   
   message(paste("Using", file_names, "to build star mask"))
   
-  f200w_ref = Rfits_read(filename = file_list, pointer = T)
+  f200w_ref = Rfits_read(filename = file_list, pointer = F)
   imdim = dim(f200w_ref$image)
   im_ra_dec = Rwcs_p2s(x = imdim[1], y = imdim[2], keyvalues = f200w_ref$image$keyvalues) #get extent of frame in RA and DEC coords
   
@@ -239,10 +239,11 @@ star_mask = function(input_args){
   
   gaia[, c("xpix", "ypix")] = Rwcs_s2p(RA = gaia$ra, Dec = gaia$dec, keyvalues = f200w_ref$image$keyvalues)
   
-  gaia_idx = gaia$xpix >= 0 & gaia$xpix <= imdim[1] & gaia$ypix >= 0 & gaia$ypix <= imdim[2]
-  gaia_ra_dec = gaia[gaia_idx,]
+  gaia_idx = gaia$xpix >= 0 & gaia$xpix <= imdim[1] & gaia$ypix >= 0 & gaia$ypix <= imdim[2] & 
+    gaia$classprob_dsc_combmod_star > 0.98 & gaia$phot_bp_rp_excess_factor < 2.5
+  gaia_ra_dec = gaia[gaia_idx[!is.na(gaia_idx)],]
   gaia_trim = gaia_ra_dec[order(gaia_ra_dec$phot_g_mean_mag), ]
-  
+
   message(paste0("Building star mask for VID: ", VID, ", MODULE: ", MODULE))
   psf_mask_function = function(image, xcen=dim(image)[1]/2, ycen=dim(image)[2]/2, rad=dim(image)[2]/2){
     mask =
@@ -254,96 +255,74 @@ star_mask = function(input_args){
     return(mask > 0)
   }
   
-  star_mask_list = {}
+  star_box_list = c()
+  box = 800
   for(k in 1:dim(gaia_trim)[1]){
-    # print(k)
-    box = 800
     star_test = f200w_ref$image[gaia_trim$ra[k], gaia_trim$dec[k], box = box, type='coord']
-    # plot(star_test)
     NA_check = sum(is.na(star_test$imDat)) >= 0.9*prod(dim(star_test))
     if(NA_check){
+      star_box_list = c(star_box_list, 0)
       next
     }
-    pro_objects = profoundProFound(image = star_test,
+    pro_objects = profoundProFound(image = star_test$imDat,
                                    mask = ( is.na(star_test$imDat) | (star_test$imDat)==0 | is.infinite(star_test$imDat) ),
-                                   skycut = 1.0,
-                                   rem_mask = T, 
+                                   skycut = 3.0,
+                                   rem_mask = T,
                                    box = 50, grid = 5,
-                                   tolerance = Inf)
-    
-    find_star_objects_idx = coordmatch(coordref = cbind(gaia_trim$ra[k], gaia_trim$dec[k]),
-                                       coordcompare = pro_objects$segstats[,c("RAmax", "Decmax")],
-                                       rad = 1.0)
-    if(!is.data.frame(find_star_objects_idx$bestmatch)){
-      rad = box
-    }else{
-      rad = pro_objects$segstats$R100[median(find_star_objects_idx$bestmatch$compareID, na.rm=T)]
-    }
-    
-    auto_merge = profoundAutoMerge(
+                                   tolerance = 0,
+                                   reltol = -100)
+
+    segim_fix_id = profoundAutoMerge(
       segim = pro_objects$segim,
-      segstats = pro_objects$segstats, Ncut = 0, spur_lim = 1
+      segstats = pro_objects$segstats,
+      spur_lim = 1,
+      Ncut = 0
     )
     segim_fix = profoundSegimKeep(
       segim = pro_objects$segim,
-      segID_merge = auto_merge$segID
+      segID_merge = segim_fix_id$segID
     )
-    
-    # 
-    # pro_star = profoundProFound(image = star_test, 
-    #                             mask = ( is.na(star_test$imDat) | (star_test$imDat)==0 | is.infinite(star_test$imDat) ),
-    #                             # mask = obj_temp,
-    #                             sigma = 2.5,
-    #                             rem_mask = T, 
-    #                             box = 25, grid = 5, 
-    #                             tolerance = 1, 
-    #                             reltol = 5,
-    #                             threshold = 1.01,
-    #                             cliptol = 100,
-    #                             size = 1,
-    #                             redosegim = F,
-    #                             skycut = 0.5,
-    #                             magzero = 23.9,
-    #                             sky = 0,
-    #                             redosky = F)
-    # find_star_idx = coordmatch(coordref = cbind(star_test$keyvalues$CRVAL1, star_test$keyvalues$CRVAL2),
-    #                            coordcompare = pro_star$segstats[,c("RAmax", "Decmax")],
-    #                            rad = 5.0, radunit = "asec")
-    # 
     find_central_segim = unique(c(magcutout(segim_fix, box = 20)$image))
     find_central_segim = find_central_segim[find_central_segim != 0]
-    star_temp = segim_fix > 0
-    star_temp[segim_fix != find_central_segim] = 0
+    segim_fix[segim_fix != find_central_segim] = 0
     
-    # magimage(star_temp)
-
     if(sum(find_central_segim > 0)==0){
-      temp = matrix(1,box,box) #reduce box size by half
-      psf_mask = psf_mask_function(temp)
-      box = box/2.0
+      star_box = box/2.0
     }else{
-      psf_mask = profoundDilate(star_temp, size = 21)
+      pro_redo = profoundProFound(
+        image = star_test$imDat,
+        segim = segim_fix,
+        sky = 0,
+        redosky = F,
+        redosegim = F
+      )
+      R100 = pro_redo$segstats$R100
+      xmax = pro_redo$segstats$xmax
+      ymax = pro_redo$segstats$ymax
+      star_box = ceiling( 1.5 * ceiling(R100) )
     }
-    
-    star_mask = profoundApplyMask(image = f200w_ref$image[,]$imDat, mask = psf_mask, 
-                                  xcen = gaia_trim$xpix[k], ycen = gaia_trim$ypix[k],
-                                  xsize=box, ysize = box)
-    star_mask_list = c(list(star_mask$mask*k), star_mask_list)
+    star_box_list = c(star_box_list, star_box)
   }
   
-  all_mask = Reduce("+", star_mask_list)
-  all_mask[all_mask>0]=1
+  temp = matrix(1,box,box) #reduce box size by half
+  psf_mask = psf_mask_function(temp)
+  
+  all_mask = profoundApplyMask(
+    image = f200w_ref$image$imDat, mask = psf_mask, 
+                                    xcen = gaia_trim$xpix, ycen = gaia_trim$ypix,
+                                    xsize= star_box_list, ysize = star_box_list
+  )
   message("Star mask complete")
   star_mask_redo = list()
-  star_mask_redo$mask = all_mask
+  star_mask_redo$mask = profoundDilate(all_mask$mask > 1, size = 3)
   
   message("Saving star mask")
   
   plot_stub = paste0(ref_dir, "/ProFound/Star_Masks/", VID, "/", MODULE, "/", VID, "_", MODULE, "_star_mask.pdf")
   CairoPDF(plot_stub, width = 10, height = 10)
   par(mfrow = c(1,1), mar = rep(0,4), oma = rep(0,4))
-  magimage(f200w_ref$image[,]$imDat, flip = T, sparse = 1)
-  magimage(profoundDilate(all_mask, size = 21) - all_mask, col = c(NA, "magenta"), add = T)
+  magimage(f200w_ref$image$imDat, flip = T, sparse = 1)
+  magimage(profoundDilate(star_mask_redo$mask, size = 21) - star_mask_redo$mask, col = c(NA, "magenta"), add = T)
   legend(x = "topleft", paste0(VID, "_", MODULE))
   points(gaia_trim$xpix, gaia_trim$ypix, 
          pch = 1, 
@@ -564,7 +543,10 @@ do_measure = function(input_args){
   # data.list = data.list[-grep('jwst_nirc', data.list)]                            # (should) still work even with only NIRCam data
   # data.list = c(data.list, nirc.list)
   filter.names = toupper(str_extract(data.list, "F\\d{3,}[A-Z]{1,}|f\\d{3,}[a-z]{1,}"))
-  filter.names[is.na(filter.names)] = data.names[is.na(filter.names)]
+  filter.names[is.na(filter.names)] = str_split_1(data.list[is.na(filter.names)], "_")[6] ## Filter name should hopefully always be in position 6
+  
+  bad_name = data.list[is.na(filter.names)]
+  str_extract(bad_name,"F+")
   
   images = lapply(data.list, function(x){
     ext = Rfits_extname_to_ext(x, extname = "image")
@@ -753,7 +735,10 @@ hst_warp_stack = function(input_args){
           # just get the acs filters 
           files_idx = grepl(hst_filters[j], files_temp, ignore.case = T) & grepl("acs", files_temp, ignore.case = T)
           files = files_temp[files_idx]
-          frames = lapply(files, function(x){Rfits_read_image(x, ext=extloc)})
+          extlist = ifelse(
+            sapply(files, Rfits_nhdu) == 1, 1, 2
+          )
+          frames = Rfits_make_list(files, extlist = extlist, pointer = F)
           hst_detector = hst_detector[grepl("wfc", hst_detector, ignore.case = T)]
           hst_instrume = hst_instrume[grepl("acs", hst_instrume, ignore.case = T)]
         }else{
