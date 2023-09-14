@@ -543,7 +543,7 @@ do_measure = function(input_args){
   # data.list = data.list[-grep('jwst_nirc', data.list)]                            # (should) still work even with only NIRCam data
   # data.list = c(data.list, nirc.list)
   filter.names = toupper(str_extract(data.list, "F\\d{3,}[A-Z]{1,}|f\\d{3,}[a-z]{1,}"))
-  filter.names[is.na(filter.names)] = str_split_1(data.list[is.na(filter.names)], "_")[6] ## Filter name should hopefully always be in position 6
+  filter.names[is.na(filter.names)] = sapply(data.list[is.na(filter.names)], function(x)str_split_1(x, "_")[6]) ## Filter name should hopefully always be in position 6
   
   bad_name = data.list[is.na(filter.names)]
   str_extract(bad_name,"F+")
