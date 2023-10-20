@@ -1082,7 +1082,9 @@ do_wisp_rem = function(input_args){
                            full.names = T)
     ref_file_long = ref_files[grepl("F444W", ref_files)]
     if(length(ref_file_long)==0){
-      ref_file_long = ref_files[grepl("F335M|F360M|F277W|F356W", ref_files)][1]
+      
+      filter_long = c(str_match(ref_files, "F\\s*(.*?)\\s*M")[,2], str_match(ref_files, "F\\s*(.*?)\\s*W")[,2])
+      ref_file_long = ref_files[ which.max(filter_long) ]
     }
     ref_im_list[[paste0(mod_visit_grid$VISIT_ID[ii])]][[paste0("NRC", mod_visit_grid$MODULE[ii])]] = Rfits_point(ref_file_long)
     message(paste("Loading reference for:", paste0(mod_visit_grid$VISIT_ID[ii]), paste0("NRC", mod_visit_grid$MODULE[ii])))

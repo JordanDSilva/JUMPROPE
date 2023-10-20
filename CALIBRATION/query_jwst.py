@@ -181,7 +181,7 @@ def main(visit_id, stage, instrument, check_miri):
     os.makedirs(dl_dir, exist_ok=True)
     all_files = glob.glob(
         dl_dir + "*fits")
-    print(all_files)
+    # print(all_files)
     all_files_redo = [ii for ii in all_files if visit_id in ii]
 
     qpid = query(visit_id, stage, instrument, dl_dir, dl_products=False) ##produce the csv file with all exposure information
