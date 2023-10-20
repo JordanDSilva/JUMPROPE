@@ -13,6 +13,7 @@ import shutil
 import astropy.units as u
 import astropy.table
 from astropy.coordinates import SkyCoord
+import time
 
 parser = argparse.ArgumentParser(description='Download from MAST')
 parser.add_argument('--STAGE', type=str, nargs='+',
@@ -191,6 +192,7 @@ def main(visit_id, stage, instrument, check_miri):
         ## if the target directory has nothing in it, then download everything in that visitid
         print("Never seen visit " + visit_id + " before. Downloading everything!")
         query(visit_id, stage, instrument, dl_dir, dl_products=True)
+        time.sleep(300) #wait 5 minuts and check files
         check_files(dl_dir = dl_dir,
                     csv_file=check_csv,
                     visit_id = visit_id,
