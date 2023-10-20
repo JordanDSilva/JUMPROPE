@@ -1080,15 +1080,12 @@ do_wisp_rem = function(input_args){
                              "*", mod_visit_grid$VISIT_ID[ii], "*", mod_visit_grid$MODULE[ii], "*", "short", "*.fits"
                            )),
                            full.names = T)
-    ref_file_long = ref_files[grepl("F444W", ref_files)]
-    if(length(ref_file_long)==0){
-      
-      filter_long = c(
-        str_match(ref_files, "F\\s*(.*?)\\s*M")[,2],
-        str_match(ref_files, "F\\s*(.*?)\\s*W")[,2]
-        )
-      ref_file_long = ref_files[ which.max(filter_long) ] #Get the longest filter
-    }
+    filter_long = c(
+      str_match(ref_files, "F\\s*(.*?)\\s*M")[,2],
+      str_match(ref_files, "F\\s*(.*?)\\s*W")[,2]
+      )
+      ref_file_long = ref_files[ which.max(filter_long[!is.na(filter_long)]) ] #Get the longest filter
+    
     ref_im_list[[paste0(mod_visit_grid$VISIT_ID[ii])]][[paste0("NRC", mod_visit_grid$MODULE[ii])]] = Rfits_point(ref_file_long)
     message(paste("Loading reference for:", paste0(mod_visit_grid$VISIT_ID[ii]), paste0("NRC", mod_visit_grid$MODULE[ii])))
   }
