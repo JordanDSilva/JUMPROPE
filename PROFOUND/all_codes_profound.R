@@ -10,33 +10,79 @@ library(data.table)
 library(Cairo)
 library(stringr)
 library(checkmate)
+library(dplyr)
 
 source("./ProFound_settings.R")
 
+jumprope_version = 2.0
+
+######################
+## for testing only ##
+######################
 input_args = list(
   ref_dir = "/Volumes/RAIDY/JWST/",
-  VID = 2736001001,
-  MODULE = "NRCB",
+  VID = "NEPTDF",
+  MODULE = "NEPTDF",
   cores_stack = 1
 )
+######################
+
 
 frame_info = function(ref_dir){
   
   message("Running frame_info")
   
   patch_stack_dir = paste0(ref_dir, "/Patch_Stacks/")
-  filelist = list.files(
-    path = patch_stack_dir,
-    pattern = glob2rx("*long*.fits"),
-    full.names = T
+  
+  mosaic_patch_dir = paste0(ref_dir, "/Mosaic_Stacks/Patch/")
+  if(dir.exists(mosaic_patch_dir)){
+    message("Found aligned mosaics in ", mosaic_patch_dir)
+  }
+
+  filelist = c(
+    list.files(
+      path = patch_stack_dir,
+      pattern = glob2rx("*long*.fits"),
+      full.names = T
+    ),
+    list.files(
+      path = mosaic_patch_dir,
+      pattern = glob2rx("*long*.fits"), 
+      full.names = T)
   )
-  filenames = list.files(
-    path = patch_stack_dir,
-    pattern = glob2rx("*long*.fits"),
-    full.names = F
+  
+  filenames = c(
+    list.files(
+      path = patch_stack_dir,
+      pattern = glob2rx("*long*.fits"),
+      full.names = F
+    ),
+    list.files(
+      path = mosaic_patch_dir,
+      pattern = glob2rx("*long*.fits"), 
+      full.names = F)
   )
-  VID_list = substr(filenames, 13, 22)
-  MODULE_list = substr(filenames, 30, 33)
+  VID_list = sapply(filenames, function(x){
+    split_fname = str_split(x, "_")[[1]]
+    split_fname = split_fname[!(grepl("patch|stack|long|F.+W|F.+M", split_fname))]
+    vid = split_fname[1]
+    if(is.na(vid)){
+      return("")
+    }else{
+      return(vid)
+    }
+  })
+  
+  MODULE_list = sapply(filenames, function(x){
+    split_fname = str_split(x, "_")[[1]]
+    split_fname = split_fname[!(grepl("patch|stack|long|F.+W|F.+M", split_fname))]
+    module = split_fname[2]
+    if(is.na(module)){
+      return(split_fname[1])
+    }else{
+      return(module)
+    }
+  })
   
   frame_info = data.frame(
     filenames = filenames,
@@ -45,7 +91,9 @@ frame_info = function(ref_dir){
   )
   
   stack_grid = unique(frame_info[,c("VISIT_ID", "MODULE")])
+  
   stack_grid$PROPOSAL_ID = substr(stack_grid$VISIT_ID, 1, 4)
+  stack_grid$PROPOSAL_ID[stack_grid$MODULE == stack_grid$VISIT_ID] = stack_grid$VISIT_ID[stack_grid$MODULE == stack_grid$VISIT_ID]
   
   foo = foreach(i = 1:dim(stack_grid)[1], .combine = "rbind") %do% {
     wcs_info = propaneFrameFinder(
@@ -92,8 +140,12 @@ frame_info = function(ref_dir){
     )
     return(ret)
   }
-  fwrite(foo, paste0(ref_dir, "/ProFound/long_warp_info.csv"))
-} ##<-- Compute the long warp frame info needed for querying GAIA and HST via MAST
+  
+  foo[["jumprope_version"]] = rep(jumprope_version, dim(foo)[1])
+  csv_stub = paste0(ref_dir, "/ProFound/long_warp_info.csv")
+  fwrite(foo, csv_stub)
+} ##<--Compute the long warp frame info needed for querying GAIA and HST via MAST
+
 
 warp_short_to_long = function(input_args){
   
@@ -173,7 +225,71 @@ warp_short_to_long = function(input_args){
   }
   message("Done!")
   # return(c(frames_short_to_long, frames_long))
-} ##<-- Downwarp the short wavelength, short pixel scale to long
+} ##<-- Downwarp the short wavelength, short pixel scale to long [DEPRECATED
+copy_long = function(input_args){
+  
+  ## Copy the long pixel scale from the PROCESS dirs to the DATA dir
+  ## Keep separete DATA dir incase the user puts their own frames in there
+  ## Will be data redundancy but I'm assuming you will have enough disk space if you're using this code!
+  
+  message("Running copy_long")
+  
+  ref_dir = input_args$ref_dir
+  VID = input_args$VID
+  MODULE = input_args$MODULE
+  
+  if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID){
+    MODULE = paste0("NRC", MODULE)
+  }
+  
+  message("Start copy!")
+  
+  patch_stack_dir = paste0(ref_dir, "/Patch_Stacks/")
+  mosaic_patch_dir = paste0(ref_dir, "/Mosaic_Stacks/Patch/")
+  warp_dir = paste0(ref_dir, "/ProFound/Data/", VID, "/", MODULE, "/")
+  
+  if(dir.exists(warp_dir)){
+    warp_propane_files = list.files(
+      path = warp_dir,
+      pattern = ".fits$",
+      full.names = T
+    )
+    warp_propane_files = warp_propane_files[
+      !grepl("hst", warp_propane_files, ignore.case = T)
+    ]
+    file.remove(
+      warp_propane_files
+    )
+  }else{
+    dir.create(warp_dir, recursive = T)
+  }
+  
+  ## here we read in the Patched_Stacks
+  filepaths <- c(
+    list.files(patch_stack_dir, pattern=".fits", full.names=TRUE), #list all the .fits files in a directory
+    list.files(mosaic_patch_dir, pattern=".fits", full.names = TRUE)
+  )
+  filepaths = filepaths[!is.na(filepaths)]
+  fitsnames <- c(
+    list.files(patch_stack_dir, pattern=".fits", full.names=FALSE), #list all the .fits files in a directory
+    list.files(mosaic_patch_dir, pattern=".fits", full.names = FALSE)
+  )
+  fitsnames = fitsnames[!is.na(fitsnames)]
+  
+  #native scales
+  long_idx = grepl(VID, filepaths) & grepl(MODULE, filepaths)  & grepl("long", filepaths)
+
+  #frames_long = lapply(filepaths[long_idx], function(x) Rfits_read_all(filename = x, pointer = F))
+  names_frames_long = fitsnames[long_idx]
+  
+  for(i in 1:length(names_frames_long)){
+    message(paste0("Copying ", names_frames_long[i], " to ", warp_dir))
+    file.copy(from = filepaths[long_idx][i], to = paste0(warp_dir, "warp_", names_frames_long[i]), overwrite = T)
+  }
+  message("Done!")
+  # return(c(frames_short_to_long, frames_long))
+} ##<-- Copy the long pixelscale to Data dir. File redundancy but safer option for detects.
+
 
 star_mask = function(input_args){
   
@@ -183,7 +299,7 @@ star_mask = function(input_args){
   VID = input_args$VID
   MODULE = input_args$MODULE
   
-  if(!(grepl("NRC", MODULE, fixed = T))){
+  if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID){
     MODULE = paste0("NRC", MODULE)
   }
   
@@ -195,12 +311,12 @@ star_mask = function(input_args){
   
   dir.create(star_mask_dir, showWarnings = F, recursive = T)
   
-  data_dir = paste0(ref_dir, "/ProFound/Data/", VID, "/", MODULE, "/") #directory with the propanes
+  data_dir = paste0(ref_dir, "/Patch_Stacks/") #directory with the propanes
   
-  gaia_dir = paste0(ref_dir, "/ProFound/GAIA_Cats/", substr(VID, 1, 4), "/")
+  gaia_dir = paste0(ref_dir, "/ProFound/GAIA_Cats/", VID, "/")
   
-  file_list = list.files(data_dir, pattern=".fits", full.names=TRUE) #list all the .fits files in a directory
-  file_names = list.files(data_dir, pattern=".fits", full.names=FALSE)
+  file_list = list.files(data_dir, pattern=glob2rx(paste0("*", VID, "*", MODULE, "*long.fits")), full.names=TRUE) #list all the .fits files in a directory
+  file_names = list.files(data_dir, pattern=glob2rx(paste0("*", VID, "*", MODULE, "*long.fits")), full.names=FALSE)
   
   #make star masks on the F200W filter, and if it's missing use the shortest filter
   file_idx = (
@@ -237,7 +353,17 @@ star_mask = function(input_args){
     )
   )
   
-  gaia[, c("xpix", "ypix")] = Rwcs_s2p(RA = gaia$ra, Dec = gaia$dec, keyvalues = f200w_ref$image$keyvalues)
+  delta_time = as.double(substr(f200w_ref$image$keyvalues$DATE_END, 1, 4)) - gaia$ref_epoch
+  gaia[, c("xpix", "ypix")] = Rwcs_s2p(RA = gaia$ra + 1e-3 * 1/3600 * ifelse(is.na(gaia$pmra), 0, gaia$pmra) * delta_time, ## Do proper motion correction
+                                       Dec = gaia$dec + 1e-3 * 1/3600 * ifelse(is.na(gaia$pmdec), 0, gaia$pmdec) * delta_time, ## pmra[pmdec] = mas/yr
+                                       keyvalues = f200w_ref$image$keyvalues)
+  
+  gaia[, c("xpix_nopm", "ypix_nopm")] = Rwcs_s2p(RA = gaia$ra, 
+                                                 Dec = gaia$dec, 
+                                                 keyvalues = f200w_ref$image$keyvalues)
+  
+  gaia$ra_fix = gaia$ra + 1e-3 * 1/3600 * ifelse(is.na(gaia$pmra), 0, gaia$pmra) * delta_time
+  gaia$dec_fix = gaia$dec + 1e-3 * 1/3600 * ifelse(is.na(gaia$pmdec), 0, gaia$pmdec) * delta_time
   
   gaia_idx = gaia$xpix >= 0 & gaia$xpix <= imdim[1] & gaia$ypix >= 0 & gaia$ypix <= imdim[2] & 
     gaia$classprob_dsc_combmod_star > 0.98 & gaia$phot_bp_rp_excess_factor < 2.5
@@ -247,75 +373,49 @@ star_mask = function(input_args){
   message(paste0("Building star mask for VID: ", VID, ", MODULE: ", MODULE))
   psf_mask_function = function(image, xcen=dim(image)[1]/2, ycen=dim(image)[2]/2, rad=dim(image)[2]/2){
     mask =
-      profoundEllipseSeg(image=image, xcen=xcen, ycen=ycen, rad=rad/4, axrat=1) +
-      profoundEllipseSeg(image=image, xcen=xcen, ycen=ycen, rad=rad/2, axrat=0.05, ang=90) +
+      profoundEllipseSeg(image=image, xcen=xcen, ycen=ycen, rad=rad/4.0, axrat=1) +
+      profoundEllipseSeg(image=image, xcen=xcen, ycen=ycen, rad=rad/2.0, axrat=0.05, ang=90) +
       profoundEllipseSeg(image=image, xcen=xcen, ycen=ycen, rad=rad, axrat=0.07, ang=60) +
       profoundEllipseSeg(image=image, xcen=xcen, ycen=ycen, rad=rad, axrat=0.07, ang=-60) +
       profoundEllipseSeg(image=image, xcen=xcen, ycen=ycen, rad=rad, axrat=0.07, ang=0)
     return(mask > 0)
   }
   
-  star_box_list = c()
-  box = 800
-  for(k in 1:dim(gaia_trim)[1]){
-    star_test = f200w_ref$image[gaia_trim$ra[k], gaia_trim$dec[k], box = box, type='coord']
-    NA_check = sum(is.na(star_test$imDat)) >= 0.9*prod(dim(star_test))
-    if(NA_check){
-      star_box_list = c(star_box_list, 0)
-      next
-    }
-    pro_objects = profoundProFound(image = star_test$imDat,
-                                   mask = ( is.na(star_test$imDat) | (star_test$imDat)==0 | is.infinite(star_test$imDat) ),
-                                   skycut = 3.0,
-                                   rem_mask = T,
-                                   box = 50, grid = 5,
-                                   tolerance = 0,
-                                   reltol = -100)
-
-    segim_fix_id = profoundAutoMerge(
-      segim = pro_objects$segim,
-      segstats = pro_objects$segstats,
-      spur_lim = 1,
-      Ncut = 0
-    )
-    segim_fix = profoundSegimKeep(
-      segim = pro_objects$segim,
-      segID_merge = segim_fix_id$segID
-    )
-    find_central_segim = unique(c(magcutout(segim_fix, box = 20)$image))
-    find_central_segim = find_central_segim[find_central_segim != 0]
-    segim_fix[segim_fix != find_central_segim] = 0
-    
-    if(sum(find_central_segim > 0)==0){
-      star_box = box/2.0
-    }else{
-      pro_redo = profoundProFound(
-        image = star_test$imDat,
-        segim = segim_fix,
-        sky = 0,
-        redosky = F,
-        redosegim = F
-      )
-      R100 = pro_redo$segstats$R100
-      xmax = pro_redo$segstats$xmax
-      ymax = pro_redo$segstats$ymax
-      star_box = ceiling( 1.5 * ceiling(R100) )
-    }
-    star_box_list = c(star_box_list, star_box)
-  }
+  pro_stars = profoundProFound(
+    image = f200w_ref$image,
+    skycut = 10,
+    pixcut = 21,
+    tolerance = 1,
+    cliptol = 50,
+    rem_mask = T
+  )
   
-  temp = matrix(1,box,box) #reduce box size by half
+  match_gaia = coordmatch(
+    coordref = gaia_trim[, c("ra_fix", "dec_fix")],
+    coordcompare = pro_stars$segstats[, c("RAmax", "Decmax")]
+  )
+  R100_list = rep(50, dim(gaia_trim)[1])
+  R100_list[match_gaia$bestmatch$refID] = pro_stars$segstats$R100[match_gaia$bestmatch$compareID]/pixscale(f200w_ref$image)
+  
+  tweak_gaia = propaneTweakCat(
+    cat_pre_fix = gaia_trim[match_gaia$bestmatch$refID, c("xpix", "ypix")],
+    cat_ref = pro_stars$segstats[match_gaia$bestmatch$compareID, c("xmax", "ymax")]
+  )
+  
+  temp = matrix(1, 1500, 1500)
   psf_mask = psf_mask_function(temp)
   
   all_mask = profoundApplyMask(
     image = f200w_ref$image$imDat, mask = psf_mask, 
-                                    xcen = gaia_trim$xpix, ycen = gaia_trim$ypix,
-                                    xsize= star_box_list, ysize = star_box_list
+    xcen = gaia_trim$xpix, ycen = gaia_trim$ypix,
+    xsize= R100_list * 8, 
+    ysize = R100_list * 8
   )
+
   message("Star mask complete")
   star_mask_redo = list()
-  star_mask_redo$mask = profoundDilate(all_mask$mask > 1, size = 3)
-  
+  star_mask_redo$mask = profoundDilate(all_mask$mask > 0, size = 3)
+
   message("Saving star mask")
   
   plot_stub = paste0(ref_dir, "/ProFound/Star_Masks/", VID, "/", MODULE, "/", VID, "_", MODULE, "_star_mask.pdf")
@@ -324,18 +424,128 @@ star_mask = function(input_args){
   magimage(f200w_ref$image$imDat, flip = T, sparse = 1)
   magimage(profoundDilate(star_mask_redo$mask, size = 21) - star_mask_redo$mask, col = c(NA, "magenta"), add = T)
   legend(x = "topleft", paste0(VID, "_", MODULE))
-  points(gaia_trim$xpix, gaia_trim$ypix, 
-         pch = 1, 
-         col = "magenta")
   dev.off()
   
   save_stub = paste0(ref_dir, "/ProFound/Star_Masks/", VID, "/", MODULE, "/", VID, "_", MODULE, "_star_mask.rds")
   saveRDS(object = star_mask_redo, save_stub)
   message("Done!")
 } ##<-- Create an empirical star mask from GAIA sources 
+star_mask_tile = function(input_args){
+  ## Make star mask from input VID star masks
+  ## Account for rotation
+  
+  message("Running Star Mask for Tiles. Making big mask from per VID star masks...")
+  
+  ref_dir = input_args$ref_dir
+  VID = input_args$VID
+  MODULE = input_args$MODULE
+  
+  if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID){
+    MODULE = paste0("NRC", MODULE)
+  }
+  
+  if(MODULE == VID){
+    message("VID [", VID, "] is the same as MODULE [", MODULE, "]")
+    message("Detected big mosaic!")
+    
+    data_dir = paste0(ref_dir, "/ProFound/Data/", VID, "/", MODULE, "/") #directory with the propanes
+    
+    file_list = list.files(data_dir, pattern=".fits", full.names=TRUE) #list all the .fits files in a directory
+    file_names = list.files(data_dir, pattern=".fits", full.names=FALSE)
+    
+    file_idx = (
+      grepl("F200W", file_list) & 
+        grepl(VID, file_list) & 
+        grepl(MODULE, file_list) &
+        !grepl("hst", file_list)
+    )
+    
+    if(sum(file_idx) == 0){
+      file_list = file_list[grepl(VID, file_list) & 
+                              grepl(MODULE, file_list) & 
+                              !grepl("hst", file_list)][1]
+      file_names = file_names[grepl(VID, file_names) & 
+                                grepl(MODULE, file_names) & 
+                                !grepl("hst", file_names)][1]
+    }else{
+      file_list = file_list[file_idx]
+      file_names = file_names[file_idx]
+    }
+    
+    f200w_ref = Rfits_read_image(filename = file_list, ext = 1)
+    keyvalues =f200w_ref$keyvalues
+    input_info = Rfits_read_table(filename = file_list, ext = 7)
+    
+    input_VID = na.exclude(
+      str_extract(
+        sapply(
+          input_info$stub, function(x)str_split_1(x, pattern = "_")
+        ),
+        "\\b[0-9].{1,9}\\b"
+      )
+    )
+    input_MODULE = na.exclude(
+      str_extract(
+        sapply(
+          input_info$stub, function(x)str_split_1(x, pattern = "_")
+        ),
+        "\\bNRCA|NRCB\\b"
+      )
+    )
+    
+    read_star_masks = foreach(i = 1:length(input_VID))%do%{
+      star_mask_file = paste0(ref_dir, "/ProFound/Star_Masks/", input_VID[i], "/", 
+                              input_MODULE[i], "/", 
+                              input_VID[i], "_", input_MODULE[i], "_star_mask.rds")
+      
+      message("Using: ", star_mask_file)
+      star_mask = readRDS(star_mask_file)
+      
+      input_file_keyvalues = Rfits_read_image(
+        filename = input_info$full[i],
+        ext = 1
+      )$keyvalues
+      
+      temp_warp = propaneWarp(
+        image_in = Rfits_create_image(star_mask$mask, keyvalues = input_file_keyvalues),
+        keyvalues_out = keyvalues,
+        doscale = F,
+        cores = 1
+      )
+      star_mask_warp = temp_warp$imDat
+      # star_mask_warp[star_mask_warp != 0 | !is.na(star_mask_warp)] = 1
+      star_mask_warp[is.na(star_mask_warp)] = 0
+      return(star_mask_warp)
+    }
+    
+    big_star_mask = Reduce("+", read_star_masks)
+    big_star_mask[big_star_mask != 0] = 1
+    
+    message("Star mask complete")
+    
+    dir.create(
+      paste0(ref_dir, "/ProFound/Star_Masks/", VID, "/", MODULE, "/"),
+      recursive = T, showWarnings = F
+    )
+    
+    message("Saving star mask...")
+    plot_stub = paste0(ref_dir, "/ProFound/Star_Masks/", VID, "/", MODULE, "/", VID, "_", MODULE, "_star_mask.png")
+    png(plot_stub, width = dim(f200w_ref)[1], height = dim(f200w_ref)[2], res = 72)
+    par(mfrow = c(1,1), mar = rep(0,4), oma = rep(0,4))
+    magimage(f200w_ref$imDat, flip = T, sparse = 2)
+    magimage(profoundDilate(big_star_mask, size = 21) - big_star_mask, col = c(NA, "magenta"), add = T, sparse = 2)
+    legend(x = "topleft", paste0(VID, "_", MODULE))
+    dev.off()
+    
+    save_stub = paste0(ref_dir, "/ProFound/Star_Masks/", VID, "/", MODULE, "/", VID, "_", MODULE, "_star_mask.rds")
+    saveRDS(object = list(mask=big_star_mask), save_stub)
+    message("Done!")
+    
+  }
+} ## <-- Create star mask for a big mosaic using per VID star masks
+
 
 ## ProFound source detection codes
-
 do_detect = function(input_args, detect_bands = "ALL", profound_function = profound_detect_master){
   
   message("Running ProDetect")
@@ -344,7 +554,7 @@ do_detect = function(input_args, detect_bands = "ALL", profound_function = profo
   VID = input_args$VID
   MODULE = input_args$MODULE
   
-  if(!(grepl("NRC", MODULE, fixed = T))){
+  if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID){
     MODULE = paste0("NRC", MODULE)
   }
   
@@ -365,9 +575,9 @@ do_detect = function(input_args, detect_bands = "ALL", profound_function = profo
   file_names <- list.files(data_dir, pattern=".fits", full.names=FALSE) #list all the .fits files in a directory
   
   if(detect_bands == "ALL"){
-    idx = grepl(VID, file_list) & grepl(MODULE, file_list) & grepl("warp_stack", file_list)
+    idx = grepl(VID, file_list) & grepl(MODULE, file_list) & grepl("patch", file_list)
   }else{
-    idx = grepl(VID, file_list) & grepl(MODULE, file_list)  & grepl("warp_stack", file_list) & grepl(detect_bands, file_list)
+    idx = grepl(VID, file_list) & grepl(MODULE, file_list)  & grepl("patch", file_list) & grepl(detect_bands, file_list)
   }
   
   propanes = lapply(file_list[idx], function(x) Rfits_read(filename = x))
@@ -435,6 +645,7 @@ do_detect = function(input_args, detect_bands = "ALL", profound_function = profo
   return(NULL)
 }
 
+
 ## ProFound measurement codes
 getCircle = function(r){
   d = 2*r
@@ -494,8 +705,6 @@ error_scaling = function(flux_err, N100, m, c){
   flux_err[!is.na(flux_err) & (flux_err < N100^m * 10^c)] = N100[!is.na(flux_err) & (flux_err < N100^m * 10^c)]^m * 10^c
   return(flux_err)
 }
-
-
 do_measure = function(input_args){
   
   message("Running ProMeasure")
@@ -505,7 +714,7 @@ do_measure = function(input_args){
   MODULE = input_args$MODULE
   sampling_cores = input_args$sampling_cores
   
-  if(!(grepl("NRC", MODULE, fixed = T))){
+  if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID){
     MODULE = paste0("NRC", MODULE)
   }
   
@@ -532,16 +741,17 @@ do_measure = function(input_args){
   
   # nirc.list = list.files(data_path, pattern = modl, full.names = T, recursive = T)
   data.list = list.files(data_dir, 
-                         pattern = glob2rx(paste0("*", VID, "*", MODULE, "*fits")), 
+                         pattern = ".fits$", 
                          full.names = T, 
                          recursive = T)
   data.names = list.files(data_dir, 
-                          pattern = glob2rx(paste0("*", VID, "*", MODULE, "*fits")), 
+                          pattern = ".fits$", 
                           full.names = F, 
                           recursive = T)
   
   # data.list = data.list[-grep('jwst_nirc', data.list)]                            # (should) still work even with only NIRCam data
   # data.list = c(data.list, nirc.list)
+  
   filter.names = toupper(str_extract(data.list, "F\\d{3,}[A-Z]{1,}|f\\d{3,}[a-z]{1,}"))
   filter.names[is.na(filter.names)] = sapply(data.list[is.na(filter.names)], function(x)str_split_1(x, "_")[6]) ## Filter name should hopefully always be in position 6
   
@@ -648,26 +858,26 @@ do_measure = function(input_args){
   write.csv(csvout, file = file.path(measurements_dir,paste(VID,MODULE,"photometry.csv",sep='_')))
 }
 
+
 ## HST codes
 hst_warp_stack = function(input_args){
   
   message("Running hst_warp_stack")
-  message("Default behaviour is to pick EXT=2 (usually SCI) or EXT=1 if only one extension exists in the fits file.")
-  
+
   ref_dir = input_args$ref_dir
   VID = input_args$VID
   MODULE = input_args$MODULE
   cores_stack = input_args$cores_stack
   
-  if(!(grepl("NRC", MODULE, fixed = T))){
+  if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID){
     MODULE = paste0("NRC", MODULE)
   }
   
   data_dir = paste0(ref_dir, "/ProFound/Data/", VID, "/", MODULE, "/") #directory with the propanes
-  
+
   existing_hst_files = list.files(
     path = data_dir,
-    pattern = ".fits$",
+    pattern = ".fits",
     full.names = T
   )
   existing_hst_files = existing_hst_files[
@@ -680,7 +890,19 @@ hst_warp_stack = function(input_args){
   HST_cutout_dir = paste0(ref_dir, "/ProFound/HST_cutout/", VID, "/", MODULE, "/") ## Holding pen for the MAST Hubble MVMs / HAPs
   
   #load in the target reference frame
-  jwst_ls = list.files(data_dir, pattern = 'warp_stack', full.names = T)
+  jwst_ls = c(
+    list.files(
+      paste0(ref_dir, "/Patch_Stacks/"),
+      pattern = glob2rx(paste0("*", VID, "*", MODULE, "*long.fits")),
+      full.names = T
+      ),
+    list.files(
+      paste0(ref_dir, "/Mosaic_Stacks/Patch/"),
+      pattern = glob2rx(paste0("*", VID, "*", "*long.fits")),
+      full.names = T
+    )
+  )
+  
   target_path = jwst_ls[grepl(MODULE, jwst_ls) & grepl("F200W", jwst_ls)]
   if(length(target_path)==0){
     target = Rfits_read(jwst_ls[1])
@@ -688,40 +910,74 @@ hst_warp_stack = function(input_args){
     target = Rfits_read(target_path)
   }
   
-  pro_ref = profoundProFound(image = target$image[,], 
-                             mask = (is.na(target$image[,]$imDat) | (is.infinite(target$image[,]$imDat)) ),
-                             magzero = 23.9, 
-                             skycut = 5.0, 
-                             box = 100,
-                             tolernace = Inf,
-                             cliptol = Inf,
-                             rem_mask = T,
-                             roughpedestal = T)
+  pro_ref = profoundProFound(
+    image = target$image[,],
+    pixcut = 20,
+    skycut = 10.0,
+    cliptol = 100,
+    tolerance = Inf,
+    box = dim(target$image)/10.0,
+    mask = is.infinite(target$image[,]$imDat) | is.na(target$image[,]$imDat),
+    magzero = 23.9,
+    rem_mask = T
+  )
   
   files_temp_temp = list.files(path = HST_cutout_dir, pattern = ".fits$", recursive = T, full.names = T)
   
   get_rid_of_combined = grepl("combined", files_temp_temp)
   HST_files = files_temp_temp[!get_rid_of_combined]
   
-  extlist = ifelse(
-    sapply(HST_files, Rfits_nhdu) == 1, 1, 2
-  )
+  extlist = foreach(i = 1:length(HST_files), .combine = "c")%do%{
+    
+    extname_try1 = Rfits_extname_to_ext(
+      HST_files[i], "SCI"
+    )
+    extname_try2 = Rfits_extname_to_ext(
+      HST_files[i], "image"
+    )
+
+    extname = c(extname_try1, extname_try2)
+    if(sum(is.na(extname)==1)){
+      extname = 1
+    }
+    
+  }
   
   if(length(HST_files) == 0){
     message("No HST in directory!")
     return(NULL)
   }else{
-    files_temp = propaneFrameFinder(filelist = HST_files, 
+    frame_find = propaneFrameFinder(filelist = HST_files, 
                                     extlist = extlist,
                                     RAcen = target$image$keyvalues$CRVAL1, 
                                     Deccen = target$image$keyvalues$CRVAL2, 
-                                    rad = 10.0/60.0,
-                                    plot = F)$full
+                                    rad = 2.0,
+                                    plot = F)
+    files_temp = frame_find$full
+    files_names = frame_find$file
     
     if(is.null(files_temp)){
       message("No HST to fold in!")
     }else{
       hst_key_scan = Rfits_key_scan(files_temp, keylist = c("FILTER", "DETECTOR", "INSTRUME"))
+      
+      filters_na = na.exclude(
+        str_extract(
+          sapply(files_names, function(x)str_split_1(x, pattern = "_")), 
+          "\\bF\\d{3,}[A-Z]{1,}|f\\d{3,}[a-z]{1,}\\b"))
+      detector_na = na.exclude(
+        str_extract(
+          sapply(files_names, function(x)str_split_1(x, pattern = "_")), 
+          "\\IR|UVIS|WFC\\b"))
+      instrume_na = na.exclude(
+        str_extract(
+          sapply(files_names, function(x)str_split_1(x, pattern = "_")), 
+          "\\bACS|WFC3\\b"))
+      
+      hst_key_scan$FILTER[is.na(hst_key_scan$FILTER)] = filters_na[is.na(hst_key_scan$FILTER)]
+      hst_key_scan$DETECTOR[is.na(hst_key_scan$DETECTOR)] = detector_na[is.na(hst_key_scan$DETECTOR)] 
+      hst_key_scan$INSTRUME[is.na(hst_key_scan$INSTRUME)] = instrume_na[is.na(hst_key_scan$INSTRUME)] 
+      
       hst_filters = unique(hst_key_scan$FILTER)
       NFilters = length(hst_filters)
       
@@ -735,67 +991,99 @@ hst_warp_stack = function(input_args){
           # just get the acs filters 
           files_idx = grepl(hst_filters[j], files_temp, ignore.case = T) & grepl("acs", files_temp, ignore.case = T)
           files = files_temp[files_idx]
-          extlist = ifelse(
-            sapply(files, Rfits_nhdu) == 1, 1, 2
-          )
-          frames = Rfits_make_list(files, extlist = extlist, pointer = F)
+          # extlist = ifelse(
+          #   sapply(files, Rfits_nhdu) == 1, 1, 2
+          # )
+          frames = Rfits_make_list(files, extlist = frame_find$ext[files_idx], pointer = F)
           hst_detector = hst_detector[grepl("wfc", hst_detector, ignore.case = T)]
           hst_instrume = hst_instrume[grepl("acs", hst_instrume, ignore.case = T)]
         }else{
           files_idx = grepl(hst_filters[j], files_temp, ignore.case = T)
           files = files_temp[files_idx]
-          extlist = ifelse(
-            sapply(files, Rfits_nhdu) == 1, 1, 2
-          )
-          frames = Rfits_make_list(files, extlist = extlist, pointer = F)
+          # extlist = ifelse(
+          #   sapply(files, Rfits_nhdu) == 1, 1, 2
+          # )
+          frames = Rfits_make_list(files, extlist = frame_find$ext[files_idx], pointer = F)
           
         }
         
         #prepare input frames for stacking
         magzero_list = c()
         image_list = {}
+        inVar_list = {}
         for(i in 1:length(frames)){
-          message(paste0("Profound: ", files[i]))
-          hst_magzero = -2.5*log10(frames[[i]]$keyvalues$PHOTFLAM)-5*log10(frames[[i]]$keyvalues$PHOTPLAM)-2.408
+          
+          hst_magzero = frames[[i]]$keyvalues$MAGZERO
+          if(is.na(hst_magzero)){
+            hst_magzero = -2.5*log10(frames[[i]]$keyvalues$PHOTFLAM)-5*log10(frames[[i]]$keyvalues$PHOTPLAM)-2.408
+          }
+          
           magzero_list = c(magzero_list, hst_magzero)
           
           temp = frames[[i]]
           
-          pro = profoundProFound(
+          if(!do_sky_rem){
+            message("Running: ", files[i])
+            image_list = c(
+              list(
+                temp
+              ),
+              image_list
+            )
+          }else{
+            message(paste0("Profound: ", files[i])) 
+            
+            pro = profoundProFound(
             image = temp,
             box = 100,
+            skycut = 2.0,
+            pixcut = 5.0,
+            tolerance = Inf,
+            redoskysize = 21,
             roughpedestal = T,
             redosky = F,
             rem_mask = T
           )
           
+          inVar_list = c(list(median(pro$skyRMS[pro$objects_redo == 0], na.rm = T)^-2), inVar_list)
           image_list = c(list(temp-pro$sky), image_list)
+          }
         }
         
         #stack
         output_stack = propaneStackWarpInVar(image_list = image_list,
+                                             # inVar_list = inVar_list,
                                              magzero_in = hst_magzero,
                                              magzero_out = 23.9,
                                              keyvalues_out = target$image$keyvalues,
                                              cores = cores_stack,
                                              cores_warp = 1)
-        if(sum(is.na(output_stack$image$imDat))/prod(dim(output_stack$image$imDat))>0.8){
-          message("Not enough coverage")
-        }else{
-          
+        
+  
           message("Tweaking ProFound source shift")
-          pro_test = profoundProFound(image = output_stack$image,
-                                      magzero = 23.9,
-                                      skycut = 5.0,
-                                      box = 100,
-                                      tolernace = Inf,
-                                      cliptol = Inf,
-                                      rem_mask = T,
-                                      roughpedestal = T)
+         
+          pro_test = profoundProFound(
+            image = output_stack$image,
+            pixcut = 20,
+            skycut = 10.0,
+            cliptol = 100,
+            tolerance = Inf,
+            box = dim(output_stack$image)/10.0,
+            mask = is.infinite(output_stack$image$imDat) | is.na(output_stack$image$imDat),
+            magzero = 23.9,
+            rem_mask = T
+          )
           
-          propane_cat_tweak = propaneTweakCat(cat_ref = cbind(pro_ref$segstats$xmax, pro_ref$segstats$ymax),
-                                              cat_pre_fix = cbind(pro_test$segstats$xmax, pro_test$segstats$ymax), 
-                                              delta_max = c(10,1.0))
+          match_coord = coordmatch(
+            coordref = pro_ref$segstats[, c("RAmax", "Decmax")],
+            coordcompare = pro_test$segstats[, c("RAmax", "Decmax")]
+          )
+          
+          propane_cat_tweak = propaneTweakCat(cat_ref = cbind(pro_ref$segstats$xcen[match_coord$bestmatch$refID], 
+                                                              pro_ref$segstats$ycen[match_coord$bestmatch$refID]),
+                                              cat_pre_fix = cbind(pro_test$segstats$xcen[match_coord$bestmatch$compareID], 
+                                                                  pro_test$segstats$ycen[match_coord$bestmatch$compareID]), 
+                                              delta_max = c(10,1.0), mode = "pix")
           
           tweaked_output_imDat = propaneTran(output_stack[["image"]][,]$imDat,
                                              delta_x = propane_cat_tweak$par[1],
@@ -817,11 +1105,87 @@ hst_warp_stack = function(input_args){
                              hst_instrume, "_", hst_detector, "_", VID, "_", hst_filter, "_", 
                              MODULE, "_long.fits")
           Rfits_write(final_output, filename = file_name)
-        }
+        
         rm(image_list)
         rm(output_stack)
       }
     }
+  }
+}
+copy_hst_for_tile = function(input_args){
+  
+  message("Running hst_warp_stack")
+  
+  ref_dir = input_args$ref_dir
+  VID = input_args$VID
+  MODULE = input_args$MODULE
+  cores_stack = input_args$cores_stack
+  
+  HST_cutout_dir = paste0(ref_dir, "/ProFound/HST_cutout/", VID, "/", MODULE, "/") ## Holding pen for the MAST Hubble MVMs / HAPs
+  
+  if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID){
+    MODULE = paste0("NRC", MODULE)
+  }
+  
+  if(VID == MODULE){
+    message("VID [", VID, "] is the same as MODULE [", MODULE, "]")
+    message("Detected big mosaic!")
+    
+    input_info = foreach(i = 1:length(mosaic_files), .combine = "bind_rows")%do%{
+      info = Rfits_read_table(filename = mosaic_files[i], ext = 7)
+      input_VID = na.exclude(
+        str_extract(
+          sapply(
+            info$stub, function(x)str_split_1(x, pattern = "_")
+          ),
+          "\\b[0-9].{1,9}\\b"
+        )
+      )
+      input_MODULE = na.exclude(
+        str_extract(
+          sapply(
+            info$stub, function(x)str_split_1(x, pattern = "_")
+          ),
+          "\\bNRCA|NRCB\\b"
+        )
+      )
+        
+      df = data.frame(
+        "VID" = input_VID,
+        "MODULE" = input_MODULE
+      )
+    }
+    input_info = unique(input_info)
+
+    dir.create(HST_cutout_dir, recursive = T)
+    
+    previous_hst = foreach(i = 1:dim(input_info)[1], .combine = "c")%do%{
+      list.files(
+        paste0(ref_dir, "/ProFound/Data/", input_info$VID[i], "/", input_info$MODULE[i], "/"),
+        pattern = glob2rx("*hst*.fits"),
+        full.names = T
+      )
+    }
+    
+    previous_hst_names = foreach(i = 1:dim(input_info)[1], .combine = "c")%do%{
+      list.files(
+        paste0(ref_dir, "/ProFound/Data/", input_info$VID[i], "/", input_info$VID[i], "/"),
+        pattern = glob2rx("*hst*.fits"),
+        full.names = F
+      )
+    }
+    
+    message(
+      "Copying: ",
+      paste0(previous_hst_names, sep = "\n")
+    )
+    
+    file.copy(
+      from = previous_hst,
+      to = paste0(HST_cutout_dir, "/", previous_hst_names),
+      overwrite = T
+    )
+    do_sky_rem = F
   }
 }
 
@@ -832,7 +1196,7 @@ query_gaia = function(input_args){
   message("Running query_gaia")
   
   VID = input_args$VID
-  system( paste0("python3 query_gaia.py --PID ", substr(VID, 1, 4) ) )
+  system( paste0("python3 query_gaia.py --VID ", VID ) )
   return(NULL)
 }
 query_hst = function(input_args){
@@ -841,8 +1205,54 @@ query_hst = function(input_args){
   
   VID = input_args$VID
   MODULE = input_args$MODULE
+  ref_dir = input_args$ref_dir
   
-  system( paste0("python3 request_hap.py --VID ", VID, " --MODULE ", MODULE) )
+  if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID){
+    MODULE = paste0("NRC", MODULE)
+  }
+  
+  if(VID == MODULE){
+    
+    message("VID [", VID, "] is the same as MODULE [", MODULE, "]")
+    message("Detected big mosaic!")
+    
+    mosaic_files = list.files(
+      paste0(ref_dir, "/Mosaic_Stacks/Patch/"),
+      full.names = T,
+      pattern = glob2rx(paste0("*", VID, "*long.fits"))
+    )
+    input_info = foreach(i = 1:length(mosaic_files), .combine = "bind_rows")%do%{
+      info = Rfits_read_table(filename = mosaic_files[i], ext = 7)
+      input_VID = na.exclude(
+        str_extract(
+          sapply(
+            info$stub, function(x)str_split_1(x, pattern = "_")
+          ),
+          "\\b[0-9].{1,9}\\b"
+        )
+      )
+      input_MODULE = na.exclude(
+        str_extract(
+          sapply(
+            info$stub, function(x)str_split_1(x, pattern = "_")
+          ),
+          "\\bNRCA|NRCB\\b"
+        )
+      )
+      df = data.frame(
+        "VID" = input_VID,
+        "MODULE" = input_MODULE
+      )
+    }
+    input_info = unique(input_info)
+    
+    for(j in 1:dim(input_info)[1]){
+      system( paste0("python3 request_hap.py --VID ", input_info$VID[j], " --MODULE ", input_info$MODULE[j]) )
+    }
+    copy_hst_for_tile(input_args)
+  }else{
+    system( paste0("python3 request_hap.py --VID ", VID, " --MODULE ", MODULE) )
+  }
   return(NULL)
 }
 

@@ -1,16 +1,5 @@
 ## Deep stacker + Alignment
 
-# ref_cat = read.table("/Users/22252335/Downloads/hlsp_candels_hst_wfc3_egs_multi_v2_redshift-cat.txt")
-# ref_cat = ref_cat[, 3:4]
-# names(ref_cat) = c("RA", "Dec")
-
-# farmer_cat = Rfits_read("/Users/22252335/Downloads/COSMOS2020_FARMER_R1_v2.2_p3.fits")
-# 
-# ref_cat = data.frame(
-#   "RA" = farmer_cat[[2]]$ALPHA_J2000,
-#   "Dec" = farmer_cat[[2]]$DELTA_J2000
-# )
-
 library(Rfits)
 library(Rwcs)
 library(ProPane)
@@ -21,41 +10,49 @@ library(doParallel)
 library(data.table)
 library(stringr)
 
-# ref_cat = fread("/Volumes/RAIDY/JWST/test_stack/ref_cats/cosmos_ref_cat.csv")
-# ref_cat = fread("/Volumes/RAIDY/JWST/test_stack/ref_cats/mosaic_plckg191_nircam.csv")
-
-ref_cat = read.table("/Users/22252335/Downloads/hlsp_candels_hst_wfc3_egs_multi_v2_redshift-cat.txt")
-ref_cat = data.frame(
-  RA = ref_cat$V3,
-  Dec = ref_cat$V4
-)
+## User defined inputs here
+ref_cat = fread("ref_cats/ceers_ref_cat.csv") #example for HST catalogue in EGS field
 
 input_args = list(
-  ref_dir = "/Volumes/Expansion/JWST/prof/",
-  RA = colMeans(ref_cat)[1], 
-  Dec = colMeans(ref_cat)[2],
-  super_name = "DDT",
-  ref_cat = ref_cat
-)
+  ref_dir = "/Volumes/RAIDY/JWST/",   
+  RA = colMeans(ref_cat)[1],   
+  Dec = colMeans(ref_cat)[2],      
+  super_name = "ELGORDO",   
+  ref_cat = ref_cat,      
+  grid_size = "long" #default save on memory, 0.06arcsec/pix 
+) 
 
 test_wcs = function(input_args){
   
+  ## Find optimum search radius to make sure all frames fit inside the target WCS
   patch_dir = paste0(input_args$ref_dir, "/Patch_Stacks/")
+  
+  mosaic_dir = paste0(input_args$ref_dir, "/mosaic_stacks/")   
+  mosaic_invar = paste0(mosaic_dir, "/inVar/")
+  mosaic_med = paste0(mosaic_dir, "/Median/")
+  mosaic_patch = paste0(mosaic_dir, "/Patch/")
+  
+  dir.create(mosaic_dir, recursive = T)
+  dir.create(mosaic_invar, recursive = T)   
+  dir.create(mosaic_med, recursive = T)
+  dir.create(mosaic_patch, recursive = T)
 
   message("Searching for frames in ", input_args$RA, " ", input_args$Dec)
   find_frames = propaneFrameFinder(
     dirlist = patch_dir,
     RAcen = input_args$RA,
     Deccen = input_args$Dec,
-    rad = 1.0,
+    rad = 2.0,
     cores = 8,
     plot=F
   )
   
-  grid_size = "long"
+  grid_size = input_args$grid_size
+  
+  nrc="NRC" 
 
   wcs_info = Rfits_key_scan(
-      filelist = find_frames$full[grepl(grid_size, find_frames$full)],
+      filelist = find_frames$full[grepl(grid_size, find_frames$full) & grepl("NRC", find_frames$full)],
       keylist = c("CRVAL1",
                   "CRVAL2",
                   "CD1_1",
@@ -68,7 +65,7 @@ test_wcs = function(input_args){
                   "CRPIX2"),
       get_pixscale = T,
       get_centre = T,
-      cores = 8
+      cores = 1
     )
     
     pixscale_deg = mean(find_frames$pixscale)/3600
@@ -147,7 +144,7 @@ test_wcs = function(input_args){
    message("Finding optimum mosaic size")
    suppressWarnings({
      foo_optim <- optim(
-        par = c(0.15), fn = foobar, method = "Brent", control = list(fnscale = -1), lower = 0.1, upper = 0.5
+        par = c(0.15), fn = foobar, method = "Brent", control = list(fnscale = -1), lower = 0.1, upper = 1.0
       )
     })
    
@@ -163,11 +160,13 @@ test_wcs = function(input_args){
     wcs_temp$NAXIS2 = 10.0
     wcs_temp$CRPIX1 = 5.0
     wcs_temp$CRPIX2 = 5.0
-    
+   
+    png(paste0(mosaic_dir, "/", input_args$super_name, "_layout.png"), width = 10, height = 8, units="in", res=72) 
     par(mar = c(3.5, 3.5, 1.5, 1.5), oma = rep(0,4))
     Rwcs_overlap(
       keyvalues_test = wcs_temp, keyvalues_ref = wcs, plot = T
     )
+    legend(x="topright", legend = foo_optim$par)
     
     cen_coords = Rwcs_s2p(
       RA = RA_val,
@@ -201,38 +200,44 @@ test_wcs = function(input_args){
               col = "red"
               )
     }
+    dev.off()
     message("Optimum mosaic size: ", mosaic_size_deg, " deg")
     return(list(radius=mosaic_size_deg, wcs = wcs))
 }
-foo=test_wcs(input_args)
-
-input_args$mosaic_size_deg = foo$radius
 
 deep_stacker = function(input_args){
+  
+  ## Find aligning frames in search radius, align with ProPaneTweakCat and stack with ProPane
   
   inVar_dir = paste0(input_args$ref_dir, "/InVar_Stacks")
   median_dir = paste0(input_args$ref_dir, "/Median_Stacks")
   patch_dir = paste0(input_args$ref_dir, "/Patch_Stacks")
   dump_dir = paste0(input_args$ref_dir, "/dump")
-  # reftweak_dir = paste0(input_args$ref_dir, "/reftweak")
-  # test_dir = paste0(input_args$ref_dir, "/test_stack")
-  # dump_dir = "/Users/22252335/Desktop/stack_test/dump"
-  # test_dir = "/Users/22252335/Desktop/stack_test/test_stack"
   
   
-  # frames_info = fread(
-  #   paste0(
-  #     input_args$ref_dir, "/FieldFootprints/frames_info.csv"
-  #   )
-  # )
-  # 
-  # cal_sky_info = fread(
-  #   paste0(
-  #     input_args$ref_dir, "/Pro1oF/cal_sky_info.csv"
-  #   )
-  # )
+  mosaic_dir = paste0(input_args$ref_dir, "/Mosaic_Stacks/")
+  mosaic_invar = paste0(mosaic_dir, "/inVar/")
+  mosaic_med = paste0(mosaic_dir, "/Median/")
+  mosaic_patch = paste0(mosaic_dir, "/Patch/")
   
-  # VIDS = paste0(frames_info$VISIT_ID)
+  dir.create(mosaic_dir, recursive = T)
+  dir.create(mosaic_invar, recursive = T)
+  dir.create(mosaic_med, recursive = T)
+  dir.create(mosaic_patch, recursive = T)
+  
+  frames_info = fread(
+    paste0(
+      input_args$ref_dir, "/FieldFootprints/frames_info.csv"
+    )
+  )
+
+  cal_sky_info = fread(
+    paste0(
+      input_args$ref_dir, "/Pro1oF/cal_sky_info.csv"
+    )
+  )
+  
+  VIDS = paste0(frames_info$VISIT_ID)
   
   message("Searching for frames in ", input_args$RA, " ", input_args$Dec)
   find_frames = propaneFrameFinder(
@@ -244,12 +249,11 @@ deep_stacker = function(input_args){
     plot=F
     )
   
-  # UNIQUE_VIDS = VIDS[sapply(VIDS, function(x){any(grepl(x,find_frames$file))} )==TRUE]
+  UNIQUE_VIDS = VIDS[sapply(VIDS, function(x){any(grepl(x,find_frames$file))} )==TRUE]
   # 
-  # stack_grid = cal_sky_info[paste0(cal_sky_info$VISIT_ID) %in% UNIQUE_VIDS, c("VISIT_ID", "FILTER", "DETECTOR")]
+  stack_grid = cal_sky_info[paste0(cal_sky_info$VISIT_ID) %in% UNIQUE_VIDS, c("VISIT_ID", "FILTER", "DETECTOR")]
   
-  
-  for(grid_size in c("long")){
+  for(grid_size in c(input_args$grid_size)){
     
     file_info = find_frames[grepl(grid_size, find_frames$file), ]
     
@@ -287,13 +291,17 @@ deep_stacker = function(input_args){
     wcs$NAXIS1 = ceiling(input_args$mosaic_size_deg / pixscale_deg)
     wcs$NAXIS2 = ceiling(input_args$mosaic_size_deg / pixscale_deg)
     wcs$CRPIX1 = wcs$NAXIS1/2.0
+    
     wcs$CRPIX2 = wcs$NAXIS2/2.0
 
     ref_cat = input_args$ref_cat
+
+    UNIQUE_FILTERS = unique(stack_grid$FILTER)
+    UNIQUE_FILTERS=UNIQUE_FILTERS[!grepl("CLEAR", UNIQUE_FILTERS)]
     
-    UNIQUE_FILTERS = c("F115W", "F150W", "F200W", "F277W", "F356W", "F444W")
-    # idx_filt = which(UNIQUE_FILTERS == "F277W")
     for(i in 1:length(UNIQUE_FILTERS)){
+      
+      file_info_filt = file_info[grepl(paste0(UNIQUE_FILTERS[i]), file_info$full),]
       
       filenames = file_info$full[grepl(paste0(UNIQUE_FILTERS[i]), file_info$full)]
       
@@ -332,12 +340,13 @@ deep_stacker = function(input_args){
           cliptol = 100,
           tolerance = Inf,
           box = dim(image_list[[k]])/10.0,
-          mask = is.infinite(image_list[[k]][,]$imDat)
+          mask = is.infinite(image_list[[k]][,]$imDat),
+          rem_mask = T
         )
         
         match_cat = coordmatch(
           coordref = ref_cat,
-          coordcompare = pro_test$segstats[, c("RAmax", "Decmax")]
+          coordcompare = pro_test$segstats[, c("RAcen", "Deccen")]
         )
         
         if(any(is.na(match_cat$bestmatch))){
@@ -392,10 +401,11 @@ deep_stacker = function(input_args){
       )
       
       deep_frame$image$imDat[is.infinite(deep_frame$image$imDat)] = NA
+      deep_frame$info = file_info_filt
       
       Rfits_write(
         deep_frame,
-        paste0(inVar_dir, "/stack_", input_args$super_name, "_", UNIQUE_FILTERS[i], "_", grid_size, ".fits")
+        paste0(mosaic_invar, "/stack_", input_args$super_name, "_", UNIQUE_FILTERS[i], "_", grid_size, ".fits")
       )
       
       med_stack = propaneStackWarpMed(
@@ -406,11 +416,25 @@ deep_stacker = function(input_args){
       
       Rfits_write(
         med_stack,
-        paste0(median_dir, "/med_", input_args$super_name, "_", UNIQUE_FILTERS[i], "_", grid_size, ".fits"),
+        paste0(mosaic_med, "/med_", input_args$super_name, "_", UNIQUE_FILTERS[i], "_", grid_size, ".fits"),
+      )
+      
+      patch_stack = propanePatch(
+        image_inVar = deep_frame$image,
+        image_med = med_stack$image
+      )
+      temp = deep_frame
+      temp$image = patch_stack$image
+      
+      Rfits_write(
+        temp,
+        paste0(mosaic_patch, "/patch_", input_args$super_name, "_", UNIQUE_FILTERS[i], "_", grid_size, ".fits")
       )
       
       rm(deep_frame)
       rm(med_stack)
+      rm(patch_stack)
+      rm(temp)
       gc()
     }
     
@@ -418,6 +442,8 @@ deep_stacker = function(input_args){
 
 }
 
+area_size = test_wcs(input_args = input_args)
+input_args$mosaic_size_deg = area_size$radius
 deep_stacker(input_args = input_args)
 
 

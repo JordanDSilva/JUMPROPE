@@ -44,22 +44,27 @@ make_directory_structure = function(){
 }
 
 select_code_func = function(){
-  message("
+  message("          JumProPe version: ", jumprope_version, "
           ############################################################
           ############################################################
           ## Thank you for choosing ZORK for your JWST processing!  ##
           ## Press:                                                 ##
           ## 1 = Warp short to long                                 ##
-          ## 2 = Query GAIA                                         ## 
-          ## 3 = Star masks                                         ##
-          ## 4 = ProDetect                                          ##
-          ## 5 = Query HST                                          ##
-          ## 6 = Warp stack HST                                     ##
-          ## 7 = ProMeasure                                         ##
+          ## 2 = Copy long                                          ##
+          ## 3 = Query GAIA                                         ## 
+          ## 4 = Star masks                                         ##
+          ## 5 = Star masks for big mosaic                          ##
+          ## 6 = ProDetect                                          ##
+          ## 7 = Query HST                                          ##
+          ## 8 = Warp stack HST                                     ##
+          ## 9 = Copy HST for big mosaic                            ##
+          ## 10 = ProMeasure                                        ##
           ##                                                        ##
-          ## CONTROL + /\ to EXIT                                   ##
+          ## CONTROL + /\ to EXIT                                    ##
           ############################################################
-          ############################################################"
+          ## E.g., 2,3,4,6 for copying, stars, source detection     ##
+          ############################################################
+          "
   )
   select_code = toString(readLines("stdin", n=1))
   select_vector = as.integer(
@@ -68,12 +73,12 @@ select_code_func = function(){
     )[[1]]
   )
   
-  if( sum(select_vector %in% 1:7) == 0){
+  if( sum(select_vector %in% 1:10) == 0){
     message("Oops, I think you made a mistake. Trying again.")
     select_code_func()
   }
   else{
-    return(c(1:7)[1:7 %in% select_vector])
+    return(c(1:10)[1:10 %in% select_vector])
   }
   
 }
@@ -85,10 +90,10 @@ main = function(){
   if (length(args)==0) {
     message("Specify VID")
     VID = ""
-    MODULE = "NRCA|NRCB"
+    MODULE = ""
   } else if (length(args)==1) {
     VID = toString(args[1])
-    MODULE = "NRCA|NRCB"
+    MODULE = ""
   } else if (length(args)==2) {
     VID = toString(args[1])
     MODULE = toupper(toString(args[2]))
@@ -140,11 +145,14 @@ main = function(){
   
   code_organiser = list(
     'warp_short_to_long'=warp_short_to_long,
+    'copy_long'=copy_long,
     'query_gaia'=query_gaia,
     'star_mask'=star_mask,
+    'star_mask_tile'=star_mask_tile,
     'do_detect'=do_detect,
     'query_hst'=query_hst,
     'warp_stack_hst'=hst_warp_stack,
+    'copy_hst_for_tile'=copy_hst_for_tile,
     'do_measure'=do_measure
   )
   

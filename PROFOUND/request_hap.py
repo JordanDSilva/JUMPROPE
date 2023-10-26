@@ -38,7 +38,7 @@ os.makedirs(zip_dir, exist_ok=True)
 
 if os.path.isfile(lookup_path):
     df = pd.read_csv(lookup_path)
-    cat = df.loc[(df['VISIT_ID'] == int(args.VID)) &
+    cat = df.loc[(df['VISIT_ID'] == args.VID) &
                  (df['MODULE'] == args.MODULE.upper()), :]
     print(cat)
     targ_ra = cat['RA_CEN'].values[0]

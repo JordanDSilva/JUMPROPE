@@ -49,10 +49,10 @@ main = function(){
   if (length(args)==0) {
     message("Specify VID")
     VID = ""
-    MODULE = "NRCA|NRCB"
+    MODULE = ""
   } else if (length(args)==1) {
     VID = toString(args[1])
-    MODULE = "NRCA|NRCB"
+    MODULE = ""
   } else if (length(args)==2) {
     VID = toString(args[1])
     MODULE = toupper(toString(args[2]))
@@ -101,7 +101,7 @@ main = function(){
   )
   
   code_organiser = list(
-    'warp_short_to_long'=warp_short_to_long,
+    'copy_long'=copy_long,
     'query_gaia'=query_gaia,
     'star_mask'=star_mask,
     'do_detect'=do_detect,
