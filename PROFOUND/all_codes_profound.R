@@ -21,8 +21,8 @@ jumprope_version = 2.0
 ######################
 input_args = list(
   ref_dir = "/Volumes/RAIDY/JWST/",
-  VID = "NEPTDF",
-  MODULE = "NEPTDF",
+  VID = "1176241001",
+  MODULE = "NRCA",
   cores_stack = 1
 )
 ######################
@@ -605,11 +605,15 @@ do_detect = function(input_args, detect_bands = "ALL", profound_function = profo
                                       magzero_in = 23.9, magzero_out = 23.9, cores = 1, cores_warp = 1)
   
   pix_mask = propanes[[1]]$weight[,]$imDat
-  pix_mask[pix_mask<1]=0
-  pix_mask[pix_mask>0]=1
+  pix_mask[pix_mask <= 1]= 0
+  pix_mask[pix_mask > 0]=1
   pix_mask = 1 - pix_mask
   
-  profound = profound_function(frame = stack_image$image[,], skyRMS = (stack_image$inVar[,]$imDat)^-0.5, star_mask = star_mask$mask, pix_mask=pix_mask)
+  profound = profound_function(frame = stack_image$image[,], 
+                               skyRMS = (stack_image$inVar[,]$imDat)^-0.5, 
+                               star_mask = star_mask$mask, 
+                               pix_mask=pix_mask)
+
   profound$segstats$MODULE = rep(MODULE, dim(profound$segstats)[1])
   profound$segstats$VID = rep(VID, dim(profound$segstats)[1])
   

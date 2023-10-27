@@ -24,9 +24,9 @@ profound_detect_master = function(frame, skyRMS, star_mask, pix_mask=NULL, segim
     smooth = T,
     sigma = 0.8,
     
-    tolerance = 1.0,
+    tolerance = 3.0,
     reltol = -1.0,
-    cliptol = 300,
+    cliptol = 100,
     
     #size = 13,
     iters = 4,

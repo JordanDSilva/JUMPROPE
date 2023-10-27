@@ -17,7 +17,7 @@ input_args = list(
   ref_dir = "/Volumes/RAIDY/JWST/",   
   RA = colMeans(ref_cat)[1],   
   Dec = colMeans(ref_cat)[2],      
-  super_name = "ELGORDO",   
+  super_name = "CEERS",   
   ref_cat = ref_cat,      
   grid_size = "long" #default save on memory, 0.06arcsec/pix 
 ) 
@@ -32,13 +32,13 @@ test_wcs = function(input_args){
   mosaic_med = paste0(mosaic_dir, "/Median/")
   mosaic_patch = paste0(mosaic_dir, "/Patch/")
   
-  dir.create(mosaic_dir, recursive = T)
-  dir.create(mosaic_invar, recursive = T)   
-  dir.create(mosaic_med, recursive = T)
-  dir.create(mosaic_patch, recursive = T)
-
+  dir.create(mosaic_dir, recursive = T, showWarnings = F)
+  dir.create(mosaic_invar, recursive = T, showWarnings = F)   
+  dir.create(mosaic_med, recursive = T, showWarnings = F)
+  dir.create(mosaic_patch, recursive = T, showWarnings = F)
+  
   message("Searching for frames in ", input_args$RA, " ", input_args$Dec)
-  find_frames = propaneFrameFinder(
+  find_frames_raw = propaneFrameFinder(
     dirlist = patch_dir,
     RAcen = input_args$RA,
     Deccen = input_args$Dec,
@@ -48,163 +48,167 @@ test_wcs = function(input_args){
   )
   
   grid_size = input_args$grid_size
+  find_frames = find_frames_raw[grepl(grid_size, find_frames_raw$full) & grepl("NRC", find_frames_raw$full), ]
   
-  nrc="NRC" 
-
   wcs_info = Rfits_key_scan(
-      filelist = find_frames$full[grepl(grid_size, find_frames$full) & grepl("NRC", find_frames$full)],
-      keylist = c("CRVAL1",
-                  "CRVAL2",
-                  "CD1_1",
-                  "CD1_2",
-                  "CD2_1",
-                  "CD2_2",
-                  "NAXIS1",
-                  "NAXIS2",
-                  "CRPIX1",
-                  "CRPIX2"),
-      get_pixscale = T,
-      get_centre = T,
-      cores = 1
-    )
-    
-    pixscale_deg = mean(find_frames$pixscale)/3600
-    
-    RA_val = mean(wcs_info$centre_RA)
-    Dec_val = mean(wcs_info$centre_Dec)
-
-    wcs = Rwcs_keypass(
-      CRVAL1 = RA_val,
-      CRVAL2 = Dec_val,
-      CD1_1 = pixscale_deg,
-      CD1_2 = 0,
-      CD2_1 = 0,
-      CD2_2 = pixscale_deg
-    )
-    
-    foobar = function(mosaic_size_deg){
-      message("...")
-      foreach(i = seq_along(mosaic_size_deg), .combine = "c")%do%{
-        wcs$NAXIS1 = ceiling(mosaic_size_deg[i] / pixscale_deg)
-        wcs$NAXIS2 = ceiling(mosaic_size_deg[i] / pixscale_deg)
-        wcs$CRPIX1 = wcs$NAXIS1/2.0
-        wcs$CRPIX2 = wcs$NAXIS2/2.0
+    filelist = find_frames$full,
+    keylist = c("CRVAL1",
+                "CRVAL2",
+                "CD1_1",
+                "CD1_2",
+                "CD2_1",
+                "CD2_2",
+                "NAXIS1",
+                "NAXIS2",
+                "CRPIX1",
+                "CRPIX2"),
+    get_pixscale = T,
+    get_centre = T,
+    cores = 1
+  )
+  
+  pixscale_deg = mean(find_frames$pixscale)/3600
+  
+  RA_val = mean(wcs_info$centre_RA)
+  Dec_val = mean(wcs_info$centre_Dec)
+  
+  wcs = Rwcs_keypass(
+    CRVAL1 = RA_val,
+    CRVAL2 = Dec_val,
+    CD1_1 = pixscale_deg,
+    CD1_2 = 0,
+    CD2_1 = 0,
+    CD2_2 = pixscale_deg
+  )
+  
+  foobar = function(mosaic_size_deg){
+    message("...")
+    foreach(i = seq_along(mosaic_size_deg), .combine = "c")%do%{
+      wcs$NAXIS1 = ceiling(mosaic_size_deg[i] / pixscale_deg)
+      wcs$NAXIS2 = ceiling(mosaic_size_deg[i] / pixscale_deg)
+      wcs$CRPIX1 = wcs$NAXIS1/2.0
+      wcs$CRPIX2 = wcs$NAXIS2/2.0
+      
+      wcs_temp = wcs
+      wcs_temp$NAXIS1 = 10.0
+      wcs_temp$NAXIS2 = 10.0
+      wcs_temp$CRPIX1 = 5.0
+      wcs_temp$CRPIX2 = 5.0
+      
+      cen_coords = Rwcs_s2p(
+        RA = RA_val,
+        Dec = Dec_val,
+        keyvalues = wcs
+      )
+      
+      cen_frames = Rwcs_s2p(
+        RA = find_frames$centre_RA[grepl(grid_size, find_frames$stub)], 
+        Dec = find_frames$centre_Dec[grepl(grid_size, find_frames$stub)], 
+        keyvalues = wcs
+      )
+      
+      boundary_frames = Rwcs_s2p(
+        RA = unlist(find_frames[, grep("RA", names(find_frames), value = T)]), 
+        Dec = unlist(find_frames[, grep("Dec", names(find_frames), value = T)]), 
+        keyvalues = wcs
+      )
+      
+      xcen = as.integer(round(cen_frames[,1],0))
+      ycen = as.integer(round(cen_frames[,2],0))
+      
+      box = as.integer(round(find_frames$dim_1[grepl(grid_size, find_frames$stub)]/2.0,0))
+      
+      left = (xcen - box)
+      right = (xcen + box)
+      bottom = (ycen - box)
+      up = (ycen + box)
+      
+      mat = matrix(data = 0, nrow = wcs$NAXIS1, ncol = wcs$NAXIS2)
+      
+      if(any(
+        (left <= 0) | (right >= dim(mat)[1]) | (bottom <= 0) | (up >= dim(mat)[2]) | (boundary_frames <= 0) | (boundary_frames >= dim(mat)[1])
+      ) 
+      ){
+        return(Inf)
+      }else{
+        for(j in 1:dim(find_frames)[1]){
+          mat[((xcen[j]-box[j]):(xcen[j]+box[j])),((ycen[j]-box[j]):(ycen[j]+box[j]))] = 1
+        }
         
-        wcs_temp = wcs
-        wcs_temp$NAXIS1 = 10.0
-        wcs_temp$NAXIS2 = 10.0
-        wcs_temp$CRPIX1 = 5.0
-        wcs_temp$CRPIX2 = 5.0
+        fill_fraction = sum(mat==1)/prod(dim(mat))
         
-        cen_coords = Rwcs_s2p(
-          RA = RA_val,
-          Dec = Dec_val,
-          keyvalues = wcs
-        )
-        
-        cen_frames = Rwcs_s2p(
-          RA = find_frames$centre_RA, Dec = find_frames$centre_Dec, keyvalues = wcs
-        )
-        
-        xcen = as.integer(round(cen_frames[,1],0))
-        ycen = as.integer(round(cen_frames[,2],0))
-        
-        box = as.integer(round(find_frames$dim_1/2.0,0))
-        
-        left = xcen-box
-        right = xcen+box
-        bottom = ycen-box
-        up = ycen + box
-        
-        mat = matrix(data = 0, nrow = wcs$NAXIS1, ncol = wcs$NAXIS2)
-        
-        if(any(
-          (left <= 0) | (right >= dim(mat)[1]) | (bottom <= 0) | (up >= dim(mat)[2]))
-        ){
+        if((fill_fraction >= 1)){
           return(Inf)
         }else{
-          for(j in 1:dim(find_frames)[1]){
-            mat[((xcen[j]-box[j]):(xcen[j]+box[j])),((ycen[j]-box[j]):(ycen[j]+box[j]))] = 1
-          }
-          
-          fill_fraction = sum(mat==1)/prod(dim(mat))
-          
-          border_frac = mat
-          border_frac[100:(dim(mat)[1]-100), 100:(dim(mat)[2]-100)] = 0
-          
-          if((fill_fraction >= 1) | any(border_frac==1)){
-            return(Inf)
-          }else{
-            fill_fraction
-          }
+          fill_fraction
         }
       }
     }
-    
-   message("Finding optimum mosaic size")
-   suppressWarnings({
-     foo_optim <- optim(
-        par = c(0.15), fn = foobar, method = "Brent", control = list(fnscale = -1), lower = 0.1, upper = 1.0
-      )
-    })
-   
-    message("Rendering footprint plot")
-    mosaic_size_deg = foo_optim$par
-    wcs$NAXIS1 = ceiling(mosaic_size_deg / pixscale_deg)
-    wcs$NAXIS2 = ceiling(mosaic_size_deg / pixscale_deg)
-    wcs$CRPIX1 = wcs$NAXIS1/2.0
-    wcs$CRPIX2 = wcs$NAXIS2/2.0
-    
-    wcs_temp = wcs
-    wcs_temp$NAXIS1 = 10.0
-    wcs_temp$NAXIS2 = 10.0
-    wcs_temp$CRPIX1 = 5.0
-    wcs_temp$CRPIX2 = 5.0
-   
-    png(paste0(mosaic_dir, "/", input_args$super_name, "_layout.png"), width = 10, height = 8, units="in", res=72) 
-    par(mar = c(3.5, 3.5, 1.5, 1.5), oma = rep(0,4))
-    Rwcs_overlap(
-      keyvalues_test = wcs_temp, keyvalues_ref = wcs, plot = T
+  }
+  
+  message("Finding optimum mosaic size")
+  suppressWarnings({
+    foo_optim <- optim(
+      par = c(0.17), fn = foobar, method = "Brent", control = list(fnscale = -1), lower = 0.1, upper = 1.0
     )
-    legend(x="topright", legend = foo_optim$par)
-    
-    cen_coords = Rwcs_s2p(
-      RA = RA_val,
-      Dec = Dec_val,
-      keyvalues = wcs
+  })
+  
+  message("Rendering footprint plot")
+  mosaic_size_deg = foo_optim$par
+  # mosaic_size_deg = 0.17
+  wcs$NAXIS1 = ceiling(mosaic_size_deg / pixscale_deg)
+  wcs$NAXIS2 = ceiling(mosaic_size_deg / pixscale_deg)
+  wcs$CRPIX1 = wcs$NAXIS1/2.0
+  wcs$CRPIX2 = wcs$NAXIS2/2.0
+  
+  wcs_temp = wcs
+  wcs_temp$NAXIS1 = 10.0
+  wcs_temp$NAXIS2 = 10.0
+  wcs_temp$CRPIX1 = 5.0
+  wcs_temp$CRPIX2 = 5.0
+  
+  png(paste0(mosaic_dir, "/", input_args$super_name, "_layout.png"), width = 10, height = 8, units="in", res=72) 
+  Rwcs_overlap(
+    keyvalues_test = wcs_temp, keyvalues_ref = wcs, plot = T
+  )
+  legend(x="topright", legend = foo_optim$par)
+  
+  cen_coords = Rwcs_s2p(
+    RA = RA_val,
+    Dec = Dec_val,
+    keyvalues = wcs
+  )
+  BL = Rwcs_s2p(
+    RA = find_frames$corner_BL_RA, Dec = find_frames$corner_BL_Dec, keyvalues = wcs
+  )
+  BR = Rwcs_s2p(
+    RA = find_frames$corner_BR_RA, Dec = find_frames$corner_BR_Dec, keyvalues = wcs
+  )
+  TL = Rwcs_s2p(
+    RA = find_frames$corner_TL_RA, Dec = find_frames$corner_TL_Dec, keyvalues = wcs
+  )
+  TR = Rwcs_s2p(
+    RA = find_frames$corner_TR_RA, Dec = find_frames$corner_TR_Dec, keyvalues = wcs
+  )
+  
+  BL_dist = (BL[,1] - cen_coords[,1])^2 + (BL[,2] - cen_coords[,2])^2
+  BL_dist = (BL[,1] - cen_coords[,1])^2 + (BL[,2] - cen_coords[,2])^2
+  BL_dist = (BL[,1] - cen_coords[,1])^2 + (BL[,2] - cen_coords[,2])^2
+  BL_dist = (BL[,1] - cen_coords[,1])^2 + (BL[,2] - cen_coords[,2])^2
+  
+  for(i in seq_along(find_frames$full)){
+    polygon(c(BL[i,1], TL[i,1], TR[i,1], BR[i,1]),
+            c(BL[i,2], TL[i,2], TR[i,2], BR[i,2]),
+            # as.numeric(find_frames[i,c('corner_BL_RA','corner_TL_RA','corner_TR_RA','corner_BR_RA')]),
+            # as.numeric(find_frames[i,c('corner_BL_Dec','corner_TL_Dec','corner_TR_Dec','corner_BR_Dec')]),
+            border = "red",
+            col = "red"
     )
-    BL = Rwcs_s2p(
-      RA = find_frames$corner_BL_RA, Dec = find_frames$corner_BL_Dec, keyvalues = wcs
-    )
-    BR = Rwcs_s2p(
-      RA = find_frames$corner_BR_RA, Dec = find_frames$corner_BR_Dec, keyvalues = wcs
-    )
-    TL = Rwcs_s2p(
-      RA = find_frames$corner_TL_RA, Dec = find_frames$corner_TL_Dec, keyvalues = wcs
-    )
-    TR = Rwcs_s2p(
-      RA = find_frames$corner_TR_RA, Dec = find_frames$corner_TR_Dec, keyvalues = wcs
-    )
-    
-    BL_dist = (BL[,1] - cen_coords[,1])^2 + (BL[,2] - cen_coords[,2])^2
-    BL_dist = (BL[,1] - cen_coords[,1])^2 + (BL[,2] - cen_coords[,2])^2
-    BL_dist = (BL[,1] - cen_coords[,1])^2 + (BL[,2] - cen_coords[,2])^2
-    BL_dist = (BL[,1] - cen_coords[,1])^2 + (BL[,2] - cen_coords[,2])^2
-    
-    for(i in seq_along(find_frames$full)){
-      polygon(c(BL[i,1], TL[i,1], TR[i,1], BR[i,1]),
-              c(BL[i,2], TL[i,2], TR[i,2], BR[i,2]),
-        # as.numeric(find_frames[i,c('corner_BL_RA','corner_TL_RA','corner_TR_RA','corner_BR_RA')]),
-              # as.numeric(find_frames[i,c('corner_BL_Dec','corner_TL_Dec','corner_TR_Dec','corner_BR_Dec')]),
-              border = "red",
-              col = "red"
-              )
-    }
-    dev.off()
-    message("Optimum mosaic size: ", mosaic_size_deg, " deg")
-    return(list(radius=mosaic_size_deg, wcs = wcs))
+  }
+  dev.off()
+  message("Optimum mosaic size: ", mosaic_size_deg, " deg")
+  return(list(radius=mosaic_size_deg, wcs = wcs))
 }
-
 deep_stacker = function(input_args){
   
   ## Find aligning frames in search radius, align with ProPaneTweakCat and stack with ProPane
@@ -230,7 +234,7 @@ deep_stacker = function(input_args){
       input_args$ref_dir, "/FieldFootprints/frames_info.csv"
     )
   )
-
+  
   cal_sky_info = fread(
     paste0(
       input_args$ref_dir, "/Pro1oF/cal_sky_info.csv"
@@ -247,7 +251,7 @@ deep_stacker = function(input_args){
     rad = input_args$mosaic_size_deg,
     cores = 8,
     plot=F
-    )
+  )
   
   UNIQUE_VIDS = VIDS[sapply(VIDS, function(x){any(grepl(x,find_frames$file))} )==TRUE]
   # 
@@ -278,7 +282,7 @@ deep_stacker = function(input_args){
     
     RA_val = mean(wcs_info$centre_RA)
     Dec_val = mean(wcs_info$centre_Dec)
-
+    
     wcs = Rwcs_keypass(
       CRVAL1 = RA_val,
       CRVAL2 = Dec_val,
@@ -293,12 +297,11 @@ deep_stacker = function(input_args){
     wcs$CRPIX1 = wcs$NAXIS1/2.0
     
     wcs$CRPIX2 = wcs$NAXIS2/2.0
-
+    
     ref_cat = input_args$ref_cat
-
+    
     UNIQUE_FILTERS = unique(stack_grid$FILTER)
     UNIQUE_FILTERS=UNIQUE_FILTERS[!grepl("CLEAR", UNIQUE_FILTERS)]
-    
     for(i in 1:length(UNIQUE_FILTERS)){
       
       file_info_filt = file_info[grepl(paste0(UNIQUE_FILTERS[i]), file_info$full),]
@@ -382,7 +385,7 @@ deep_stacker = function(input_args){
           delta_y = tweak_cat$par[2],
           delta_rot = tweak_cat$par[3]
         )
-      
+        
       }
       
       deep_frame = propaneStackWarpInVar(
@@ -439,11 +442,12 @@ deep_stacker = function(input_args){
     }
     
   }
-
+  
 }
 
 area_size = test_wcs(input_args = input_args)
 input_args$mosaic_size_deg = area_size$radius
 deep_stacker(input_args = input_args)
+
 
 
