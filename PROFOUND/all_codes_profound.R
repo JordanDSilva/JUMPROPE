@@ -21,8 +21,8 @@ jumprope_version = 2.0
 ######################
 input_args = list(
   ref_dir = "/Volumes/RAIDY/JWST/",
-  VID = "1176241001",
-  MODULE = "NRCA",
+  VID = "NEPTDF",
+  MODULE = "NEPTDF",
   cores_stack = 1
 )
 ######################
@@ -964,6 +964,14 @@ hst_warp_stack = function(input_args){
       message("No HST to fold in!")
     }else{
       hst_key_scan = Rfits_key_scan(files_temp, keylist = c("FILTER", "DETECTOR", "INSTRUME"))
+      
+      if(sum(is.na(hst_key_scan[,c("FILTER", "DETECTOR", "INSTRUME")])) == 
+         prod(dim(hst_key_scan[,c("FILTER","DETECTOR","INSTRUME")]))){
+        do_sky_rem = F
+        message("Skipping sky rem. No FILTER, DETECTOR, INSTRUME keyword. Big mosaic?")
+      }else{
+        do_sky_rem = T
+      }
       
       filters_na = na.exclude(
         str_extract(
