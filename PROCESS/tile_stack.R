@@ -11,17 +11,16 @@ library(data.table)
 library(stringr)
 
 ## User defined inputs here
-#ref_cat = fread("ref_cats/ceers_ref_cat.csv") #example for HST catalogue in EGS field
-ref_cat = fread("/Volumes/RAIDY/JWST/Mosaic_Stacks/ref_cats/mosaic_macs0416_ep1+2+3_nircam.csv") #example for HST catalogue in EGS field
+ref_cat = fread("ref_cats/ceers_ref_cat.csv") #example for HST catalogue in EGS field
 
 input_args = list(
-  ref_dir = "/Volumes/RAIDY/JWST/",   
+  ref_dir = "/",   
   RA = colMeans(ref_cat)[1],   
   Dec = colMeans(ref_cat)[2],      
-  super_name = "MACS0416",   
-  #super_name = "CEERS",   
+  at_these_coords = F, #Make true if want to stack at user-defined RA, Dec
+  super_name = "FOOBAR",   
   ref_cat = ref_cat,      
-  grid_size = "long" #default save on memory, 0.06arcsec/pix 
+  grid_size = "long" #default save on memory, 0.06arcsec/pix,
 ) 
 
 test_wcs = function(input_args){
@@ -71,8 +70,13 @@ test_wcs = function(input_args){
   
   pixscale_deg = mean(find_frames$pixscale)/3600
   
-  RA_val = mean(wcs_info$centre_RA)
-  Dec_val = mean(wcs_info$centre_Dec)
+  if(input_args$at_these_coords){
+    RA_val = input_args$RA
+    Dec_val = input_args$Dec
+  }else{
+    RA_val = mean(wcs_info$centre_RA)
+    Dec_val = mean(wcs_info$centre_Dec)
+  }
   
   wcs = Rwcs_keypass(
     CRVAL1 = RA_val,
@@ -282,8 +286,13 @@ deep_stacker = function(input_args){
     
     pixscale_deg = mean(file_info$pixscale)/3600
     
-    RA_val = mean(wcs_info$centre_RA)
-    Dec_val = mean(wcs_info$centre_Dec)
+    if(input_args$at_these_coords){
+      RA_val = input_args$RA
+      Dec_val = input_args$Dec
+    }else{
+      RA_val = mean(wcs_info$centre_RA)
+      Dec_val = mean(wcs_info$centre_Dec)
+    }
     
     wcs = Rwcs_keypass(
       CRVAL1 = RA_val,
