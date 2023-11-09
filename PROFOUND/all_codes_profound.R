@@ -21,8 +21,8 @@ jumprope_version = 2.0
 ######################
 input_args = list(
   ref_dir = "/Volumes/RAIDY/JWST/",
-  VID = "NEPTDF",
-  MODULE = "NEPTDF",
+  VID = "2738008001",
+  MODULE = "NRCB",
   cores_stack = 1
 )
 ######################
@@ -760,15 +760,29 @@ do_measure = function(input_args){
   filter.names[is.na(filter.names)] = sapply(data.list[is.na(filter.names)], function(x)str_split_1(x, "_")[6]) ## Filter name should hopefully always be in position 6
   
   bad_name = data.list[is.na(filter.names)]
-  str_extract(bad_name,"F+")
+
+  ext = sapply(data.list, function(x)Rfits_extname_to_ext(x, extname = "image"))
+  images = Rfits_make_list(
+    filelist = data.list,
+    extlist = ext,
+    pointer = F
+  )
+  names(images) = filter.names      
   
-  images = lapply(data.list, function(x){
-    ext = Rfits_extname_to_ext(x, extname = "image")
-    message(paste("Using ext=", ext))
-    Rfits_read_image(x, ext = ext)
+  inVar = lapply(data.list, function(x){
+    
+    ext = Rfits_extname_to_ext(filename = x, extname = "inVar")
+    
+    if(is.na(ext)){
+      return(NULL)
+    }else{
+      inVar = Rfits_read_image(x, ext = ext)
+      return(inVar)
+    }
+    
   })
-  
-  names(images) = filter.names                                                    # filter ordering is not important
+  names(inVar) = filter.names
+  # filter ordering is not important
   
   ####### Initiate for sampling error #############
   r = seq(2,10)
@@ -803,22 +817,23 @@ do_measure = function(input_args){
   for(ff in names(images)){
     message(paste0("Running ProMeasure on: ", ff))
     filt = images[[ff]]
+    filt_invar = inVar[[ff]]
     # filt[[ff]]$imDat[filt[[ff]]$imDat==0L] = NA
-    dum_pro = measure_profound(filt, segim, mask)
-    dum_pro_col = measure_profound(filt, segim, mask, redosegim = F) #don't redilate segments e.g., colour photometry mode
+    dum_pro = measure_profound(filt, inVar = filt_invar, segim, mask)
+    dum_pro_col = measure_profound(filt, inVar = filt_invar, segim, mask, redosegim = F) #don't redilate segments e.g., colour photometry mode
     csvout[paste0(ff,'_fluxt')] = dum_pro$segstats$flux
     csvout[paste0(ff,'_fluxt_err')] = dum_pro$segstats$flux_err
     csvout[paste0(ff,'_fluxc')] = dum_pro_col$segstats$flux
     csvout[paste0(ff,'_fluxc_err')] = dum_pro_col$segstats$flux_err
     csvout[paste0(ff,'_maskfrac')] = dum_pro$segstats$Nmask/dum_pro$segstats$Nedge
-    
+
     CairoPDF(file.path(inspect_dir,paste0("profound_",ff,"_inspect.pdf")), width = 10, height = 10 )
     plot(dum_pro)
     plot(dum_pro_col)
     par(mfrow = c(1,2), mar = rep(0,4), oma = rep(0,4))
-    profoundSegimPlot(dum_pro, sparse=1)
+    profoundSegimPlot(dum_pro, sparse=1, sky = dum_pro$sky, qdiff = T)
     legend(x="topleft", legend="Total photometry")
-    profoundSegimPlot(dum_pro_col, sparse=1)
+    profoundSegimPlot(dum_pro_col, sparse=1, sky = dum_pro$sky, qdiff = T)
     legend(x="topleft", legend="Colour photometry")
     dev.off()
     
@@ -826,7 +841,7 @@ do_measure = function(input_args){
     img[img == 0L] = NA
     img[mask] = NA
     sample_mask = (dum_pro$objects_redo | mask)
-    
+
     row=foreach(rr = r, .combine="c")%do%{
       dum = err_sampler(rr, img, ff, mask = sample_mask, root=sampling_dir)
       q = unname(quantile(dum$sum, probs=c(0.5, 0.16), na.rm=F))
@@ -841,8 +856,8 @@ do_measure = function(input_args){
     fit_samp = lm(log10(master[[ff]]) ~ poly(log10(master$a), 1, raw = T))
     slope = unname(fit_samp$coefficients)[2]
     intercept = unname(fit_samp$coefficients)[1]
-    cat(ff, slope, intercept, '\n', file = error_file, sep = '\t', append = T)      # Save the fitted relation 
-    
+    cat(ff, slope, intercept, '\n', file = error_file, sep = '\t', append = T)      # Save the fitted relation
+
     CairoPDF(file.path(sampling_dir,paste0(ff,"_sample_error.pdf")))                            # Plot the sampled relation
     magplot(master$a, master[[ff]], col='white', pch=1,
             log='xy', xlim = c(5,5000), ylim = c(0.0001,1.0),
@@ -854,7 +869,7 @@ do_measure = function(input_args){
     abline(intercept, slope, col='red', lty=2)
     legend('bottomright', legend = c('sample', 'profound', 'corrected'), col = c('red','darkgrey','black'), pch = c(1,3,1), cex=1.2)
     dev.off()
-    
+
     csvout[paste0(ff,'_scaled_fluxt_err')] = error_scaling(dum_pro$segstats$flux_err, dum_pro$segstats$N100, slope, intercept)
     csvout[paste0(ff,'_scaled_fluxc_err')] = error_scaling(dum_pro_col$segstats$flux_err, dum_pro_col$segstats$N100, slope, intercept)
     saveRDS(dum_pro, file.path(measurements_dir,paste(VID,MODULE,ff,"results.rds",sep='_')))

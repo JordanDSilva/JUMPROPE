@@ -33,7 +33,7 @@ profound_detect_master = function(frame, skyRMS, star_mask, pix_mask=NULL, segim
     
     box = 100,
     grid = 100,
-    boxiters = 2,
+    boxiters = 0,
     
     roughpedestal = F,
     pixelcov = F,
@@ -48,7 +48,16 @@ profound_detect_master = function(frame, skyRMS, star_mask, pix_mask=NULL, segim
   return(pro)
 }
 
-measure_profound = function(super_img = super_img, segim=segim, mask=mask, redosegim=T){
+measure_profound = function(super_img = super_img, inVar = inVar, segim=segim, mask=mask, redosegim=T){
+  
+  if(inherits(inVar, 'Rfits_image')){
+    skyRMS = inVar$imDat^-0.5
+  }else if(is.null(inVar)){
+    skyRMS = NULL
+  }else{
+    skyRMS = inVar^-0.5
+  }
+  
   if(redosegim){
     iters = 3
   }else{
@@ -67,9 +76,10 @@ measure_profound = function(super_img = super_img, segim=segim, mask=mask, redos
     
     # sky estimate
     sky = 0,        # Do we model the sky again?
+    skyRMS = skyRMS,
     box = 100,
     grid = 100,
-    boxiters = 0,
+    boxiters = 2,
     # measurement mode
     dotot = T,
     docol = T,
