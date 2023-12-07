@@ -88,12 +88,26 @@ def query_filename(dl_dir, visit_id, stage, instrument, filename):
                                             dataproduct_type="IMAGE",
                                             instrument_name=[instrument, instrument+"/IMAGE"]
                                             )
-    Observations.enable_cloud_dataset(provider='AWS')
+    # Observations.enable_cloud_dataset(provider='AWS')
     data_products = Observations.get_product_list(obs_table)
     products_stage2 = Observations.filter_products(data_products,
                                                    extension="fits",
                                                    productFilename=filename,
                                                    productSubGroupDescription=stage)
+    Observations.download_products(products_stage2,
+                                   download_dir=dl_dir,
+                                   curl_flag=False,
+                                   cache=True)
+    file_new = glob.glob(dl_dir + "/mastDownload/JWST/**/*fits")
+    for ff in file_new:
+        shutil.move(ff, os.path.join(dl_dir, os.path.basename(ff)))
+
+    shutil.rmtree(dl_dir + "/mastDownload/")
+
+
+def query_table(dl_dir, table):
+    """Get a pandas table and convert to astropy table for easy downloading"""
+    products_stage2 = astropy.table.Table.from_pandas(table)
     Observations.download_products(products_stage2,
                                    download_dir=dl_dir,
                                    curl_flag=False,
@@ -112,7 +126,7 @@ def query(visit_id, stage, instrument, dl_dir, dl_products=False):
                                             dataproduct_type="IMAGE",
                                             instrument_name=[instrument, instrument+"/IMAGE"])
 
-    Observations.enable_cloud_dataset(provider='AWS')
+    # Observations.enable_cloud_dataset(provider='AWS')
     data_products = Observations.get_product_list(obs_table)
     products_stage2 = Observations.filter_products(data_products,
                                                    extension="fits",
@@ -164,6 +178,32 @@ def check_files(dl_dir, csv_file, visit_id, stage, instrument):
             print("File wrong size, redownloading: " + file)
             query_filename(dl_dir, visit_id, stage, instrument, filename=base_name)
 
+def check_filesV2(dl_dir, csv_file, visit_id):
+    all_files = glob.glob(dl_dir + "*fits")
+    all_files_redo = [ii for ii in all_files if visit_id in ii]
+    all_files_redo_basenames = [os.path.basename(ii) for ii in all_files_redo]
+
+    csv_file_redo = csv_file[csv_file["productFilename"].str.contains(visit_id)]
+
+    df1 = csv_file_redo[~csv_file_redo["productFilename"].isin(all_files_redo_basenames)]
+    if len(df1)>0:
+        print("Missing " + str(len(df1)) + " files, downloading!")
+        query_table(dl_dir, df1)
+    # print(df1)
+
+    all_files = glob.glob(dl_dir + "*fits")
+    all_files_redo = [ii for ii in all_files if visit_id in ii]
+    all_files_redo_basenames = [os.path.basename(ii) for ii in all_files_redo]
+    temp_size = [os.stat(file).st_size for file in all_files_redo]
+
+    df1 = csv_file_redo[csv_file_redo["productFilename"].isin(all_files_redo_basenames)]
+    df2 = df1.loc[~(df1["size"].values  == temp_size)]
+    print(df2)
+    print(sum(df1["size"].values  == temp_size))
+    if len(df2)>0:
+        print(str(len(df2)) + " files wrong sizes, redownloading!")
+        query_table(dl_dir, df2)
+
 def main(visit_id, stage, instrument, check_miri):
 
     JUMPROPE_MAST_TOKEN = os.getenv('JUMPROPE_MAST_TOKEN')
@@ -193,19 +233,15 @@ def main(visit_id, stage, instrument, check_miri):
         print("Never seen visit " + visit_id + " before. Downloading everything!")
         query(visit_id, stage, instrument, dl_dir, dl_products=True)
         time.sleep(300) #wait 5 minuts and check files
-        check_files(dl_dir = dl_dir,
+        check_filesV2(dl_dir = dl_dir,
                     csv_file=check_csv,
-                    visit_id = visit_id,
-                    stage=stage,
-                    instrument=instrument)
+                    visit_id = visit_id)
     if len(all_files_redo)>0:
         ## if there are already files in the directory
         ## check that we've downloaded everything
-        all_check = check_files(dl_dir = dl_dir,
-                                csv_file=check_csv,
-                                visit_id=visit_id,
-                                stage=stage,
-                                instrument=instrument)
+        check_filesV2(dl_dir=dl_dir,
+                      csv_file=check_csv,
+                      visit_id=visit_id)
         mast_files = glob.glob(dl_dir + "/mastDownload/JWST/**/*fits")
         # print(mast_files) ## check if there are any files in the mastDownload folder
         if len(mast_files) == 0:
@@ -232,8 +268,7 @@ def main(visit_id, stage, instrument, check_miri):
         all_files = glob.glob(miri_dl_dir + "*fits")
         check_csv = pd.read_csv(*glob.glob(miri_dl_dir + "*csv"))
         for i in range(len(qmiri)):
-            check_files(all_files=all_files,
-                        csv_file=check_csv,
+            check_files(csv_file=check_csv,
                         query_obj=qmiri[i],
                         stage="CAL",
                         instrument="MIRI")

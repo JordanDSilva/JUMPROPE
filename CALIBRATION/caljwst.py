@@ -9,16 +9,21 @@ os.environ["CRDS_SERVER_URL"] = "https://jwst-crds.stsci.edu" #where to download
 
 from jwst.pipeline import calwebb_detector1 #import detector processor, uncal-->rates
 from jwst.pipeline import calwebb_image2 #import image processor, rates-->cal
+from astroquery.mast import Observations
+from astropy.io import ascii
 
 import glob
 import sys
 import argparse #to run from command line, run <python3 calwebb.py -h> to display help
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--VISITID",
                     help = "VISITID. e.g., `2736001001` for SMACS")
-
+parser.add_argument("--redo",
+                    type = bool,
+                    help = "Should we redo the calibration even if files exist?",
+                    default = False)
 parser.add_argument("--max_cores", help = "How many cores e.g., 'half'", default = "half")
-
 args = parser.parse_args()
 
 def run1(input_data):
@@ -62,62 +67,100 @@ if __name__ == "__main__":
         print("Please set ENV variables. ")
         exit()
 
-    print(args)
-    N = 6 #N cores/processes 
+    N = 6 #N cores/processes
 
     if len(sys.argv)==1:
         parser.print_help()
         sys.exit(1)
-    if args.VISITID is not None:
+    elif args.VISITID is not None:
         visitid = args.VISITID
         PID = str(visitid)[0:4]
         ref_dir = JUMPROPE_DOWNLOAD_DIR
         uncal_dir = os.path.join(ref_dir, PID, 'UNCAL/NIRCAM') # folder must  be present in input directory
-        print(uncal_dir)
         files = glob.glob(uncal_dir + "/*fits")
-
         files = [s for s in files if visitid in s]
-        # files = os.listdir(uncal_dir) #list all of the uncals.fits
-   
-        #dir_frames = "/Volumes/Expansion/JWST/"
-        cal_dir = os.path.join(ref_dir, PID, 'CAL/NIRCAM') # cal directory
-        rates_dir = os.path.join(ref_dir, PID, 'RATES/NIRCAM') # rates directory
-
-        rates_files = glob.glob(rates_dir + "/*fits")
-        cal_files = glob.glob(cal_dir + "/*fits")
-
         uncal_files = [foo.split("_uncal")[0].split("/")[-1] for foo in files]
 
-        files_redo = []
-        for i in range(len(files)):
-            idx = [r for r, s in enumerate(cal_files) if uncal_files[i] in s]
-            if len(idx)>1:
-                print("Something went wrong \n")
-                print(cal_files[idx])
-                break
-            if len(idx)==1:
-                cal_size = os.stat(cal_files[idx[0]]).st_size
-                if cal_size != 117538560: #size of cal file on disk, hopefully shouldn't change :O
-                    files_redo.append(files[i])
-            if len(idx)==0:
-                files_redo.append(files[i])
+        #dir_frames = "/Volumes/Expansion/JWST/"
+        rates_dir = os.path.join(ref_dir, PID, 'RATES/NIRCAM') # rates directory
+        rates_files = glob.glob(rates_dir + "/*fits")
+        rates_files = [s for s in rates_files if visitid in s]
+        rates_files_names = [foo.split("_cal")[0].split("/")[-1] for foo in rates_files]
 
-        print(files_redo, sep="\n")
+        cal_dir = os.path.join(ref_dir, PID, 'CAL/NIRCAM') # cal directory
+        cal_files = glob.glob(cal_dir + "/*fits")
+        cal_files = [s for s in cal_files if visitid in s]
+        cal_files_names = [foo.split("_cal")[0].split("/")[-1] for foo in cal_files]
+
         # # Make the cal and rates directories
         os.makedirs(cal_dir, exist_ok=True)
         os.makedirs(rates_dir, exist_ok=True)
 
+        ## download csv from mast to check expected files and their sizes
+        obs_table = Observations.query_criteria(proposal_id=PID,
+                                                project='JWST',
+                                                dataproduct_type="IMAGE",
+                                                instrument_name=["NIRCAM", "NIRCAM/IMAGE"])
+        data_products = Observations.get_product_list(obs_table)
+        products_stage2 = Observations.filter_products(data_products,
+                                                       extension="fits",
+                                                       productSubGroupDescription="CAL",
+                                                       )
+        visit_ids = np.array([obs[3:13] for obs in products_stage2["obs_id"]])
+        idx = np.flatnonzero(np.core.defchararray.find(visit_ids, str(visitid)) != -1)
+        df = products_stage2[idx].to_pandas()
+
+
+        files_redo = []
+        if sum(df["obs_id"].isin(cal_files_names)) != len(df["obs_id"]): ## check that all of the expected cal files have been produced
+            idx = list(~df["obs_id"].isin(cal_files_names))
+            files_redo.append([files[i] for i,j in enumerate(idx) if j])
+            ## if not only run the missing cal files
+
+        temp_size = [os.stat(file).st_size for file in cal_files] ## check that the cal files are the correct size
+        cal_files_names = [foo.split("_cal")[0].split("/")[-1] for foo in cal_files]
+        if sum(temp_size >= df[df["obs_id"].isin(cal_files_names)]["size"]) != len(cal_files_names): ## if the cal files are les
+            idx = list(temp_size < df[df["obs_id"].isin(cal_files_names)]["size"])
+            files_redo.append([files[i] for i, j in enumerate(idx) if j])
+
+        files_redo = [i for j in files_redo for i in j]
+
+        if args.redo: ## override previous checks. In case we want to use a new pmap of calibration version for example
+            files_redo = files
+
+        print("Running " + str(len(files_redo)) + " files")
         for ff in files_redo:
           run1(ff)
+
+
+        # files_redo = []
+        # for i in range(len(files)):
+        #     idx = [r for r, s in enumerate(cal_files) if uncal_files[i] in s]
+        #     if len(idx)>1:
+        #         print("Something went wrong \n")
+        #         print(cal_files[idx])
+        #         break
+        #     if len(idx)==1:
+        #         cal_size = os.stat(cal_files[idx[0]]).st_size
+        #         if cal_size != 117538560: #size of cal file on disk, hopefully shouldn't change :O
+        #             files_redo.append(files[i])
+        #     if len(idx)==0:
+        #         files_redo.append(files[i])
+        #
+        # if args.redo:
+        #     files_redo = files
+        #
+        # print(files_redo, sep="\n")
+        # # # Make the cal and rates directories
+        # os.makedirs(cal_dir, exist_ok=True)
+        # os.makedirs(rates_dir, exist_ok=True)
+        #
 
         # #print(cal_files)
         # # Process files!
         #with Pool(processes=N) as p:
         #   p.map(run1, files_redo)
         # files_redo = [files[i] for i in range(len(files)) if not (any(uncal_files[i] in s for s in rates_files)) & (any(uncal_files[i] in s for s in cal_files))]
-
-
-
 
 #I’ve processed all the NIRCam smacs frames with cal-webb. The issue I was having was that two of the dark frames must not have downloaded #properly, so I redownloaded them manually. Process took about ~1 hour with 10 frames running in parallel over 270 frames. These are all with pmap 0953.
 #Data summary:
