@@ -1357,7 +1357,7 @@ wispFixer = function(wisp_im, ref_im,
                      poly=NULL,
                      cores=1){
   #Step 1
-  ref_im_warp = propaneWarp(ref_im, header_out=wisp_im$raw, cores=cores)
+  ref_im_warp = propaneWarp(ref_im, keyvalues_out=wisp_im$keyvalues, cores=cores)
   
   #Step X (not in paper, but put here for sky sub reasons)
   real_source = quantile(ref_im_warp$imDat, source_threshold, na.rm=TRUE)
