@@ -1119,7 +1119,7 @@ do_wisp_rem = function(input_args){
       sigma_lo = SIGMA_LO
     }
     
-    message("I am using this sigma_lo = ", sigma_lo)
+    message("I am using this sigma_lo = ", ifelse(is.null(sigma_lo), "NULL", sigma_log))
     Sys.sleep(time = 2)
     
     wisp_fix = wispFixer(wisp_im = wisp_frame, ref_im = ref_im, poly = wisp_poly[[ info_wisp$DETECTOR[ii] ]], sigma_lo = sigma_lo)
@@ -1356,8 +1356,13 @@ wispFixer = function(wisp_im, ref_im,
                      sigma_lo=20,
                      poly=NULL,
                      cores=1){
+  
+  ref_im$imdat[is.infinite(ref_im$imdat)] = NA #remove infinities
+  wisp_im$imDat[is.infinite(wisp_im$imDat)] = NA
+  
   #Step 1
   ref_im_warp = propaneWarp(ref_im, keyvalues_out=wisp_im$keyvalues, cores=cores)
+  
   
   #Step X (not in paper, but put here for sky sub reasons)
   real_source = quantile(ref_im_warp$imDat, source_threshold, na.rm=TRUE)
@@ -1404,7 +1409,8 @@ wispFixer = function(wisp_im, ref_im,
   
   if(!is.null(poly)){
     wisp_mask = profoundDrawMask(wisp_im$imDat, poly=poly, mode='apply')$mask
-    wisp_template[wisp_mask==0L] = 0
+    wisp_template = magmap(wisp_template * profoundImBlur(image = wisp_mask, sigma = 50), range = c(0,1))$map
+    # wisp_template[wisp_mask==0L] = 0
   }
   
   #Just make sure we don't create non-zero values where we have missing data

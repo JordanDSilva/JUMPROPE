@@ -21,8 +21,8 @@ jumprope_version = 2.0
 ######################
 input_args = list(
   ref_dir = "/Volumes/RAIDY/JWST/",
-  VID = "2738008001",
-  MODULE = "NRCB",
+  VID = "NEPTDF",
+  MODULE = "NEPTDF",
   cores_stack = 1
 )
 ######################
@@ -765,9 +765,10 @@ do_measure = function(input_args){
   images = Rfits_make_list(
     filelist = data.list,
     extlist = ext,
-    pointer = F
+    pointer = T
   )
   names(images) = filter.names      
+  
   
   inVar = lapply(data.list, function(x){
     
@@ -776,7 +777,7 @@ do_measure = function(input_args){
     if(is.na(ext)){
       return(NULL)
     }else{
-      inVar = Rfits_read_image(x, ext = ext)
+      inVar = Rfits_point(x, ext = ext)
       return(inVar)
     }
     
@@ -816,8 +817,8 @@ do_measure = function(input_args){
   ###### Main #############
   for(ff in names(images)){
     message(paste0("Running ProMeasure on: ", ff))
-    filt = images[[ff]]
-    filt_invar = inVar[[ff]]
+    filt = images[[ff]][,]
+    filt_invar = inVar[[ff]][,]
     # filt[[ff]]$imDat[filt[[ff]]$imDat==0L] = NA
     dum_pro = measure_profound(filt, inVar = filt_invar, segim, mask)
     dum_pro_col = measure_profound(filt, inVar = filt_invar, segim, mask, redosegim = F) #don't redilate segments e.g., colour photometry mode
@@ -922,25 +923,38 @@ hst_warp_stack = function(input_args){
     )
   )
   
-  target_path = jwst_ls[grepl(MODULE, jwst_ls) & grepl("F200W", jwst_ls)]
+  target_path = jwst_ls[grepl(MODULE, jwst_ls) & grepl("F444W", jwst_ls)]
   if(length(target_path)==0){
-    target = Rfits_read(jwst_ls[1])
+    idx_path = length(jwst_list)
+    target = Rfits_read(jwst_ls[idx_path])
   }else{
     target = Rfits_read(target_path)
   }
   
-  pro_ref = profoundProFound(
-    image = target$image[,],
-    pixcut = 20,
-    skycut = 10.0,
-    cliptol = 100,
-    tolerance = Inf,
-    box = dim(target$image)/10.0,
-    mask = is.infinite(target$image[,]$imDat) | is.na(target$image[,]$imDat),
-    magzero = 23.9,
-    rem_mask = T
+  ## check to see if there is a profound catalogue previously made
+  dir_profound = paste0(ref_dir, "/ProFound/Detects/", VID, "/", MODULE, "/")
+  pro_file = list.files(
+    dir_profound, pattern = ".rds", full.names = T
   )
-  
+  if(file.exists(pro_file) & length(pro_file)==1){
+    message(paste0("Reading: ", pro_file))
+    pro_ref = readRDS(
+      pro_file
+    )
+  }else{
+    pro_ref = profoundProFound(
+      image = target$image[,],
+      pixcut = 20,
+      skycut = 10.0,
+      cliptol = 100,
+      tolerance = Inf,
+      box = dim(target$image)/10.0,
+      mask = is.infinite(target$image[,]$imDat) | is.na(target$image[,]$imDat),
+      magzero = 23.9,
+      rem_mask = T
+    )
+  }
+
   files_temp_temp = list.files(path = HST_cutout_dir, pattern = ".fits$", recursive = T, full.names = T)
   
   get_rid_of_combined = grepl("combined", files_temp_temp)
