@@ -43,18 +43,19 @@ select_code_func = function(){
           ############################################################"
   )
   select_code = toString(readLines("stdin", n=1))
+  
   select_vector = as.integer(
     strsplit(
       select_code, ","
     )[[1]]
   )
-
+  
   if( sum(select_vector %in% 1:11) == 0){
     message("Oops, I think you made a mistake. Trying again.")
     select_code_func()
   }
   else{
-    return(c(1:11)[1:11 %in% select_vector])
+    return(select_vector)
   }
   
 }

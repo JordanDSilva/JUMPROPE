@@ -78,7 +78,8 @@ select_code_func = function(){
     select_code_func()
   }
   else{
-    return(c(1:10)[1:10 %in% select_vector])
+    # return(c(1:10)[1:10 %in% select_vector])
+    return(select_vector)
   }
   
 }
