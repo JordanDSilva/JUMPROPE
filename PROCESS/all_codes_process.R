@@ -1121,8 +1121,11 @@ do_wisp_rem = function(input_args){
     
     message("I am using this sigma_lo = ", ifelse(is.null(sigma_lo), "NULL", sigma_log))
     Sys.sleep(time = 2)
+
+    #poly = wisp_ploy[[ info_wisp$DETECTOR[ii] ]]
+    poly = NULL    
     
-    wisp_fix = wispFixer(wisp_im = wisp_frame, ref_im = ref_im, poly = wisp_poly[[ info_wisp$DETECTOR[ii] ]], sigma_lo = sigma_lo)
+    wisp_fix = wispFixer(wisp_im = wisp_frame, ref_im = ref_im, poly = poly, sigma_lo = sigma_lo)
     Rfits_write_pix(data = wisp_fix$wisp_fix$imDat, filename = info_wisp$full[ii], ext = 2)
     
     check_Nhdu = Rfits_nhdu(info_wisp$full[ii])
@@ -1409,8 +1412,8 @@ wispFixer = function(wisp_im, ref_im,
   
   if(!is.null(poly)){
     wisp_mask = profoundDrawMask(wisp_im$imDat, poly=poly, mode='apply')$mask
-    wisp_template = magmap(wisp_template * profoundImBlur(image = wisp_mask, sigma = 50), range = c(0,1))$map
-    # wisp_template[wisp_mask==0L] = 0
+    # wisp_template = magmap(wisp_template * profoundImBlur(image = wisp_mask, sigma = 50), range = c(0,1))$map
+    wisp_template[wisp_mask==0L] = 0
   }
   
   #Just make sure we don't create non-zero values where we have missing data

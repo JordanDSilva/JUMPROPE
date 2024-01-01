@@ -109,24 +109,45 @@ if __name__ == "__main__":
         visit_ids = np.array([obs[3:13] for obs in products_stage2["obs_id"]])
         idx = np.flatnonzero(np.core.defchararray.find(visit_ids, str(visitid)) != -1)
         df = products_stage2[idx].to_pandas()
+        # df = dff[dff["dataRights"] == "PUBLIC"]
 
+        if(len(df) > len(files)):
+            print("Some files appear to be missing in VISIT/PROGRAM " + visitid + "\n compared to what I can find on MAST.")
 
-        files_redo = []
-        if sum(df["obs_id"].isin(cal_files_names)) != len(df["obs_id"]): ## check that all of the expected cal files have been produced
-            idx = list(~df["obs_id"].isin(cal_files_names))
-            files_redo.append([files[i] for i,j in enumerate(idx) if j])
-            ## if not only run the missing cal files
+            if sum(df["dataRights"] == "EXCLUSIVE_ACCESS") == len(df) - len(uncal_files):
+                print("Exclusive access files found.")
+                df = df[df["dataRights"] == "PUBLIC"]
+            else:
+                df = df[df["obs_id"].isin(uncal_files)]
 
-        temp_size = [os.stat(file).st_size for file in cal_files] ## check that the cal files are the correct size
-        cal_files_names = [foo.split("_cal")[0].split("/")[-1] for foo in cal_files]
-        if sum(temp_size >= df[df["obs_id"].isin(cal_files_names)]["size"]) != len(cal_files_names): ## if the cal files are les
-            idx = list(temp_size < df[df["obs_id"].isin(cal_files_names)]["size"])
-            files_redo.append([files[i] for i, j in enumerate(idx) if j])
-
-        files_redo = [i for j in files_redo for i in j]
-
-        if args.redo: ## override previous checks. In case we want to use a new pmap of calibration version for example
+        if args.redo:  ## override previous checks. In case we want to use a new pmap of calibration version for example
+            for cal, rate in zip(cal_files, rates_files):
+                print("Removing " + str(cal))
+                os.remove(cal)
+                print("Removing " + str(rate))
+                os.remove(rate)
             files_redo = files
+        else:
+            files_redo = []
+            if sum(df["obs_id"].isin(cal_files_names)) != len(df["obs_id"]): ## check that all of the expected cal files have been produced
+
+                idx = list(~df["obs_id"].isin(cal_files_names))
+                for i,j in enumerate(idx):
+                    if j:
+                        print(i)
+                        files_redo.append(files[i])
+
+                ## if not only run the missing cal files
+
+            temp_size = [os.stat(file).st_size for file in cal_files] ## check that the cal files are the correct size
+            cal_files_names = [foo.split("_cal")[0].split("/")[-1] for foo in cal_files]
+            if sum(temp_size >= df[df["obs_id"].isin(cal_files_names)]["size"]) != len(cal_files_names): ## if the cal files are les
+                idx = list(temp_size < df[df["obs_id"].isin(cal_files_names)]["size"])
+                for i, j in enumerate(idx):
+                    if j:
+                        files_redo.append(files[i])
+
+            # files_redo = [i for j in files_redo for i in j]
 
         print("Running " + str(len(files_redo)) + " files")
         for ff in files_redo:
