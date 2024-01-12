@@ -21,8 +21,8 @@ jumprope_version = 2.0
 ######################
 input_args = list(
   ref_dir = "/Volumes/RAIDY/JWST/",
-  VID = "NEPTDF",
-  MODULE = "NEPTDF",
+  VID = "JADES_1210_3215",
+  MODULE = "JADES_1210_3215",
   cores_stack = 1
 )
 ######################
@@ -493,6 +493,22 @@ star_mask_tile = function(input_args){
       )
     )
     
+    ## produce star masks for input frames that where the star mask did not already exist
+    star_mask_files = foreach(i = 1:length(input_VID), .combine = "c")%do%{
+      paste0(ref_dir, "/ProFound/Star_Masks/", input_VID[i], "/", 
+                            input_MODULE[i], "/", 
+                            input_VID[i], "_", input_MODULE[i], "_star_mask.rds")}
+    check_star_masks_exist = file.exists(star_mask_files)
+    check_files_idx = which(!check_star_masks_exist)
+    check_grid = data.frame(input_VID[check_files_idx], input_MODULE[check_files_idx])
+    temp_args = list(ref_dir = ref_dir)
+    for(i in 1:dim(check_grid)[1]){
+      temp_args$VID = check_grid[i,1]
+      temp_args$MODULE = check_grid[i,2]
+      query_gaia(temp_args)
+      star_mask(temp_args)
+    }
+    
     read_star_masks = foreach(i = 1:length(input_VID))%do%{
       star_mask_file = paste0(ref_dir, "/ProFound/Star_Masks/", input_VID[i], "/", 
                               input_MODULE[i], "/", 
@@ -602,7 +618,7 @@ do_detect = function(input_args, detect_bands = "ALL", profound_function = profo
   stack_image = propaneStackWarpInVar(image_list = lapply(propanes, function(x)x$image[,]),
                                       inVar_list = lapply(propanes, function(x)x$inVar[,]),
                                       keyvalues_out = propanes[[1]]$image$keyvalues,
-                                      magzero_in = 23.9, magzero_out = 23.9, cores = 1, cores_warp = 1)
+                                      magzero_in = 23.9, magzero_out = 23.9)
   
   pix_mask = propanes[[1]]$weight[,]$imDat
   pix_mask[pix_mask <= 1]= 0
@@ -616,21 +632,6 @@ do_detect = function(input_args, detect_bands = "ALL", profound_function = profo
 
   profound$segstats$MODULE = rep(MODULE, dim(profound$segstats)[1])
   profound$segstats$VID = rep(VID, dim(profound$segstats)[1])
-  
-  plot_stub = paste0(detect_dir, "/", VID, "_", MODULE, "_profound_plot.pdf")
-  CairoPDF(plot_stub, width = 10, height = 10)
-  plot(profound)
-  par(mfrow = c(1,2), mar = rep(0,4), oma = c(1.5, 1.5, 0.5, 0.5), mai = rep(0,4))
-  profoundSegimPlot(image = profound$image, segim = profound$segim, header = profound$header, mask = profound$mask, sparse=1)
-  legend(x = "bottomleft", legend = "segim")
-  profoundSegimPlot(image = profound$image, segim = profound$segim_orig, header = profound$header, mask = profound$mask, sparse=1)
-  legend(x = "bottomleft", legend = "segim_orig")
-  par(mfrow = c(1,2), mar = rep(0,4), oma = c(1.5, 1.5, 0.5, 0.5), mai = rep(0,4))
-  magimage(profound$objects)
-  legend(x = "bottomleft", legend = "Objects")
-  magimage(profound$objects_redo)
-  legend(x = "bottomleft", legend = "Objects_redo")
-  dev.off()
   
   stack_stub = paste0(detect_dir, "/", VID, "_", MODULE, "_profound_stack.fits")
   profound_stack = list(
@@ -646,6 +647,45 @@ do_detect = function(input_args, detect_bands = "ALL", profound_function = profo
   profound_stub = paste0(detect_dir, "/", VID, "_", MODULE, "_profound.rds")
   saveRDS(profound, file = profound_stub)
   
+  ## I have no idea why plot.profound spits out and error 
+  ## Error in Rwcs_p2s(rep(xlo, leny), ylo:yhi, keyvalues = keyvalues, pixcen = "R",  : 
+  ## Assertion on 'y' failed: Must have length 6432, but has length 6433
+  ## So I just put plot profound into a tryCatch
+  plot_profound = function(x){
+    tryCatch(
+      {plot(x, coord.type = "deg")
+        },
+      error = function(cond){
+        magplot(
+          NA, xlim = c(-1,1), ylim = c(-1,1)
+        )
+        text(0,0,labels="NA", cex = 3.0)
+        legend(x = "topright", legend =  conditionMessage(cond))
+      },
+      warning = function(cond){
+        NULL
+      },
+      finally = {
+      }
+    )
+  }
+  
+  plot_stub = paste0(detect_dir, "/", VID, "_", MODULE, "_profound_plot.pdf")
+  CairoPDF(plot_stub, width = 10, height = 10)
+  plot_profound(profound)
+  par(mfrow = c(1,2), mar = rep(0,4), oma = c(1.5, 1.5, 0.5, 0.5), mai = rep(0,4))
+  profoundSegimPlot(image = profound$image, segim = profound$segim, header = profound$header, mask = profound$mask, sparse=1)
+  legend(x = "bottomleft", legend = "segim")
+  profoundSegimPlot(image = profound$image, segim = profound$segim_orig, header = profound$header, mask = profound$mask, sparse=1)
+  legend(x = "bottomleft", legend = "segim_orig")
+  par(mfrow = c(1,2), mar = rep(0,4), oma = c(1.5, 1.5, 0.5, 0.5), mai = rep(0,4))
+  magimage(profound$objects)
+  legend(x = "bottomleft", legend = "Objects")
+  magimage(profound$objects_redo)
+  legend(x = "bottomleft", legend = "Objects_redo")
+  dev.off()
+  
+
   return(NULL)
 }
 
@@ -1296,5 +1336,6 @@ query_hst = function(input_args){
   }
   return(NULL)
 }
+
 
 

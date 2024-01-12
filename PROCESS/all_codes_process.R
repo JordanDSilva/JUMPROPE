@@ -1364,7 +1364,14 @@ wispFixer = function(wisp_im, ref_im,
   wisp_im$imDat[is.infinite(wisp_im$imDat)] = NA
   
   #Step 1
-  ref_im_warp = propaneWarp(ref_im, keyvalues_out=wisp_im$keyvalues, cores=cores)
+  ref_im_warp_untweak = propaneWarp(ref_im, keyvalues_out=wisp_im$keyvalues, cores=cores)
+  
+  ## 1i Align ref to wisp_im using propaneTweak
+  ref_im_warp = propaneTweakImage(
+    image_ref = wisp_im[,], image_pre_fix = ref_im_warp_untweak[,], 
+    delta_max = c(10, 1.0), quan_cut = c(0.995, 0.9999),
+    shift_int = F, quick = T, verbose = F, cores = cores
+  )$image_post_fix
   
   
   #Step X (not in paper, but put here for sky sub reasons)

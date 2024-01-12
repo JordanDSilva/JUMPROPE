@@ -36,8 +36,7 @@ def query_gaia(coord_dict, dl_dir = "./"):
            fname_temp = os.path.join(dl_dir, "GAIA_"+str(visit)+"_"+module+".csv")
 
         coord = SkyCoord(ra=ra, dec=dec, unit=(u.degree, u.degree), frame="icrs")
-        radius = u.Quantity(2.0, unit = u.degree)
-        jj = Gaia.cone_search(coord, radius)
+        jj = Gaia.cone_search(coord, radius=u.Quantity(2.0, unit = u.degree))
         gaia_table = jj.get_results()
         # gaia_table_trim = gaia_table
         gaia_table_trim = gaia_table[["ra",

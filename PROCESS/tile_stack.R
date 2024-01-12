@@ -12,18 +12,18 @@ library(stringr)
 library(Cairo)
 
 ## User defined inputs here
-ref_cat = fread("ref_cats/ceers_ref_cat.csv") #example for HST catalogue in EGS field
+ref_cat = fread("ref_cats/jades_1210_f444W_mast.csv") #example for HST catalogue in EGS field
 
 input_args = list(
-  ref_dir = "/",   
+  ref_dir = "/Volumes/RAIDY/JWST/",   
   RA = colMeans(ref_cat)[1],   
   Dec = colMeans(ref_cat)[2],      
   at_these_coords = F, #Make true if want to stack at user-defined RA, Dec
-  super_name = "FOOBAR",   
+  super_name = "JADES_1210",   
   ref_cat = ref_cat,      
   grid_size = "long", #default save on memory, 0.06arcsec/pix,
   mosaic_size = NULL,
-  program_id = NULL  # Maybe we we just want to stack a single program e.g., Primer (1837) and not COSMOS Web (1727)
+  program_id = 1210001  # Maybe we we just want to stack a single program e.g., Primer (1837) and not COSMOS Web (1727)
 ) 
 
 

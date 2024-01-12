@@ -12,6 +12,7 @@ import sys
 import shutil
 import astropy.units as u
 import astropy.table
+from astropy.table import vstack
 from astropy.coordinates import SkyCoord
 import time
 
@@ -21,6 +22,8 @@ parser.add_argument('--STAGE', type=str, nargs='+',
 parser.add_argument('--VISITID', type=str, nargs="+", help="VISIT ID (e.g., 2736 for SMACS)")
 parser.add_argument('--INSTRUMENT', type=str, nargs="+", help="JWST Detector (e.g., MIRI/NIRCAM)")
 parser.add_argument('--check_miri', type=bool, nargs="+", help="Look for MIRI frames in NIRCAM pid. Default is False", default=False)
+parser.add_argument('--dry_run', type=bool, nargs=1, help="Only download the table of frames", default=False)
+
 
 args = parser.parse_args()
 def query_miri(nircam_query, miri_dl_dir):
@@ -127,7 +130,9 @@ def query(visit_id, stage, instrument, dl_dir, dl_products=False):
                                             instrument_name=[instrument, instrument+"/IMAGE"])
 
     # Observations.enable_cloud_dataset(provider='AWS')
-    data_products = Observations.get_product_list(obs_table)
+    product_list = [Observations.get_product_list(obs) for obs in obs_table]
+    data_products = vstack(product_list)
+    #data_products = Observations.get_product_list(obs_table)
     products_stage2 = Observations.filter_products(data_products,
                                                    extension="fits",
                                                    productSubGroupDescription=stage,
@@ -143,6 +148,8 @@ def query(visit_id, stage, instrument, dl_dir, dl_products=False):
     for ff in file:
         shutil.move(ff, dl_dir + pid + '_' + instrument + '_' + stage + '.sh')
     ascii.write(products_stage2, dl_dir + pid + '_' + instrument + '_' + stage + '.csv', overwrite=True, format='csv')
+   # ascii.write(data_products, dl_dir + pid + '_' + instrument + '_' + stage + 'data_products.csv', overwrite=True, format='csv')
+    ascii.write(obs_table, dl_dir + pid + '_' + instrument + '_' + stage + '_obs_table.csv', overwrite=True, format='csv')
 
     if dl_products:
         Observations.download_products(products_stage2[idx],
@@ -204,7 +211,7 @@ def check_filesV2(dl_dir, csv_file, visit_id):
         print(str(len(df2)) + " files wrong sizes, redownloading!")
         query_table(dl_dir, df2)
 
-def main(visit_id, stage, instrument, check_miri):
+def main(visit_id, stage, instrument, check_miri, dry_run):
 
     JUMPROPE_MAST_TOKEN = os.getenv('JUMPROPE_MAST_TOKEN')
     JUMPROPE_DOWNLOAD_DIR = os.getenv('JUMPROPE_DOWNLOAD_DIR')
@@ -226,7 +233,10 @@ def main(visit_id, stage, instrument, check_miri):
     all_files_redo = [ii for ii in all_files if visit_id in ii]
 
     qpid = query(visit_id, stage, instrument, dl_dir, dl_products=False) ##produce the csv file with all exposure information
-    check_csv = pd.read_csv(*glob.glob(dl_dir + "*csv"))
+    check_csv = pd.read_csv(dl_dir + pid + '_' + instrument + '_' + stage + '.csv')
+    if dry_run:
+       print("Only table downloaded")
+       exit()
 
     if len(all_files_redo)==0:
         ## if the target directory has nothing in it, then download everything in that visitid
@@ -279,4 +289,4 @@ if __name__ == "__main__":
         print("E.g., >> python3 query_jwst.py --VISITID `2736001001` --INSTRUMENT `NIRCAM` --STAGE `UNCAL` --check_miri False")
         sys.exit(1)
     else:
-        main(*args.VISITID, *args.STAGE, *args.INSTRUMENT, args.check_miri)
+        main(*args.VISITID, *args.STAGE, *args.INSTRUMENT, args.check_miri, args.dry_run)
