@@ -14,7 +14,7 @@ library(dplyr)
 
 source("./ProFound_settings.R")
 
-jumprope_version = 2.0
+jumprope_version = "1.1.0"
 
 ######################
 ## for testing only ##

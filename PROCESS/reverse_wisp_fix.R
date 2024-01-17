@@ -30,10 +30,19 @@ if(any(env_var == "")){
 }
 
 filelist_all = c(
-  list.files(env_var['JUMPROPE_RAW_DIR'] , recursive = TRUE, pattern = ".fits$", full.names = TRUE)
+  list.files(env_var['JUMPROPE_RAW_DIR'] , 
+             recursive = TRUE, 
+             pattern = glob2rx(paste0("*", VID, "*.fits$")), 
+             full.names = TRUE)
 )
-filelist = grep(VID, filelist_all, value = T)
-cat(filelist, sep = "\n")
+scan_wisp_rem = Rfits_key_scan(filelist = filelist_all, keylist = c("FILTER", "PROGRAM"))
+not_pid_idx = sapply(scan_wisp_rem$PROGRAM, function(x)grepl(x, VID, fixed = T)) ## make sure PID is not embedded in string of VID
+
+filelist = filelist_all[not_pid_idx]
+message("Showing first <10 files:")
+cat(head(filelist, 10), sep='\n')
+cat("...")
+cat('Processing',length(filelist),'files\n')
 ## stop edit 
 
 info = Rfits_key_scan(filelist = filelist,

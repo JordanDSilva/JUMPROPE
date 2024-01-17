@@ -12,18 +12,22 @@ library(stringr)
 library(Cairo)
 
 ## User defined inputs here
-ref_cat = fread("ref_cats/jades_1210_f444W_mast.csv") #example for HST catalogue in EGS field
+# ref_cat = fread("ref_cats/ceers_ref_cat.csv") #example for HST catalogue in EGS field
+ref_cat = fread("/Users/22252335/Documents/RefCats/JADES_1210_F444W_mast.csv")
 
 input_args = list(
-  ref_dir = "/Volumes/RAIDY/JWST/",   
-  RA = colMeans(ref_cat)[1],   
-  Dec = colMeans(ref_cat)[2],      
-  at_these_coords = F, #Make true if want to stack at user-defined RA, Dec
-  super_name = "JADES_1210",   
-  ref_cat = ref_cat,      
+  ref_dir = "/Volumes/RAIDY/JWST/", ## Directory containing the ProPane/ProFound/JUMPROPE stuff
+  super_name = "JADESMEDIUMDEEP", ## Name of mosaic. Advise against including "_"  
+
+  ref_cat = ref_cat, ## Reference catalogue for alignment
+  
+  RA = colMeans(ref_cat)[1], ## Coords to search for frames
+  Dec = colMeans(ref_cat)[2],     
+  mosaic_size = NULL, ## Set the size of the search radius/mosaic size
   grid_size = "long", #default save on memory, 0.06arcsec/pix,
-  mosaic_size = NULL,
-  program_id = 1210001  # Maybe we we just want to stack a single program e.g., Primer (1837) and not COSMOS Web (1727)
+  
+  program_id = "1210|3215",  # Maybe we we just want to stack a single program e.g., Primer (1837) and not COSMOS Web (1727)
+  cores = NULL ## If NULL then use half the number of cores in the system
 ) 
 
 
@@ -68,18 +72,39 @@ deep_stacker = function(input_args){
   
   list_files = list.files(
     path = patch_dir, 
-    pattern = glob2rx(paste0("*", program_id, "*.fits")),
+    pattern = glob2rx(paste0("*stack_patch*", input_args$program_id, "*.fits")),
     full.names = T
   )
+  
+  list_files_names = list.files(
+    path = patch_dir, 
+    pattern = glob2rx(paste0("*stack_patch*", input_args$program_id, "*.fits")),
+    full.names = F
+  )
+
+  files_pids = substr(list_files_names, 1+12, 4+12) ## just get the pid
+  
+  not_pid_idx = sapply(files_pids, function(x)grepl(x, program_id, fixed = T))
+  if(is.null(input_args$program_id)){
+    not_pid_idx = 1:length(list_files)
+  }
+  
   message("Searching for frames in ", input_args$RA, " ", input_args$Dec, " rad=", search_rad, "deg")
   find_frames = propaneFrameFinder(
-    filelist = list_files,
+    filelist = list_files[not_pid_idx],
     RAcen = input_args$RA,
     Deccen = input_args$Dec,
     rad = search_rad,
     cores = 8,
     plot=F
   )
+  
+  filters_w2 = str_extract(find_frames$file, pattern = regex("F(\\d+).W2")) ## string match F and W with only digits in between 
+  filters_all = str_extract(find_frames$file, pattern = regex("F(\\d+).W|F(\\d+).M"))
+  filters_all[which(filters_w2 == "F150W2")] = "F150W2"
+  filters_all = na.omit(filters_all)
+  
+  find_frames$FILT = filters_all
   
   UNIQUE_VIDS = VIDS[sapply(VIDS, function(x){any(grepl(x,find_frames$file))} )==TRUE]
   # 
@@ -88,6 +113,7 @@ deep_stacker = function(input_args){
   for(grid_size in c(input_args$grid_size)){
     
     file_info = find_frames[grepl(grid_size, find_frames$file), ]
+
     wcs = propaneGenWCS(filelist = file_info$full)
     
     ## Make a very rudimentary inspection fits file
@@ -122,12 +148,11 @@ deep_stacker = function(input_args){
     ref_cat = input_args$ref_cat
     
     UNIQUE_FILTERS = unique(stack_grid$FILTER)
-    UNIQUE_FILTERS=UNIQUE_FILTERS[!grepl("CLEAR", UNIQUE_FILTERS)]
+    UNIQUE_FILTERS=UNIQUE_FILTERS[!grepl("CLEAR", UNIQUE_FILTERS) & UNIQUE_FILTERS %in% file_info$FILT]
     for(i in 1:length(UNIQUE_FILTERS)){
       
-      file_info_filt = file_info[grepl(paste0(UNIQUE_FILTERS[i]), file_info$full),]
-      
-      filenames = file_info$full[grepl(paste0(UNIQUE_FILTERS[i]), file_info$full)]
+      file_info_filt = file_info[file_info$FILT == paste0(UNIQUE_FILTERS[i]),]
+      filenames = file_info_filt$full
       
       image_extlist = sapply(filenames, function(x)Rfits_extname_to_ext(x, extname = "image"))
       inVar_extlist = sapply(filenames, function(x)Rfits_extname_to_ext(x, extname = "inVar"))
@@ -175,6 +200,8 @@ deep_stacker = function(input_args){
         pro_test = profoundProFound(
           image = image_list[[k]][,],
           skyRMS = 1/sqrt(inVar_list[[k]][,]$imDat),
+          sky = 0,
+          redosky = F,
           pixcut = 20,
           skycut = 10.0,
           cliptol = 100,
@@ -225,6 +252,7 @@ deep_stacker = function(input_args){
         
       }
       
+      cores = ifelse(is.null(input_args$cores), floor(detectCores()/2), input_args$cores)
       deep_frame = propaneStackWarpInVar(
         image_list = image_list,
         inVar_list = inVar_list,
@@ -236,7 +264,7 @@ deep_stacker = function(input_args){
         dump_frames = T,
         dump_dir = paste0(dump_dir, "/", input_args$super_name, "/", grid_size, "/", UNIQUE_FILTERS[i], "/"),
         multitype = "cluster",
-        cores = 1,
+        cores = cores,
         cores_warp = 1
       )
       

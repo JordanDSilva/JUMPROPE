@@ -7,16 +7,138 @@ library(doParallel)
 library(Cairo)
 library(ProPane)
 
-pipe_version = 2.0
+pipe_version = "1.1.0" ## Change nominal from too high version 2.0 (1.0.0 being release on GitHub)
+
+load_files = function(input_args, which_module, sky_info = NULL){
+  ## Load the correct files for what ever task
+  ## Correctly place files into whatever module
+  ## Which module tells me which step to load files for
+  
+  VID = input_args$VID
+  FILT = input_args$FILT
+  
+  Pro1oF_dir = input_args$Pro1oF_dir
+  sky_pro_dir = input_args$sky_pro_dir
+  cal_sky_dir = input_args$cal_sky_dir
+  
+  do_NIRISS = input_args$do_NIRISS
+  
+  if(which_module == "1oF"){
+    files_1oF = input_args$filelist
+    files_1oF = files_1oF[grepl(VID, files_1oF) & grepl(".fits$", files_1oF)]
+    scan_1oF = Rfits_key_scan(filelist = files_1oF,keylist = c("FILTER", "PROGRAM"))
+    not_pid_idx = sapply(scan_1oF$PROGRAM, function(x)grepl(x, VID, fixed = T)) ## make sure PID is not embedded in string of VID
+    if(VID == ""){
+      not_pid_idx = rep(TRUE, length(files_1oF))
+    }
+    files_1oF = files_1oF[not_pid_idx]
+    files_1oF = files_1oF[grepl(FILT, scan_1oF$FILTER[not_pid_idx])]
+    return(files_1oF)
+  }
+  
+  if(which_module == "cal_process"){
+    files_cal = c(
+      list.files(Pro1oF_dir, 
+                 full.names = TRUE, 
+                 pattern = glob2rx(paste0("*",VID,"*.fits")))
+    )
+    if(do_NIRISS){
+      files_cal = files_cal[!grepl('_miri_',files_cal) & grepl('_nis_',files_cal) & grepl(".fits$", files_cal)]
+    }else{
+      files_cal = files_cal[!grepl('_miri_',files_cal) & !grepl('_nis_', files_cal) & grepl(".fits$", files_cal)]
+    }
+    scan_cal = Rfits_key_scan(filelist = files_cal, keylist = c("FILTER", "PROGRAM", "VISIT_ID"))
+    not_pid_idx = sapply(scan_cal$PROGRAM, function(x)grepl(x, VID, fixed = T)) ## make sure PID is not embedded in string of VID
+    if(VID == ""){
+      not_pid_idx = rep(TRUE, length(files_cal))
+    }
+    files_cal = files_cal[not_pid_idx]
+    files_cal = files_cal[grepl(FILT, scan_cal$FILTER[not_pid_idx])]
+    return(files_cal)
+  }
+  
+  if(which_module == "super_sky"){
+    sky_frames_dir = paste0(sky_pro_dir, "/sky_frames/")
+    sky_super_dir = paste0(sky_pro_dir, "/sky_super/")
+    files_sky = list.files(sky_frames_dir, 
+                           full.names = TRUE, 
+                           pattern = glob2rx(paste0("*", VID, "*.fits")))
+
+    if(do_NIRISS){
+      files_sky = files_sky[!grepl('_miri_',files_sky) & grepl('_nis_',files_sky) & grepl('.fits$',files_sky) ]
+    }else{
+      files_sky = files_sky[!grepl('_miri_',files_sky) & !grepl('_nis_', files_sky) & grepl('.fits$',files_sky) ]
+    }
+    
+    scan_sky = Rfits_key_scan(filelist = files_sky, keylist = c("FILTER", "PROGRAM", "VISIT_ID"))
+    not_pid_idx = sapply(substr(scan_sky$VISIT_ID,1,4), function(x)grepl(x, VID, fixed = T)) ## make sure PID is not embedded in string of VID
+    if(VID == ""){
+      not_pid_idx = rep(TRUE, length(files_sky))
+    }
+    files_sky = files_sky[not_pid_idx]
+    files_sky = files_sky[grepl(FILT, scan_sky$FILTER[not_pid_idx])]
+    return(files_sky)
+  }
+  
+  if(which_module == "apply_super"){
+    not_pid_idx = sapply(substr(sky_info$visit_id,1,4), function(x)grepl(x, VID, fixed = T)) ## make sure PID is not embedded in string of VID
+    if(VID == ""){
+      not_pid_idx = rep(TRUE, length(files_sky))
+    }
+    sky_info = sky_info[grepl(VID, sky_info$fileim) & not_pid_idx & grepl(FILT, sky_info$filter), ]
+    return(list('sky_info' = sky_info, 'sky_filelist', sky_info$filesky))
+  }
+  
+  if(which_module == "modify_pedestal"){
+    files_cal_sky = c(
+      list.files(cal_sky_dir, full.names = TRUE, pattern = glob2rx(paste0("*", VID, "*.fits"))) #If running Pro1/F outputs
+    )
+    
+    if(do_NIRISS){
+      files_cal_sky = files_cal_sky[!grepl('_miri_',files_cal_sky) & grepl("nis", files_cal_sky) & grepl(".fits$", files_cal_sky)]
+    }else{
+      files_cal_sky = files_cal_sky[!grepl('_miri_',files_cal_sky) & !grepl("nis", files_cal_sky) & grepl(".fits$", files_cal_sky)]
+      }
+    
+    scan_cal_sky = Rfits_key_scan(filelist = files_cal_sky, keylist = c("FILTER", "PROGRAM", "VISIT_ID"))
+    not_pid_idx = sapply(substr(scan_cal_sky$VISIT_ID,1,4), function(x)grepl(x, VID, fixed = T)) ## make sure PID is not embedded in string of VID
+    if(VID == ""){
+      not_pid_idx = rep(TRUE, length(files_cal_sky))
+    }
+    files_cal_sky = files_cal_sky[not_pid_idx]
+    files_cal_sky = files_cal_sky[grepl(FILT, scan_cal_sky$FILTER[not_pid_idx])]
+    return(files_cal_sky)
+  }
+  
+  if(which_module == "wisp_rem"){
+    files_wisp = input_args$filelist
+    files_wisp = files_wisp[grepl(VID, files_wisp) & grepl(".fits$", files_wisp)]
+    scan_1oF = Rfits_key_scan(filelist = files_wisp,keylist = c("FILTER", "PROGRAM"))
+    not_pid_idx = sapply(scan_1oF$PROGRAM, function(x)grepl(x, VID, fixed = T)) ## make sure PID is not embedded in string of VID
+    if(VID == ""){
+      not_pid_idx = rep(TRUE, length(files_wisp))
+    }
+    files_wisp = files_wisp[not_pid_idx]
+    return(files_wisp)
+  }
+  
+}
 
 do_1of = function(input_args){
   
+  cat("\n")
+  message("## Removing 1/f ##")
+  cat("\n")
+  Sys.sleep(time = 5)
+
   keep_trend_data = input_args$keep_trend_data
   filelist = input_args$filelist
   Pro1oF_dir = input_args$Pro1oF_dir
   VID = input_args$VID
   FILT = input_args$FILT
   cores = input_args$cores_pro
+  
+  ### EXAMPLE BITS TO EDIT
   
   #very large sources
   # 1176341001 A
@@ -33,16 +155,16 @@ do_1of = function(input_args){
   ID_vlarge = keep_trend_data$ID_vlarge
   ID_large = keep_trend_data$ID_large
   
+  
   ### BITS TO EDIT END ###
   
   registerDoParallel(cores=cores)
   
-  scan_filt = Rfits_key_scan(filelist = filelist, keylist = c("FILTER"))
+  filelist = load_files(input_args, which_module = "1oF")
   
-  filelist = filelist[!grepl('miri',filelist)] #we don't care about MIRI for now
-  filelist = filelist[grepl('.fits$',filelist) & grepl(VID, filelist) & grepl(FILT, scan_filt$FILTER)]
-  
-  cat(filelist, sep='\n')
+  message("Showing first <10 files:")
+  cat(head(filelist, 10), sep='\n')
+  cat("...")
   cat('Processing',length(filelist),'files\n')
   
   lo_loop = 1
@@ -77,13 +199,7 @@ do_1of = function(input_args){
     
     temp_mask = temp_image$DQ$imDat
     JWST_cal_mask = profoundDilate(temp_mask %% 2 == 1, size=3)
-    # if(sum(temp_mask!=0)/(prod(dim(temp_mask))) > 0.8){
-    #   JWST_cal_mask = profoundDilate(temp_mask %% 2 == 1, size=3)
-    # }else{
-    #   JWST_cal_mask = profoundDilate(temp_mask %% 2 == 1 | temp_mask == 4, size=3)
-    # }
-    
-    
+
     temp_zap = profoundSkyScan(image = temp_image$SCI$imDat,
                                mask = (temp_image$SCI$imDat==0) | JWST_cal_mask,
                                # mask = foo,
@@ -131,6 +247,11 @@ do_1of = function(input_args){
 }
 do_cal_process = function(input_args){
   
+  cat("\n")
+  message("## Calculating sky statistics ##")
+  cat("\n")
+  Sys.sleep(time = 5)
+  
   Pro1oF_dir = input_args$Pro1oF_dir
   sky_frames_dir = input_args$sky_frames_dir
   VID = input_args$VID
@@ -138,28 +259,14 @@ do_cal_process = function(input_args){
   cores = input_args$cores_pro
   do_NIRISS = input_args$do_NIRISS
   
-  filelist = c(
-    list.files(Pro1oF_dir, full.names = TRUE) #If running Pro1/F outputs
-  )
+  filelist = load_files(input_args, which_module = "cal_process")
   
-  if(do_NIRISS){
-    filelist = filelist[grepl('.fits$', filelist) & grepl(VID, filelist) & grepl('_nis_',filelist)]
-  }else{
-    filelist = filelist[!grepl('_miri_',filelist)] #we don't care about MIRI for now
-    filelist = filelist[!grepl('_nis_',filelist)] #we don't care about MIRI for now
-    filelist = filelist[grepl('.fits$', filelist) & grepl(VID, filelist)]
-  }
-  cat(filelist, sep ="\n")
-  
+  message("Showing first <10 files:")
+  cat(head(filelist, 10), sep='\n')
+  cat("...")
+  cat('Processing',length(filelist),'files\n')
+
   #get main info:
-  scan_filt = Rfits_key_scan(filelist = filelist,
-                             keylist = c('FILTER'),
-                             extlist = 1,
-                             cores = 6
-  )
-  
-  filelist = filelist[grepl(FILT, scan_filt$FILTER)] #just get the FITS files to be safe
-  # cat('Processing',length(filelist),'files\n')
   obs_info = Rfits_key_scan(filelist = filelist,
                             keylist = c('VISIT_ID',
                                         'OBS_ID',
@@ -298,13 +405,17 @@ do_cal_process = function(input_args){
 }
 do_regen_sky_info = function(input_args){
   
+  cat("\n")
+  message("## Generating sky statistics info ##")
+  cat("\n")
+  
   sky_pro_dir = input_args$sky_pro_dir
   cores = input_args$cores_pro
   
   registerDoParallel(cores=cores)
   
   sky_frames_dir = paste0(sky_pro_dir, "/sky_frames/")
-  filelist = list.files(sky_frames_dir, full.names = TRUE)
+  filelist = list.files(sky_frames_dir, full.names = TRUE, pattern = glob2rx(paste0("*", input_args$VID, "*.fits")))
   filelist = grep('.fits$', filelist, value=TRUE)
   
   foo = list.files(sky_frames_dir, full.names = FALSE)
@@ -325,6 +436,11 @@ do_regen_sky_info = function(input_args){
 }
 do_super_sky = function(input_args){
   
+  cat("\n")
+  message("## Making super skies ##")
+  cat("\n")
+  Sys.sleep(time = 5)
+  
   sky_pro_dir = input_args$sky_pro_dir
   VID = input_args$VID
   cores = input_args$cores_pro
@@ -337,17 +453,19 @@ do_super_sky = function(input_args){
   
   sky_frames_dir = paste0(sky_pro_dir, "/sky_frames/")
   sky_super_dir = paste0(sky_pro_dir, "/sky_super/")
-  filelist = list.files(sky_frames_dir, full.names = TRUE)
+  # filelist = list.files(sky_frames_dir, full.names = TRUE, pattern = ".fits$")
+  filelist = load_files(input_args, which_module = "super_sky")
   sky_info = fread(paste0(sky_pro_dir, '/sky_info.csv'))
-  
-  filelist = filelist[grepl('.fits$', filelist) & grepl(VID, filelist)]
-  sky_info = sky_info[grepl(VID, sky_info$visit_id), ]
+  sky_info = sky_info[gsub("//", "/", paste0(sky_info$pathsky, "/", sky_info$filesky))%in%gsub("//", "/",filelist), ]
+
+  niriss_det = c("NIS")
   short_det = c("NRCA1", "NRCA2", "NRCA3", "NRCA4", "NRCB1", "NRCB2", "NRCB3", "NRCB4")
   long_det = c("NRCALONG", "NRCBLONG")
   #miri_det = 'MIRIMAGE' #we don't care about MIRI for now
   
   short_filt = sort(unique(sky_info[detector %in% short_det,filter]))
   long_filt = sort(unique(sky_info[detector %in% long_det,filter]))
+  nis_filt = sort(unique(sky_info[detector %in% niriss_det,filter]))
   
   #short_filt = c("F090W", "F115W", "F150W", "F182M", "F200W", "F210M")
   #long_filt = c("F277W", "F300M", "F335M", "F356W", "F360M", "F410M", "F444W")
@@ -355,21 +473,21 @@ do_super_sky = function(input_args){
   
   combine_grid_short = expand.grid(short_det, short_filt, stringsAsFactors=FALSE)
   combine_grid_long = expand.grid(long_det, long_filt, stringsAsFactors=FALSE)
+  combine_grid_nis = expand.grid(niriss_det, nis_filt, stringsAsFactors=FALSE)
   #combine_grid_miri = expand.grid(miri_det, miri_filt, stringsAsFactors=FALSE) #we don't care about MIRI for now
-  combine_grid = rbind(combine_grid_short, combine_grid_long)
+  combine_grid = rbind(combine_grid_short, combine_grid_long, combine_grid_nis)
   
-  sky_filelist = list.files(sky_info[1,pathsky])
-  sky_filelist = sky_filelist[grepl('.fits$', sky_filelist) & grepl(VID, sky_filelist)]
-  # sky_filelist = grep('.fits$', sky_filelist, value=TRUE) #just get the FITS files to be safe
-  if(do_NIRISS){
-    filelist = filelist[grepl('.fits$', filelist) & grepl(VID, filelist) & grepl("nis", filelist)]
-    sky_info = sky_info[grepl(VID, sky_info$visit_id) & grepl("NIS", sky_info$detector), ]
-    niriss_det = c("NIS")
-    nis_filt = sort(unique(sky_info[detector %in% niriss_det,filter]))
-    combine_grid = expand.grid(niriss_det, nis_filt, stringsAsFactors=FALSE)
-    sky_filelist = list.files(sky_info[1,pathsky])
-    sky_filelist = sky_filelist[grepl('.fits$', sky_filelist) & grepl(VID, sky_filelist) & grepl("nis", sky_filelist)]
-  }
+  sky_filelist = list.files(sky_info[1,pathsky], pattern = ".fits$")
+
+  # if(do_NIRISS){
+  #   filelist = filelist[grepl('.fits$', filelist) & grepl(VID, filelist) & grepl("nis", filelist)]
+  #   sky_info = sky_info[grepl(VID, sky_info$visit_id) & grepl("NIS", sky_info$detector), ]
+  #   niriss_det = c("NIS")
+  #   nis_filt = sort(unique(sky_info[detector %in% niriss_det,filter]))
+  #   combine_grid = expand.grid(niriss_det, nis_filt, stringsAsFactors=FALSE)
+  #   sky_filelist = list.files(sky_info[1,pathsky])
+  #   sky_filelist = sky_filelist[grepl('.fits$', sky_filelist) & grepl(VID, sky_filelist) & grepl("nis", sky_filelist)]
+  # }
   
   dummy = foreach(i = 1:dim(combine_grid)[1], .inorder=FALSE)%dopar%{
     if(combine_grid[i,1] %in% c('NRCA1','NRCA2','NRCA3','NRCA4','NRCB1','NRCB2','NRCB3','NRCB4')){
@@ -429,6 +547,11 @@ do_super_sky = function(input_args){
 }
 do_apply_super_sky = function(input_args){
   
+  cat("\n")
+  message("## Applying super skies ##")
+  cat("\n")
+  Sys.sleep(time = 5)
+  
   Pro1oF_dir = input_args$Pro1oF_dir
   cal_sky_dir = input_args$cal_sky_dir
   sky_pro_dir = input_args$sky_pro_dir
@@ -447,13 +570,11 @@ do_apply_super_sky = function(input_args){
     return(paste0(path,base,'_sky_rem.fits'))
   }
   
-  sky_info = sky_info[grepl(VID, sky_info$visit_id), ]
   sky_filelist = list.files(sky_info[1,pathsky])
-  sky_filelist = sky_filelist[grepl('.fits$', sky_filelist) & grepl(VID, sky_filelist)] #just get the FITS files to be safe
-  
-  scan_filt = Rfits_key_scan(paste0(sky_info$pathim, "/", sky_info$fileim), keylist = c("FILTER"))
-  sky_info = sky_info[grepl(FILT, scan_filt$FILTER), ]
-  sky_filelist = sky_filelist[grepl(FILT, scan_filt$FILTER)]
+  # sky_filelist = load_files(input_args, which_module = "apply_super", sky_info = sky_info)$sky_filelist
+  sky_info = load_files(input_args, which_module = "apply_super", sky_info = sky_info)$sky_info
+  sky_filelist = sky_info$filesky
+
   cat('Processing',length(sky_filelist),'files\n')
   
   lo_loop = 1
@@ -592,6 +713,11 @@ do_apply_super_sky = function(input_args){
 }
 do_modify_pedestal = function(input_args){
   
+  cat("\n")
+  message("## Modifying pedestal ##")
+  cat("\n")
+  Sys.sleep(time = 5)
+  
   cal_sky_dir = input_args$cal_sky_dir
   cal_sky_renorm_dir = input_args$cal_sky_renorm_dir
   VID = input_args$VID
@@ -599,20 +725,7 @@ do_modify_pedestal = function(input_args){
   cores = input_args$cores_pro
   do_NIRISS = input_args$do_NIRISS
   
-  filelist = c(
-    list.files(cal_sky_dir, full.names = TRUE) #If running Pro1/F outputs
-  )
-  
-  if(do_NIRISS){
-    filelist = filelist[grepl('.fits$', filelist) & grepl(VID, filelist) & grepl("nis", filelist)]
-  }else{
-    filelist = filelist[!grepl('_miri_',filelist)] #we don't care about MIRI for now
-    filelist = filelist[!grepl('_nis_',filelist)] #we don't care about MIRI for now
-    filelist = filelist[grepl('.fits$', filelist) & grepl(VID, filelist)] #just get the FITS files to be safe
-  }
-
-  scan_filt = Rfits_key_scan(filelist = filelist, keylist = c("FILTER"))
-  filelist = filelist[grepl(FILT, scan_filt$FILTER)]
+  filelist = load_files(input_args, which_module = "modify_pedestal")
   
   cat('Processing',length(filelist),'files\n')
   
@@ -739,6 +852,10 @@ do_modify_pedestal = function(input_args){
 }
 do_cal_sky_info = function(input_args){
 
+  cat("\n")
+  message("## Collecting cal_sky_renorm info for ProPane ##")
+  cat("\n")
+  
   cal_sky_renorm_dir = input_args$cal_sky_renorm_dir
   cal_sky_info_save_dir = input_args$cal_sky_info_save_dir
   cores = input_args$cores_pro
@@ -767,7 +884,7 @@ do_cal_sky_info = function(input_args){
   
   for(i in 1:dim(cal_sky_info)[1]){
     #below is then Eqn [1] below
-    temp_MAGZERO_FIX = cal_sky_info[i,MAGZERO] -2.5*log10(as.numeric(pmap[CRDS_CTX=='jwst_1084.pmap' & DETECTOR==cal_sky_info[i,'DETECTOR'] & FILTER==cal_sky_info[i,'FILTER'],PHOTMJSR]) / cal_sky_info[i,PHOTMJSR])
+    temp_MAGZERO_FIX = cal_sky_info[i,MAGZERO] -2.5*log10(as.numeric(pmap[CRDS_CTX=='jwst_1179.pmap' & DETECTOR==cal_sky_info[i,'DETECTOR'] & FILTER==cal_sky_info[i,'FILTER'],PHOTMJSR]) / cal_sky_info[i,PHOTMJSR])
     if(length(temp_MAGZERO_FIX) == 1){
       cal_sky_info[i,MAGZERO_FIX := temp_MAGZERO_FIX] 
     }else{
@@ -788,6 +905,11 @@ do_cal_sky_info = function(input_args){
   write.csv(cal_sky_info, paste0(cal_sky_info_save_dir, '/cal_sky_info.csv'), row.names = FALSE)
 }
 do_gen_stack = function(input_args){
+  
+  cat("\n")
+  message("## Making ProPane stacks ##")
+  cat("\n")
+  Sys.sleep(time = 5)
   
   VID = input_args$VID
   FILT = input_args$FILT
@@ -816,7 +938,11 @@ do_gen_stack = function(input_args){
   
   temp_vid = VID
   message("Now running stack!")
-  for(VID in grep(temp_vid, unique_visits, value = T)){
+  
+  VID_list = grep(temp_vid, unique_visits, value = T)
+  not_pid_idx = sapply(substr(VID_list,1,4), function(x) grepl(x, VID, fixed = T)) ## make sure PID is not embedded in string of VID
+  
+  for(VID in VID_list[not_pid_idx]){
     
     if(do_NIRISS){
       cal_sky_info = orig_cal_sky_info[grepl(VID, orig_cal_sky_info$VISIT_ID) & grepl("NIS", orig_cal_sky_info$DETECTOR),]
@@ -1054,6 +1180,11 @@ do_gen_stack = function(input_args){
 }
 do_wisp_rem = function(input_args){
   
+  cat("\n")
+  message("## Removing wisps ##")
+  cat("\n")
+  Sys.sleep(time = 5)
+  
   filelist = input_args$filelist
   VID = input_args$VID
   median_dir = input_args$median_dir
@@ -1062,16 +1193,21 @@ do_wisp_rem = function(input_args){
   keep_trend_data  = input_args$keep_trend_data
 
   SIGMA_LO = input_args$SIGMA_LO
+  message(paste0("Using ", ifelse(SIGMA_LO)))
   
   wisp_poly = Rfits_read("wisp_poly.fits")
   
-  filelist = grep(VID, filelist, value = T)
-  cat(filelist, sep = "\n")
+  filelist = load_files(input_args, which_module = "wisp_rem")
   
   info = Rfits_key_scan(filelist = filelist,
                         keylist=c('DETECTOR', 'MODULE', 'FILTER', 'VISIT_ID'), cores = cores)
   info_wisp = info[DETECTOR %in% c('NRCA3','NRCA4','NRCB3','NRCB4'),]
   mod_visit_grid = unique(info_wisp[,c("MODULE", "VISIT_ID")])
+  
+  message("Showing first <10 files:")
+  cat(head(filelist[info$DETECTOR %in% c('NRCA3','NRCA4','NRCB3','NRCB4')], 10), sep='\n')
+  cat("...")
+  cat('Processing',dim(info)[1],'files\n')
   
   ref_im_list = {}
   for(ii in 1:dim(mod_visit_grid)[1]){
@@ -1118,10 +1254,6 @@ do_wisp_rem = function(input_args){
     }else{
       sigma_lo = SIGMA_LO
     }
-    
-    message("I am using this sigma_lo = ", ifelse(is.null(sigma_lo), "NULL", sigma_log))
-    Sys.sleep(time = 2)
-
     #poly = wisp_ploy[[ info_wisp$DETECTOR[ii] ]]
     poly = NULL    
     
@@ -1145,11 +1277,15 @@ do_wisp_rem = function(input_args){
     }else{
       Rfits_write_pix(wisp_fix$wisp_template, filename = info_wisp$full[ii], ext = extloc)
     }
-
     return(NULL)
   }
 }
 do_patch = function(input_args){
+  
+  cat("\n")
+  message("## Patching ProPane stacks ##")
+  cat("\n")
+  Sys.sleep(time = 5)
   
   VID = input_args$VID
   FILT = input_args$FILT
@@ -1231,6 +1367,11 @@ do_patch = function(input_args){
   }
 }
 do_RGB = function(input_args){
+  
+  cat("\n")
+  message("## Making RGB image ##")
+  cat("\n")
+  Sys.sleep(time = 5)
   
   VID = input_args$VID
   ref_dir = input_args$ref_dir
@@ -1367,10 +1508,11 @@ wispFixer = function(wisp_im, ref_im,
   ref_im_warp_untweak = propaneWarp(ref_im, keyvalues_out=wisp_im$keyvalues, cores=cores)
   
   ## 1i Align ref to wisp_im using propaneTweak
+  ## Use only 1 core in case resources run out
   ref_im_warp = propaneTweakImage(
     image_ref = wisp_im[,], image_pre_fix = ref_im_warp_untweak[,], 
     delta_max = c(10, 1.0), quan_cut = c(0.995, 0.9999),
-    shift_int = F, quick = T, verbose = F, cores = 1
+    shift_int = F, quick = T, verbose = F, cores = 1 
   )$image_post_fix
   
   

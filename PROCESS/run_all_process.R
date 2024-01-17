@@ -1,6 +1,6 @@
-##########################
-## Script to run all V2 ##
-##########################
+#######################
+## Script to run all ##
+#######################
 
 ## Make sure to edit the proper things in the "main" function
 
