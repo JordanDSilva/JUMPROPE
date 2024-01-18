@@ -85,7 +85,7 @@ load_files = function(input_args, which_module, sky_info = NULL){
     if(VID == ""){
       not_pid_idx = rep(TRUE, length(files_sky))
     }
-    sky_info = sky_info[grepl(VID, sky_info$fileim) & not_pid_idx & grepl(FILT, sky_info$filter), ]
+    sky_info = sky_info[grepl(VID, sky_info$fileim) & not_pid_idx & grepl(FILT, sky_info$filter) & !grepl("MIRIMAGE", sky_info$detector), ]
     return(list('sky_info' = sky_info, 'sky_filelist', sky_info$filesky))
   }
   
