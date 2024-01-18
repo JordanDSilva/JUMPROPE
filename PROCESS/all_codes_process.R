@@ -155,6 +155,9 @@ do_1of = function(input_args){
   ID_vlarge = keep_trend_data$ID_vlarge
   ID_large = keep_trend_data$ID_large
   
+  ow_vlarge = keep_trend_data$ow_vlarge
+  ow_large = keep_trend_data$ow_large
+  
   
   ### BITS TO EDIT END ###
   
@@ -180,21 +183,40 @@ do_1of = function(input_args){
     
     temp_image = Rfits_read(filelist[i], pointer=FALSE)
     
-    if(any(temp_image[[1]]$keyvalues$VISIT_ID == ID_vlarge$VISIT_ID & temp_image[[1]]$keyvalues$MODULE == ID_vlarge$MODULE)){
-      trend_block = trend_block_vlarge
-      keep_trend = TRUE
-      message(temp_image[[1]]$keyvalues$VISIT_ID,' ',temp_image[[1]]$keyvalues$MODULE, ' KT: TRUE', ' TB: ',trend_block)
-    }else if(any(temp_image[[1]]$keyvalues$VISIT_ID == ID_large$VISIT_ID & temp_image[[1]]$keyvalues$MODULE == ID_large$MODULE)){
-      trend_block = trend_block_large
-      keep_trend = TRUE
-      message(temp_image[[1]]$keyvalues$VISIT_ID,' ',temp_image[[1]]$keyvalues$MODULE, ' KT: TRUE', ' TB: ',trend_block)
-    }else if(any(temp_image[[1]]$keyvalues$VISIT_ID == ID_large$VISIT_ID & temp_image[[1]]$keyvalues$INSTRUME == ID_large$MODULE)){
-      trend_block = trend_block_large
-      keep_trend = TRUE
-      message(temp_image[[1]]$keyvalues$VISIT_ID,' ',temp_image[[1]]$keyvalues$INSTRUME, ' KT: TRUE', ' TB: ',trend_block)
+    if(!(any(c(ow_vlarge, ow_large)))){
+      if(any(temp_image[[1]]$keyvalues$VISIT_ID == ID_vlarge$VISIT_ID & temp_image[[1]]$keyvalues$MODULE == ID_vlarge$MODULE)){
+        trend_block = trend_block_vlarge
+        keep_trend = TRUE
+        message(temp_image[[1]]$keyvalues$VISIT_ID,' ',temp_image[[1]]$keyvalues$MODULE, ' KT: TRUE', ' TB: ',trend_block)
+      }else if(any(temp_image[[1]]$keyvalues$VISIT_ID == ID_large$VISIT_ID & temp_image[[1]]$keyvalues$MODULE == ID_large$MODULE)){
+        trend_block = trend_block_large
+        keep_trend = TRUE
+        message(temp_image[[1]]$keyvalues$VISIT_ID,' ',temp_image[[1]]$keyvalues$MODULE, ' KT: TRUE', ' TB: ',trend_block)
+      }else if(any(temp_image[[1]]$keyvalues$VISIT_ID == ID_large$VISIT_ID & temp_image[[1]]$keyvalues$INSTRUME == ID_large$MODULE)){
+        trend_block = trend_block_large
+        keep_trend = TRUE
+        message(temp_image[[1]]$keyvalues$VISIT_ID,' ',temp_image[[1]]$keyvalues$INSTRUME, ' KT: TRUE', ' TB: ',trend_block)
+      }else{
+        keep_trend = FALSE
+        message(temp_image[[1]]$keyvalues$VISIT_ID,' ',temp_image[[1]]$keyvalues$MODULE, ' KT: FALSE')
+      }
     }else{
-      keep_trend = FALSE
-      message(temp_image[[1]]$keyvalues$VISIT_ID,' ',temp_image[[1]]$keyvalues$MODULE, ' KT: FALSE')
+      ## set over write
+      if(ow_large & ow_vlarge){
+        message("Can't use both LARGE and VLARGE keep_trend \n Defaulting to keep_trend FALSE")
+        keep_trend = FALSE
+      }else{
+        if(ow_vlarge){
+          keep_trend = TRUE
+          trend_block = trend_block_vlarge
+          message("KT: TRUE", " TB ", trend_block_vlarge)
+        }
+        if(ow_large){
+          keep_trend = TRUE
+          trend_block = trend_block_large
+          message("KT: TRUE", " TB ", trend_block_large)
+        }
+      }
     }
     
     temp_mask = temp_image$DQ$imDat
