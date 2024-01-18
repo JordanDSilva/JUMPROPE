@@ -39,18 +39,18 @@ scan_wisp_rem = Rfits_key_scan(filelist = filelist_all, keylist = c("FILTER", "P
 not_pid_idx = sapply(scan_wisp_rem$PROGRAM, function(x)grepl(x, VID, fixed = T)) ## make sure PID is not embedded in string of VID
 
 filelist = filelist_all[not_pid_idx]
-message("Showing first <10 files:")
-cat(head(filelist, 10), sep='\n')
-cat("...")
-cat('Processing',length(filelist),'files\n')
 ## stop edit 
 
 info = Rfits_key_scan(filelist = filelist,
                       keylist=c('DETECTOR', 'MODULE', 'FILTER', 'VID'), cores=1)
-info_wisp = info[DETECTOR %in% c('NRCA3','NRCA4','NRCB3','NRCB4'),]
+info_wisp = info[DETECTOR %in% c('NRCA1', 'NRCA2', 'NRCA3','NRCA4', 'NRCB1','NRCB2', 'NRCB3','NRCB4'),]
 module_list = paste0("NRC", unique(info$MODULE))
-
 unique_visits = unique(info_wisp$VID)
+
+message("Showing first <10 files:")
+print(head(info_wisp, 10), sep='\n')
+cat("...")
+cat('Processing',dim(info_wisp)[1],'files\n')
 
 temp = foreach(ii = 1:dim(info_wisp)[1], .errorhandling = "stop")%dopar%{
   ## copy original data to directory where we keep the wisps

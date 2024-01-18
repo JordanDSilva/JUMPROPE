@@ -173,7 +173,7 @@ do_1of = function(input_args){
   lo_loop = 1
   hi_loop = length(filelist)
   
-  dummy = foreach(i = lo_loop:hi_loop, .inorder=FALSE)%dopar%{
+  dummy = foreach(i = lo_loop:hi_loop, .inorder = FALSE)%dopar%{
     if(i %% 100 == 0){
       message('File ',i,' of ', hi_loop)
     }
@@ -1223,13 +1223,13 @@ do_wisp_rem = function(input_args){
   
   info = Rfits_key_scan(filelist = filelist,
                         keylist=c('DETECTOR', 'MODULE', 'FILTER', 'VISIT_ID'), cores = cores)
-  info_wisp = info[DETECTOR %in% c('NRCA3','NRCA4','NRCB3','NRCB4'),]
+  info_wisp = info[DETECTOR %in% c('NRCA1', 'NRCA2', 'NRCA3','NRCA4', 'NRCB1','NRCB2', 'NRCB3','NRCB4'),] ## Try do all short wavelength chips
   mod_visit_grid = unique(info_wisp[,c("MODULE", "VISIT_ID")])
   
   message("Showing first <10 files:")
-  cat(head(filelist[info$DETECTOR %in% c('NRCA3','NRCA4','NRCB3','NRCB4')], 10), sep='\n')
+  print(head(info_wisp, 10), sep='\n')
   cat("...")
-  cat('Processing',dim(info)[1],'files\n')
+  cat('Processing',dim(info_wisp)[1],'files\n')
   
   ref_im_list = {}
   for(ii in 1:dim(mod_visit_grid)[1]){
@@ -1533,7 +1533,7 @@ wispFixer = function(wisp_im, ref_im,
   ## Use only 1 core in case resources run out
   ref_im_warp = propaneTweakImage(
     image_ref = wisp_im[,], image_pre_fix = ref_im_warp_untweak[,], 
-    delta_max = c(10, 1.0), quan_cut = c(0.995, 0.9999),
+    delta_max = c(2, 0.1), quan_cut = c(0.995, 0.9999),
     shift_int = F, quick = T, verbose = F, cores = 1 
   )$image_post_fix
   
