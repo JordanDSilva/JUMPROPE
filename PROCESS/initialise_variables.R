@@ -34,7 +34,12 @@ initialise_params = function(){
    ## overwrite and use one 1/f setting for everything. 
    ## so you don't have to laboriously type out every single VISITID and MODULE combination :D
    ow_vlarge = FALSE,
-   ow_large = TRUE
+   ow_large = FALSE,
+   
+   ## Claws removal mode
+   ## I.e., perform "wisp removal" algorithm on all NIRCam short wavelength detectors
+   ## and not only wisp affected [A3,A4,B3,B4]
+   do_claws = FALSE
     
   )
   ## Finish editing

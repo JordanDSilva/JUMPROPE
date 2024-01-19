@@ -1223,7 +1223,12 @@ do_wisp_rem = function(input_args){
   
   info = Rfits_key_scan(filelist = filelist,
                         keylist=c('DETECTOR', 'MODULE', 'FILTER', 'VISIT_ID'), cores = cores)
-  info_wisp = info[DETECTOR %in% c('NRCA1', 'NRCA2', 'NRCA3','NRCA4', 'NRCB1','NRCB2', 'NRCB3','NRCB4'),] ## Try do all short wavelength chips
+  
+  if(keep_trend_data$do_claws){
+    info_wisp = info[DETECTOR %in% c('NRCA1', 'NRCA2', 'NRCA3','NRCA4', 'NRCB1','NRCB2', 'NRCB3','NRCB4'),] ## Try do all short wavelength chips
+  }else{
+    info_wisp = info[DETECTOR %in% c('NRCA3','NRCA4', 'NRCB3','NRCB4'),] 
+  }
   mod_visit_grid = unique(info_wisp[,c("MODULE", "VISIT_ID")])
   
   message("Showing first <10 files:")
