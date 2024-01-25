@@ -21,8 +21,8 @@ jumprope_version = "1.1.0"
 ######################
 input_args = list(
   ref_dir = "/Volumes/RAIDY/JWST/",
-  VID = "JADES_1210_3215",
-  MODULE = "JADES_1210_3215",
+  VID = "JADESMEDIUMDEEP",
+  MODULE = "JADESMEDIUMDEEP",
   cores_stack = 1
 )
 ######################
@@ -394,37 +394,42 @@ star_mask = function(input_args){
     coordref = gaia_trim[, c("ra_fix", "dec_fix")],
     coordcompare = pro_stars$segstats[, c("RAmax", "Decmax")]
   )
-  R100_list = rep(50, dim(gaia_trim)[1])
-  R100_list[match_gaia$bestmatch$refID] = pro_stars$segstats$R100[match_gaia$bestmatch$compareID]/pixscale(f200w_ref$image)
   
-  tweak_gaia = propaneTweakCat(
-    cat_pre_fix = gaia_trim[match_gaia$bestmatch$refID, c("xpix", "ypix")],
-    cat_ref = pro_stars$segstats[match_gaia$bestmatch$compareID, c("xmax", "ymax")]
-  )
-  
-  temp = matrix(1, 1500, 1500)
-  psf_mask = psf_mask_function(temp)
-  
-  all_mask = profoundApplyMask(
-    image = f200w_ref$image$imDat, mask = psf_mask, 
-    xcen = gaia_trim$xpix, ycen = gaia_trim$ypix,
-    xsize= R100_list * 8, 
-    ysize = R100_list * 8
-  )
-
-  message("Star mask complete")
-  star_mask_redo = list()
-  star_mask_redo$mask = profoundDilate(all_mask$mask > 0, size = 3)
+  if(length(match_gaia$bestmatch)>1){
+    R100_list = rep(50, dim(gaia_trim)[1])
+    R100_list[match_gaia$bestmatch$refID] = pro_stars$segstats$R100[match_gaia$bestmatch$compareID]/pixscale(f200w_ref$image)
+    
+    tweak_gaia = propaneTweakCat(
+      cat_pre_fix = gaia_trim[match_gaia$bestmatch$refID, c("xpix", "ypix")],
+      cat_ref = pro_stars$segstats[match_gaia$bestmatch$compareID, c("xmax", "ymax")]
+    )
+    
+    temp = matrix(1, 1500, 1500)
+    psf_mask = psf_mask_function(temp)
+    
+    all_mask = profoundApplyMask(
+      image = f200w_ref$image$imDat, mask = psf_mask, 
+      xcen = gaia_trim$xpix, ycen = gaia_trim$ypix,
+      xsize= R100_list * 8, 
+      ysize = R100_list * 8
+    )
+    
+    message("Star mask complete")
+    star_mask_redo = list()
+    star_mask_redo$mask = profoundDilate(all_mask$mask > 0, size = 3)
+    
+    plot_stub = paste0(ref_dir, "/ProFound/Star_Masks/", VID, "/", MODULE, "/", VID, "_", MODULE, "_star_mask.pdf")
+    CairoPDF(plot_stub, width = 10, height = 10)
+    par(mfrow = c(1,1), mar = rep(0,4), oma = rep(0,4))
+    magimage(f200w_ref$image$imDat, flip = T, sparse = 1)
+    magimage(profoundDilate(star_mask_redo$mask, size = 21) - star_mask_redo$mask, col = c(NA, "magenta"), add = T)
+    legend(x = "topleft", paste0(VID, "_", MODULE))
+    dev.off()
+  }else{
+    star_mask_redo = list(mask = matrix(0, nrow = dim(f200w_ref$image)[1], ncol = dim(f200w_ref$image)[2]))
+  }
 
   message("Saving star mask")
-  
-  plot_stub = paste0(ref_dir, "/ProFound/Star_Masks/", VID, "/", MODULE, "/", VID, "_", MODULE, "_star_mask.pdf")
-  CairoPDF(plot_stub, width = 10, height = 10)
-  par(mfrow = c(1,1), mar = rep(0,4), oma = rep(0,4))
-  magimage(f200w_ref$image$imDat, flip = T, sparse = 1)
-  magimage(profoundDilate(star_mask_redo$mask, size = 21) - star_mask_redo$mask, col = c(NA, "magenta"), add = T)
-  legend(x = "topleft", paste0(VID, "_", MODULE))
-  dev.off()
   
   save_stub = paste0(ref_dir, "/ProFound/Star_Masks/", VID, "/", MODULE, "/", VID, "_", MODULE, "_star_mask.rds")
   saveRDS(object = star_mask_redo, save_stub)
@@ -502,11 +507,14 @@ star_mask_tile = function(input_args){
     check_files_idx = which(!check_star_masks_exist)
     check_grid = data.frame(input_VID[check_files_idx], input_MODULE[check_files_idx])
     temp_args = list(ref_dir = ref_dir)
-    for(i in 1:dim(check_grid)[1]){
-      temp_args$VID = check_grid[i,1]
-      temp_args$MODULE = check_grid[i,2]
-      query_gaia(temp_args)
-      star_mask(temp_args)
+    
+    if(dim(check_grid)[1] > 0){
+      for(i in 1:dim(check_grid)[1]){
+        temp_args$VID = check_grid[i,1]
+        temp_args$MODULE = check_grid[i,2]
+        query_gaia(temp_args)
+        star_mask(temp_args)
+      }
     }
     
     read_star_masks = foreach(i = 1:length(input_VID))%do%{
@@ -976,7 +984,7 @@ hst_warp_stack = function(input_args){
   pro_file = list.files(
     dir_profound, pattern = ".rds", full.names = T
   )
-  if(file.exists(pro_file) & length(pro_file)==1){
+  if(length(pro_file)==1){
     message(paste0("Reading: ", pro_file))
     pro_ref = readRDS(
       pro_file
@@ -1056,8 +1064,12 @@ hst_warp_stack = function(input_args){
           "\\bACS|WFC3\\b"))
       
       hst_key_scan$FILTER[is.na(hst_key_scan$FILTER)] = filters_na[is.na(hst_key_scan$FILTER)]
-      hst_key_scan$DETECTOR[is.na(hst_key_scan$DETECTOR)] = detector_na[is.na(hst_key_scan$DETECTOR)] 
-      hst_key_scan$INSTRUME[is.na(hst_key_scan$INSTRUME)] = instrume_na[is.na(hst_key_scan$INSTRUME)] 
+      hst_key_scan$DETECTOR[is.na(hst_key_scan$DETECTOR)] = detector_na[is.na(hst_key_scan$DETECTOR)]
+      hst_key_scan$INSTRUME[is.na(hst_key_scan$INSTRUME)] = instrume_na[is.na(hst_key_scan$INSTRUME)]
+      
+      hst_key_scan$FILTER = toupper(hst_key_scan$FILTER)
+      hst_key_scan$DETECTOR = toupper(hst_key_scan$DETECTOR)
+      hst_key_scan$INSTRUME = toupper(hst_key_scan$INSTRUME)
       
       hst_filters = unique(hst_key_scan$FILTER)
       NFilters = length(hst_filters)
@@ -1139,6 +1151,8 @@ hst_warp_stack = function(input_args){
                                              keyvalues_out = target$image$keyvalues,
                                              cores = cores_stack,
                                              cores_warp = 1)
+        
+        output_stack$image$imDat[output_stack$image$imDat == 0] = NA
         
   
           message("Tweaking ProFound source shift")
