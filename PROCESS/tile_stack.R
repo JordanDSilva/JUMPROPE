@@ -12,12 +12,11 @@ library(stringr)
 library(Cairo)
 
 ## User defined inputs here
-# ref_cat = fread("ref_cats/ceers_ref_cat.csv") #example for HST catalogue in EGS field
-ref_cat = fread("/Users/22252335/Documents/RefCats/JADES_1210_F444W_mast.csv")
+ ref_cat = fread("ref_cats/ceers_ref_cat.csv") #example for HST catalogue in EGS field
 
 input_args = list(
-  ref_dir = "/Volumes/RAIDY/JWST/", ## Directory containing the ProPane/ProFound/JUMPROPE stuff
-  super_name = "JADESMEDIUMDEEP", ## Name of mosaic. Advise against including "_"  
+  ref_dir = "", ## Directory containing the ProPane/ProFound/JUMPROPE stuff
+  super_name = "", ## Name of mosaic. Advise against including "_"  
 
   ref_cat = ref_cat, ## Reference catalogue for alignment
   
@@ -26,7 +25,7 @@ input_args = list(
   mosaic_size = NULL, ## Set the size of the search radius/mosaic size
   grid_size = "long", #default save on memory, 0.06arcsec/pix,
   
-  program_id = "1210|3215",  # Maybe we we just want to stack a single program e.g., Primer (1837) and not COSMOS Web (1727)
+  program_id = NULL,  # Maybe we we just want to stack a single program e.g., Primer (1837) and not COSMOS Web (1727)
   cores = NULL ## If NULL then use half the number of cores in the system
 ) 
 

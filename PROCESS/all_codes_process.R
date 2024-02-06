@@ -7,7 +7,7 @@ library(doParallel)
 library(Cairo)
 library(ProPane)
 
-pipe_version = "1.1.0" ## Change nominal from too high version 2.0 (1.0.0 being release on GitHub)
+pipe_version = "1.1.1" ## Change nominal from too high version 2.0 (1.0.0 being release on GitHub)
 
 load_files = function(input_args, which_module, sky_info = NULL){
   ## Load the correct files for what ever task
@@ -341,6 +341,7 @@ do_cal_process = function(input_args){
     
     #run pro sky routines
     #pro = profoundProFound(JWST_cal_image$imDat, mask=JWST_cal_mask, box=256, redoskysize=101, roughpedestal=TRUE, tolerance=Inf, skycut=3, boxiters = 3)
+    
     pro = profoundProFound(JWST_cal_image$imDat, mask=JWST_cal_mask,
                            skycut=2, pixcut=5, box=512, redoskysize=101,
                            roughpedestal=TRUE, tolerance=Inf)

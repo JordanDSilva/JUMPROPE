@@ -14,15 +14,15 @@ library(dplyr)
 
 source("./ProFound_settings.R")
 
-jumprope_version = "1.1.0"
+jumprope_version = "1.1.1"
 
 ######################
 ## for testing only ##
 ######################
 input_args = list(
   ref_dir = "/Volumes/RAIDY/JWST/",
-  VID = "JADESMEDIUMDEEP",
-  MODULE = "JADESMEDIUMDEEP",
+  VID = "NGDEEP",
+  MODULE = "NGDEEP",
   cores_stack = 1
 )
 ######################
@@ -1096,7 +1096,7 @@ hst_warp_stack = function(input_args){
           # extlist = ifelse(
           #   sapply(files, Rfits_nhdu) == 1, 1, 2
           # )
-          frames = Rfits_make_list(files, extlist = frame_find$ext[files_idx], pointer = F)
+          frames = Rfits_make_list(files, extlist = frame_find$ext[files_idx], pointer = T)
           
         }
         
@@ -1106,14 +1106,14 @@ hst_warp_stack = function(input_args){
         inVar_list = {}
         for(i in 1:length(frames)){
           
-          hst_magzero = frames[[i]]$keyvalues$MAGZERO
-          if(is.na(hst_magzero)){
+          hst_magzero = c(frames[[i]]$keyvalues$MAGZERO)
+          if(is.null(hst_magzero)){
             hst_magzero = -2.5*log10(frames[[i]]$keyvalues$PHOTFLAM)-5*log10(frames[[i]]$keyvalues$PHOTPLAM)-2.408
           }
           
           magzero_list = c(magzero_list, hst_magzero)
           
-          temp = frames[[i]]
+          temp = frames[[i]][,]
           
           if(!do_sky_rem){
             message("Running: ", files[i])
@@ -1225,7 +1225,9 @@ copy_hst_for_tile = function(input_args){
   if(VID == MODULE){
     message("VID [", VID, "] is the same as MODULE [", MODULE, "]")
     message("Detected big mosaic!")
-    
+
+    mosaic_files = list.files(paste0(ref_dir, "/Mosaic_Stacks/Patch/"), full.names=T, pattern = glob2rx(paste0("*", VID, "*.fits"))) 
+
     input_info = foreach(i = 1:length(mosaic_files), .combine = "bind_rows")%do%{
       info = Rfits_read_table(filename = mosaic_files[i], ext = 7)
       input_VID = na.exclude(
