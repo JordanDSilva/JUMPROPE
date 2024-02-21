@@ -1,3 +1,8 @@
+
+detect_bands_load = "F277W|F356W|F444W" 
+## Use "ALL" fo an all filter stack for source detection
+## Use "F277W|F356W|F444W" notation to change to 3 filter long wavelength detect 
+
 profound_detect_master = function(frame, skyRMS, star_mask, pix_mask=NULL, segim = NULL){
   #Inject this function into the detect runs
   #frame is the stack with WCS
@@ -75,7 +80,7 @@ measure_profound = function(super_img = super_img, inVar = inVar, segim=segim, m
     iters = iters,
     
     # sky estimate
-    sky = 0,        # Do we model the sky again?
+    sky = NULL,        # Do we model the sky again?
     skyRMS = skyRMS,
     box = 100,
     grid = 100,
