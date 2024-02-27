@@ -21,8 +21,8 @@ jumprope_version = "1.1.2"
 ######################
 input_args = list(
   ref_dir = "/Volumes/RAIDY/JWST/",
-  VID = "CEERS",
-  MODULE = "CEERS",
+  VID = "NGDEEP",
+  MODULE = "NGDEEP",
   cores_stack = 1
 )
 ######################
@@ -598,7 +598,7 @@ do_detect = function(input_args, detect_bands = detect_bands_load, profound_func
   file_list <- list.files(data_dir, pattern=".fits", full.names=TRUE) #list all the .fits files in a directory
   file_names <- list.files(data_dir, pattern=".fits", full.names=FALSE) #list all the .fits files in a directory
   
-  message(paste0("Using detect_band=", detect_bands_load))
+  message(paste0("Using detect_band=", detect_bands))
   if(detect_bands == "ALL"){
     idx = grepl(VID, file_list) & grepl(MODULE, file_list) & grepl("patch", file_list)
   }else{
@@ -623,22 +623,37 @@ do_detect = function(input_args, detect_bands = detect_bands_load, profound_func
   
   message(paste0("Stacking detect band ", names(propanes), collapse="\n"))
   
+  idx_to_mask = lapply(propanes, ## Remove weight == 1, low S/N pixels from all detect frames. More robust than earlier versions.
+                       function(x){
+                         x$weight[,]$imDat <= 1
+                       })
+  pix_mask = Reduce("+", idx_to_mask) ## Adapted from star_mask_tile 
+  pix_mask[pix_mask > 0] = 1
+  # pix_mask[pix_mask != 1] = 0
+  
   #we need to do a stack image first because we cannot supply a skyRMS list to profoundMultiBand
   stack_image = propaneStackWarpInVar(image_list = lapply(propanes, function(x)x$image[,]),
                                       inVar_list = lapply(propanes, function(x)x$inVar[,]),
+                                      weight_list = lapply(propanes, function(x)x$weight[,]),
+                                      # mask_list = idx_to_mask, 
                                       keyvalues_out = propanes[[1]]$image$keyvalues,
                                       magzero_in = 23.9, magzero_out = 23.9, cores = 1)
   
-  pix_mask = propanes[[1]]$weight[,]$imDat
-  pix_mask[pix_mask <= 1]= 0
-  pix_mask[pix_mask > 0]=1
-  pix_mask = 1 - pix_mask
-  
+  # pix_mask = propanes[[1]]$weight[,]$imDat ## mostly to cutout the corners/edges of the frame
+  # pix_mask[pix_mask <= 1]= 0
+  # pix_mask[pix_mask > 0]=1
+  # pix_mask = 1 - pix_mask
+
+  # pix_mask = stack_image$weight$imDat
+  # pix_mask[pix_mask < length(propanes)]= 0
+  # pix_mask[pix_mask > 0]=1
+  # pix_mask = 1 - pix_mask
+
   message("Finding sources with ProFound...")
   profound = profound_function(frame = stack_image$image[,], 
                                skyRMS = (stack_image$inVar[,]$imDat)^-0.5, 
                                star_mask = star_mask$mask, 
-                               pix_mask=pix_mask)
+                               pix_mask = pix_mask)
 
   profound$segstats$MODULE = rep(MODULE, dim(profound$segstats)[1])
   profound$segstats$VID = rep(VID, dim(profound$segstats)[1])
@@ -780,7 +795,7 @@ do_measure = function(input_args){
     )
   }
   
-  message("Running ProMeasure")
+  message("\n Running ProMeasure \n")
   
   ref_dir = input_args$ref_dir
   VID = input_args$VID
@@ -808,6 +823,9 @@ do_measure = function(input_args){
   super_pro = readRDS(pro_path)
   segim = super_pro$segim
   mask = super_pro$mask
+  super_segstats = super_pro$segstats
+  rm(super_pro)
+  gc()
   
   ####### Load data images ########################
   assert(checkDirectoryExists(data_dir))
@@ -870,7 +888,7 @@ do_measure = function(input_args){
   cat('Filters','Slopes','Intercepts','\n', file = error_file, sep='\t')          # Create file for the fitted relation of error sampling
   
   ####### Initiate csv for saving output ##########
-  csvout = data.frame(segID=super_pro$segstats$segID)
+  csvout = data.frame(segID=super_segstats$segID)
   
   if(!dir.exists(measurements_dir)){dir.create(measurements_dir, recursive = T)}else{
     message("Unlinking measurement dir")
@@ -885,33 +903,24 @@ do_measure = function(input_args){
   }                                                    # Create directory for inspection plots
   ###### Main #############
   for(ff in names(images)){
-    message(paste0("Running ProMeasure on: ", ff))
+    message(paste0("Running ProMeasure on: ", ff, "\n"))
     filt = images[[ff]][,]
     filt_invar = inVar[[ff]][,]
     # filt[[ff]]$imDat[filt[[ff]]$imDat==0L] = NA
+
     dum_pro = measure_profound(filt, inVar = filt_invar, segim, mask)
-    dum_pro_col = measure_profound(filt, inVar = filt_invar, segim, mask, redosegim = F) #don't redilate segments e.g., colour photometry mode
     csvout[paste0(ff,'_fluxt')] = dum_pro$segstats$flux
     csvout[paste0(ff,'_fluxt_err')] = dum_pro$segstats$flux_err
-    csvout[paste0(ff,'_fluxc')] = dum_pro_col$segstats$flux
-    csvout[paste0(ff,'_fluxc_err')] = dum_pro_col$segstats$flux_err
-    csvout[paste0(ff,'_maskfrac')] = dum_pro$segstats$Nmask/dum_pro$segstats$Nedge
-
-    CairoPDF(file.path(inspect_dir,paste0("profound_",ff,"_inspect.pdf")), width = 10, height = 10 )
-    plot_profound(dum_pro)
-    plot_profound(dum_pro_col)
-    par(mfrow = c(1,2), mar = rep(0,4), oma = rep(0,4))
-    profoundSegimPlot(dum_pro, sparse=1, sky = dum_pro$sky, qdiff = T)
-    legend(x="topleft", legend="Total photometry")
-    profoundSegimPlot(dum_pro_col, sparse=1, sky = dum_pro$sky, qdiff = T)
-    legend(x="topleft", legend="Colour photometry")
-    dev.off()
+    gc()
     
+    csvout[paste0(ff,'_maskfrac')] = dum_pro$segstats$Nmask/dum_pro$segstats$Nedge
+  
     img = filt$imDat - dum_pro$sky
     img[img == 0L] = NA
     img[mask] = NA
     sample_mask = (dum_pro$objects_redo | mask)
 
+    message("\n ...Error sampling... \n")
     row=foreach(rr = r, .combine="c")%do%{
       dum = err_sampler(rr, img, ff, mask = sample_mask, root=sampling_dir)
       q = unname(quantile(dum$sum, probs=c(0.5, 0.16), na.rm=F))
@@ -928,6 +937,27 @@ do_measure = function(input_args){
     intercept = unname(fit_samp$coefficients)[1]
     cat(ff, slope, intercept, '\n', file = error_file, sep = '\t', append = T)      # Save the fitted relation
 
+    csvout[paste0(ff,'_scaled_fluxt_err')] = error_scaling(dum_pro$segstats$flux_err, dum_pro$segstats$N100, slope, intercept)
+    
+    message(("\n ...Running colour photometry... \n"))
+    dum_pro_col = measure_profound(filt, inVar = filt_invar, segim, mask, redosegim = F) #don't redilate segments e.g., colour photometry mode
+    csvout[paste0(ff,'_fluxc')] = dum_pro_col$segstats$flux
+    csvout[paste0(ff,'_fluxc_err')] = dum_pro_col$segstats$flux_err
+    csvout[paste0(ff,'_scaled_fluxc_err')] = error_scaling(dum_pro_col$segstats$flux_err, dum_pro_col$segstats$N100, slope, intercept)
+    rm(dum_pro_col)
+    gc()
+    saveRDS(dum_pro, file.path(measurements_dir,paste(VID,MODULE,ff,"results.rds",sep='_')))
+    
+    CairoPDF(file.path(inspect_dir,paste0("profound_",ff,"_inspect.pdf")), width = 10, height = 10 )
+    plot_profound(dum_pro)
+    # plot_profound(dum_pro_col)
+    par(mfrow = c(1,2), mar = rep(0,4), oma = rep(0,4))
+    profoundSegimPlot(dum_pro, sparse=1, sky = dum_pro$sky, qdiff = T)
+    legend(x="topleft", legend="Total photometry")
+    # profoundSegimPlot(dum_pro_col, sparse=1, sky = dum_pro$sky, qdiff = T)
+    # legend(x="topleft", legend="Colour photometry")
+    dev.off()
+
     CairoPDF(file.path(sampling_dir,paste0(ff,"_sample_error.pdf")))                            # Plot the sampled relation
     magplot(master$a, master[[ff]], col='white', pch=1,
             log='xy', xlim = c(5,5000), ylim = c(0.0001,1.0),
@@ -939,10 +969,8 @@ do_measure = function(input_args){
     abline(intercept, slope, col='red', lty=2)
     legend('bottomright', legend = c('sample', 'profound', 'corrected'), col = c('red','darkgrey','black'), pch = c(1,3,1), cex=1.2)
     dev.off()
-
-    csvout[paste0(ff,'_scaled_fluxt_err')] = error_scaling(dum_pro$segstats$flux_err, dum_pro$segstats$N100, slope, intercept)
-    csvout[paste0(ff,'_scaled_fluxc_err')] = error_scaling(dum_pro_col$segstats$flux_err, dum_pro_col$segstats$N100, slope, intercept)
-    saveRDS(dum_pro, file.path(measurements_dir,paste(VID,MODULE,ff,"results.rds",sep='_')))
+    
+    gc()
   }
   write.csv(csvout, file = file.path(measurements_dir,paste(VID,MODULE,"photometry.csv",sep='_')))
 }
@@ -1240,7 +1268,7 @@ hst_warp_stack = function(input_args){
                                                cores = cores_stack,
                                                cores_warp = 1)
           
-          output_stack$image$imDat[output_stack$image$imDat == 0] = NA
+          output_stack$image$imDat[output_stack$image$imDat == 0 | is.infinite(output_stack$image$imDat)] = NA
           
           # message("Tweaking ProFound source shift")
           # 
