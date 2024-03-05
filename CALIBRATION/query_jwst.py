@@ -190,8 +190,11 @@ def check_filesV2(dl_dir, csv_file, visit_id):
     all_files_redo = [ii for ii in all_files if visit_id in ii]
     all_files_redo_basenames = [os.path.basename(ii) for ii in all_files_redo]
 
-    csv_file_redo = csv_file[csv_file["productFilename"].str.contains(visit_id)]
+    ## Why are there duplicate rows in the MAST table?
+    ## Only get rows of files where the files exist on disk
+    csv_file_redo = csv_file[csv_file["productFilename"].str.contains(visit_id)].drop_duplicates("productFilename")
 
+    ## Redownload missing files. '~' invert Boolean 'isin'
     df1 = csv_file_redo[~csv_file_redo["productFilename"].isin(all_files_redo_basenames)]
     if len(df1)>0:
         print("Missing " + str(len(df1)) + " files, downloading!")
@@ -203,6 +206,7 @@ def check_filesV2(dl_dir, csv_file, visit_id):
     all_files_redo_basenames = [os.path.basename(ii) for ii in all_files_redo]
     temp_size = [os.stat(file).st_size for file in all_files_redo]
 
+    ## Redownload files with wrong sizes according to MAST table
     df1 = csv_file_redo[csv_file_redo["productFilename"].isin(all_files_redo_basenames)]
     df2 = df1.loc[~(df1["size"].values  == temp_size)]
     print(df2)
