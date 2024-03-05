@@ -14,7 +14,7 @@ library(dplyr)
 
 source("./ProFound_settings.R")
 
-jumprope_version = "1.1.2"
+jumprope_version = "1.1.3"
 
 ######################
 ## for testing only ##
@@ -623,44 +623,35 @@ do_detect = function(input_args, detect_bands = detect_bands_load, profound_func
   
   message(paste0("Stacking detect band ", names(propanes), collapse="\n"))
   
-  idx_to_mask = lapply(propanes, ## Remove weight == 1, low S/N pixels from all detect frames. More robust than earlier versions.
-                       function(x){
-                         x$weight[,]$imDat <= 1
-                       })
-  pix_mask = Reduce("+", idx_to_mask) ## Adapted from star_mask_tile 
-  pix_mask[pix_mask > 0] = 1
-  # pix_mask[pix_mask != 1] = 0
+  stack_image = propaneStackFlatInVar(image_list = lapply(propanes, function(x)x$image[,]), 
+                                      skyRMS_list = lapply(propanes, function(x){1 / sqrt(x$inVar[,]$imDat)}),
+                                      magzero_in = 23.9, magzero_out = 23.9)
+  stack_image_fits = Rfits_create_image(
+    data = stack_image$image,
+    keyvalues = propanes[[1]]$image$keyvalues
+  )
   
-  #we need to do a stack image first because we cannot supply a skyRMS list to profoundMultiBand
-  stack_image = propaneStackWarpInVar(image_list = lapply(propanes, function(x)x$image[,]),
-                                      inVar_list = lapply(propanes, function(x)x$inVar[,]),
-                                      weight_list = lapply(propanes, function(x)x$weight[,]),
-                                      # mask_list = idx_to_mask, 
-                                      keyvalues_out = propanes[[1]]$image$keyvalues,
-                                      magzero_in = 23.9, magzero_out = 23.9, cores = 1)
+  med_stack = propaneStackFlatMed(
+    image_list = lapply(propanes, function(x)x$image[,])
+  )
   
-  # pix_mask = propanes[[1]]$weight[,]$imDat ## mostly to cutout the corners/edges of the frame
-  # pix_mask[pix_mask <= 1]= 0
-  # pix_mask[pix_mask > 0]=1
-  # pix_mask = 1 - pix_mask
-
-  # pix_mask = stack_image$weight$imDat
-  # pix_mask[pix_mask < length(propanes)]= 0
-  # pix_mask[pix_mask > 0]=1
-  # pix_mask = 1 - pix_mask
+  patch_stack_image = propanePatch(
+    stack_image_fits,
+    med_stack$image
+  )
 
   message("Finding sources with ProFound...")
-  profound = profound_function(frame = stack_image$image[,], 
-                               skyRMS = (stack_image$inVar[,]$imDat)^-0.5, 
+  profound = profound_function(frame = patch_stack_image$image, 
+                               skyRMS = stack_image$skyRMS, 
                                star_mask = star_mask$mask, 
-                               pix_mask = pix_mask)
+                               pix_mask = NULL)
 
   profound$segstats$MODULE = rep(MODULE, dim(profound$segstats)[1])
   profound$segstats$VID = rep(VID, dim(profound$segstats)[1])
   
   stack_stub = paste0(detect_dir, "/", VID, "_", MODULE, "_profound_stack.fits")
   profound_stack = list(
-    stack = stack_image$image[,],
+    stack = patch_stack_image$image[,],
     segim = profound$segim,
     segim_orig = profound$segim_orig
   )
