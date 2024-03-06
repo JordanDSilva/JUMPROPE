@@ -108,11 +108,10 @@ if __name__ == "__main__":
                                                        )
         visit_ids = np.array([obs[3:13] for obs in products_stage2["obs_id"]])
         idx = np.flatnonzero(np.core.defchararray.find(visit_ids, str(visitid)) != -1)
-        df = products_stage2[idx].to_pandas()
+        df = products_stage2[idx].to_pandas().drop_duplicates("productFilename")
         # df = dff[dff["dataRights"] == "PUBLIC"]
-
         if(len(df) > len(files)):
-            print("Some files appear to be missing in VISIT/PROGRAM " + visitid + "\n compared to what I can find on MAST.")
+            print("Some files appear to be missing in VISIT PROGRAM " + visitid + "\n compared to what I can find on MAST.")
 
             if sum(df["dataRights"] == "EXCLUSIVE_ACCESS") == len(df) - len(uncal_files):
                 print("Exclusive access files found.")
@@ -132,56 +131,14 @@ if __name__ == "__main__":
             if sum(df["obs_id"].isin(cal_files_names)) != len(df["obs_id"]): ## check that all of the expected cal files have been produced
 
                 idx = list(~df["obs_id"].isin(cal_files_names))
+
                 for i,j in enumerate(idx):
                     if j:
-                        print(i)
                         files_redo.append(files[i])
-
-                ## if not only run the missing cal files
-
-            temp_size = [os.stat(file).st_size for file in cal_files] ## check that the cal files are the correct size
-            cal_files_names = [foo.split("_cal")[0].split("/")[-1] for foo in cal_files]
-            if sum(temp_size >= df[df["obs_id"].isin(cal_files_names)]["size"]) != len(cal_files_names): ## if the cal files are les
-                idx = list(temp_size < df[df["obs_id"].isin(cal_files_names)]["size"])
-                for i, j in enumerate(idx):
-                    if j:
-                        files_redo.append(files[i])
-
-            # files_redo = [i for j in files_redo for i in j]
 
         print("Running " + str(len(files_redo)) + " files")
         for ff in files_redo:
           run1(ff)
-
-
-        # files_redo = []
-        # for i in range(len(files)):
-        #     idx = [r for r, s in enumerate(cal_files) if uncal_files[i] in s]
-        #     if len(idx)>1:
-        #         print("Something went wrong \n")
-        #         print(cal_files[idx])
-        #         break
-        #     if len(idx)==1:
-        #         cal_size = os.stat(cal_files[idx[0]]).st_size
-        #         if cal_size != 117538560: #size of cal file on disk, hopefully shouldn't change :O
-        #             files_redo.append(files[i])
-        #     if len(idx)==0:
-        #         files_redo.append(files[i])
-        #
-        # if args.redo:
-        #     files_redo = files
-        #
-        # print(files_redo, sep="\n")
-        # # # Make the cal and rates directories
-        # os.makedirs(cal_dir, exist_ok=True)
-        # os.makedirs(rates_dir, exist_ok=True)
-        #
-
-        # #print(cal_files)
-        # # Process files!
-        #with Pool(processes=N) as p:
-        #   p.map(run1, files_redo)
-        # files_redo = [files[i] for i in range(len(files)) if not (any(uncal_files[i] in s for s in rates_files)) & (any(uncal_files[i] in s for s in cal_files))]
 
 #I’ve processed all the NIRCam smacs frames with cal-webb. The issue I was having was that two of the dark frames must not have downloaded #properly, so I redownloaded them manually. Process took about ~1 hour with 10 frames running in parallel over 270 frames. These are all with pmap 0953.
 #Data summary:
