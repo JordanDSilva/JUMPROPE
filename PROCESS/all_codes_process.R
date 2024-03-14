@@ -996,11 +996,16 @@ do_gen_stack = function(input_args){
   
   unique_visits = unique(orig_cal_sky_info$VISIT_ID)
   
-  temp_vid = VID
   message("Now running stack!")
   
+  
+  temp_vid = VID
   VID_list = grep(temp_vid, unique_visits, value = T)
-  not_pid_idx = sapply(substr(VID_list,1,4), function(x) grepl(x, VID, fixed = T)) ## make sure PID is not embedded in string of VID
+  if(temp_vid == ""){
+    not_pid_idx = 1:length(VID_list)
+  }else{
+    not_pid_idx = sapply(substr(VID_list,1,4), function(x) grepl(x, VID, fixed = T)) ## make sure PID is not embedded in string of VID
+  }
   
   for(VID in VID_list[not_pid_idx]){
     
