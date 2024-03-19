@@ -53,7 +53,7 @@ profound_detect_master = function(frame, skyRMS, star_mask, pix_mask=NULL, segim
   return(pro)
 }
 
-measure_profound = function(super_img = super_img, inVar = inVar, segim=segim, mask=mask, redosegim=T){
+measure_profound = function(super_img = super_img, inVar = inVar, segim=segim, mask=mask, redosegim=T, sky=NULL, redosky=T){
   
   if(inherits(inVar, 'Rfits_image')){
     skyRMS = inVar$imDat^-0.5
@@ -64,10 +64,11 @@ measure_profound = function(super_img = super_img, inVar = inVar, segim=segim, m
   }
   
   if(redosegim){
-    iters = 3
+    iters = 2
   }else{
     iters = 0
   }
+  
   super_pro = profoundProFound(
     super_img,
     magzero = 23.9,
@@ -96,7 +97,7 @@ measure_profound = function(super_img = super_img, inVar = inVar, segim=segim, m
     pixelcov = T,
     rem_mask = T,
     verbose = F,
-    redosky = T,
+    redosky = redosky,
     redoskysize = 11
   )
   return(super_pro)

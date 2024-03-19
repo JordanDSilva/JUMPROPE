@@ -813,6 +813,7 @@ do_measure = function(input_args){
   
   super_pro = readRDS(pro_path)
   segim = super_pro$segim
+  segim_col = super_pro$segim_orig
   mask = super_pro$mask
   super_segstats = super_pro$segstats
   rm(super_pro)
@@ -931,7 +932,7 @@ do_measure = function(input_args){
     csvout[paste0(ff,'_scaled_fluxt_err')] = error_scaling(dum_pro$segstats$flux_err, dum_pro$segstats$N100, slope, intercept)
     
     message(("\n ...Running colour photometry... \n"))
-    dum_pro_col = measure_profound(filt, inVar = filt_invar, segim, mask, redosegim = F) #don't redilate segments e.g., colour photometry mode
+    dum_pro_col = measure_profound(filt, inVar = filt_invar, segim_col, mask, redosegim = F) #don't redilate segments e.g., colour photometry mode
     csvout[paste0(ff,'_fluxc')] = dum_pro_col$segstats$flux
     csvout[paste0(ff,'_fluxc_err')] = dum_pro_col$segstats$flux_err
     csvout[paste0(ff,'_scaled_fluxc_err')] = error_scaling(dum_pro_col$segstats$flux_err, dum_pro_col$segstats$N100, slope, intercept)
