@@ -207,10 +207,9 @@ def check_filesV2(dl_dir, csv_file, visit_id):
     temp_size = [os.stat(file).st_size for file in all_files_redo]
 
     ## Redownload files with wrong sizes according to MAST table
-    df1 = csv_file_redo[csv_file_redo["productFilename"].isin(all_files_redo_basenames)]
-    df2 = df1.loc[~(df1["size"].values  == temp_size)]
-    print(df2)
-    print(sum(df1["size"].values  == temp_size))
+    df1 = csv_file_redo.reset_index().set_index('productFilename').loc[all_files_redo_basenames].reset_index().set_index('index')
+    df2 = df1.loc[~(df1["size"].values == temp_size)]
+
     if len(df2)>0:
         print(str(len(df2)) + " files wrong sizes, redownloading!")
         query_table(dl_dir, df2)
