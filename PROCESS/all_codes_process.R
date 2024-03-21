@@ -26,11 +26,12 @@ load_files = function(input_args, which_module, sky_info = NULL){
   if(which_module == "1oF"){
     files_1oF = input_args$filelist
     files_1oF = files_1oF[grepl(VID, files_1oF) & grepl(".fits$", files_1oF)]
+    
     scan_1oF = Rfits_key_scan(filelist = files_1oF,keylist = c("FILTER", "PROGRAM"))
-    not_pid_idx = sapply(scan_1oF$PROGRAM, function(x)grepl(x, VID, fixed = T)) ## make sure PID is not embedded in string of VID
-    if(VID == ""){
-      not_pid_idx = rep(TRUE, length(files_1oF))
-    }
+    not_pid = grep(VID, scan_1oF$PROGRAM, fixed = T, value = T)
+    not_pid = not_pid[substring(not_pid, 1, nchar(VID)) == VID]
+    not_pid_idx = !(sky_info$visit_id %in% not_pid)
+    
     files_1oF = files_1oF[not_pid_idx]
     files_1oF = files_1oF[grepl(FILT, scan_1oF$FILTER[not_pid_idx])]
     return(files_1oF)
@@ -47,11 +48,12 @@ load_files = function(input_args, which_module, sky_info = NULL){
     }else{
       files_cal = files_cal[!grepl('_miri_',files_cal) & !grepl('_nis_', files_cal) & grepl(".fits$", files_cal)]
     }
+    
     scan_cal = Rfits_key_scan(filelist = files_cal, keylist = c("FILTER", "PROGRAM", "VISIT_ID"))
-    not_pid_idx = sapply(scan_cal$PROGRAM, function(x)grepl(x, VID, fixed = T)) ## make sure PID is not embedded in string of VID
-    if(VID == ""){
-      not_pid_idx = rep(TRUE, length(files_cal))
-    }
+    not_pid = grep(VID, scan_cal$VISIT_ID, fixed = T, value = T)
+    not_pid = not_pid[substring(not_pid, 1, nchar(VID)) == VID]
+    not_pid_idx = !(sky_info$visit_id %in% not_pid)
+    
     files_cal = files_cal[not_pid_idx]
     files_cal = files_cal[grepl(FILT, scan_cal$FILTER[not_pid_idx])]
     return(files_cal)
@@ -71,10 +73,10 @@ load_files = function(input_args, which_module, sky_info = NULL){
     }
     
     scan_sky = Rfits_key_scan(filelist = files_sky, keylist = c("FILTER", "PROGRAM", "VISIT_ID"))
-    not_pid_idx = sapply(substr(scan_sky$VISIT_ID,1,4), function(x)grepl(x, VID, fixed = T)) ## make sure PID is not embedded in string of VID
-    if(VID == ""){
-      not_pid_idx = rep(TRUE, length(files_sky))
-    }
+    not_pid = grep(VID, scan_sky$VISIT_ID, fixed = T, value = T)
+    not_pid = not_pid[substring(not_pid, 1, nchar(VID)) == VID]
+    not_pid_idx = !(sky_info$visit_id %in% not_pid)
+    
     files_sky = files_sky[not_pid_idx]
     files_sky = files_sky[grepl(FILT, scan_sky$FILTER[not_pid_idx])]
     return(files_sky)
@@ -82,11 +84,10 @@ load_files = function(input_args, which_module, sky_info = NULL){
   
   if(which_module == "apply_super"){
     
-    not_pix_idx = grepl(VID, sky_info$visit_id, fixed = T)
-    # not_pid_idx = sapply(substr(sky_info$visit_id,1,4), function(x)grepl(x, VID, fixed = T)) ## make sure PID is not embedded in string of VID
-    # if(VID == ""){
-    #   not_pid_idx = rep(TRUE, length(files_sky))
-    # }
+    not_pid = grep(VID, sky_info$visit_id, fixed = T, value = T)
+    not_pid = not_pid[substring(not_pid, 1, nchar(VID)) == VID]
+    not_pid_idx = !(sky_info$visit_id %in% not_pid)
+
     sky_info = sky_info[grepl(VID, sky_info$fileim) & not_pid_idx & grepl(FILT, sky_info$filter) & !grepl("MIRIMAGE", sky_info$detector), ]
     return(list('sky_info' = sky_info, 'sky_filelist', sky_info$filesky))
   }
@@ -103,10 +104,11 @@ load_files = function(input_args, which_module, sky_info = NULL){
       }
     
     scan_cal_sky = Rfits_key_scan(filelist = files_cal_sky, keylist = c("FILTER", "PROGRAM", "VISIT_ID"))
-    not_pid_idx = sapply(substr(scan_cal_sky$VISIT_ID,1,4), function(x)grepl(x, VID, fixed = T)) ## make sure PID is not embedded in string of VID
-    if(VID == ""){
-      not_pid_idx = rep(TRUE, length(files_cal_sky))
-    }
+    
+    not_pid = grep(VID, scan_cal_sky$VISIT_ID, fixed = T, value = T)
+    not_pid = not_pid[substring(not_pid, 1, nchar(VID)) == VID]
+    not_pid_idx = !(sky_info$visit_id %in% not_pid)
+    
     files_cal_sky = files_cal_sky[not_pid_idx]
     files_cal_sky = files_cal_sky[grepl(FILT, scan_cal_sky$FILTER[not_pid_idx])]
     return(files_cal_sky)
@@ -115,11 +117,12 @@ load_files = function(input_args, which_module, sky_info = NULL){
   if(which_module == "wisp_rem"){
     files_wisp = input_args$filelist
     files_wisp = files_wisp[grepl(VID, files_wisp) & grepl(".fits$", files_wisp)]
+    
     scan_1oF = Rfits_key_scan(filelist = files_wisp,keylist = c("FILTER", "PROGRAM"))
-    not_pid_idx = sapply(scan_1oF$PROGRAM, function(x)grepl(x, VID, fixed = T)) ## make sure PID is not embedded in string of VID
-    if(VID == ""){
-      not_pid_idx = rep(TRUE, length(files_wisp))
-    }
+    not_pid = grep(VID, scan_1oF$PROGRAM, fixed = T, value = T)
+    not_pid = not_pid[substring(not_pid, 1, nchar(VID)) == VID]
+    not_pid_idx = !(sky_info$visit_id %in% not_pid)
+    
     files_wisp = files_wisp[not_pid_idx]
     return(files_wisp)
   }
