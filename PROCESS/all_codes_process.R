@@ -8,7 +8,7 @@ library(Cairo)
 library(ProPane)
 library(stringr)
 
-pipe_version = "1.1.3" ## Change nominal from too high version 2.0 (1.0.0 being release on GitHub)
+pipe_version = "1.1.4" ## Change nominal from too high version 2.0 (1.0.0 being release on GitHub)
 
 load_files = function(input_args, which_module, sky_info = NULL){
   ## Load the correct files for what ever task
