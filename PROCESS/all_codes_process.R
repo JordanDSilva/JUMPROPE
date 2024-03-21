@@ -81,10 +81,12 @@ load_files = function(input_args, which_module, sky_info = NULL){
   }
   
   if(which_module == "apply_super"){
-    not_pid_idx = sapply(substr(sky_info$visit_id,1,4), function(x)grepl(x, VID, fixed = T)) ## make sure PID is not embedded in string of VID
-    if(VID == ""){
-      not_pid_idx = rep(TRUE, length(files_sky))
-    }
+    
+    not_pix_idx = grepl(VID, sky_info$visit_id, fixed = T)
+    # not_pid_idx = sapply(substr(sky_info$visit_id,1,4), function(x)grepl(x, VID, fixed = T)) ## make sure PID is not embedded in string of VID
+    # if(VID == ""){
+    #   not_pid_idx = rep(TRUE, length(files_sky))
+    # }
     sky_info = sky_info[grepl(VID, sky_info$fileim) & not_pid_idx & grepl(FILT, sky_info$filter) & !grepl("MIRIMAGE", sky_info$detector), ]
     return(list('sky_info' = sky_info, 'sky_filelist', sky_info$filesky))
   }
