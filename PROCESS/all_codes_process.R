@@ -6,6 +6,7 @@ library(foreach)
 library(doParallel)
 library(Cairo)
 library(ProPane)
+library(stringr)
 
 pipe_version = "1.1.3" ## Change nominal from too high version 2.0 (1.0.0 being release on GitHub)
 
@@ -27,9 +28,9 @@ load_files = function(input_args, which_module, sky_info = NULL){
     files_1oF = input_args$filelist
     files_1oF = files_1oF[grepl(VID, files_1oF) & grepl(".fits$", files_1oF)]
     
-    scan_1oF = Rfits_key_scan(filelist = files_1oF,keylist = c("FILTER", "PROGRAM", "VISIT_ID"))
+    scan_1oF = Rfits_key_scan(filelist = files_1oF, keylist = c("FILTER", "PROGRAM", "VISIT_ID"))
     corr_pid = grep(VID, scan_1oF$VISIT_ID, fixed = T, value = T)
-    corr_pid = corr_pid[substring(corr_pid, 1, nchar(VID)) == VID] ## Make sure 4 digit PID is embedded in 10 digit VID
+    corr_pid = corr_pid[substring(corr_pid, 1, max(nchar(strsplit(VID, "|", fixed = T)))) %in% strsplit(VID, "|", fixed=T)] ## Make sure 4 digit PID is embedded in 10 digit VID
     pid_idx = scan_1oF$VISIT_ID %in% corr_pid
     
     files_1oF = files_1oF[pid_idx]
@@ -86,7 +87,7 @@ load_files = function(input_args, which_module, sky_info = NULL){
     
     corr_pid = grep(VID, sky_info$visit_id, fixed = T, value = T)
     corr_pid = corr_pid[substring(corr_pid, 1, nchar(VID)) == VID] ## Make sure 4 digit PID is embedded in 10 digit VID
-    pid_idx = scan_1oF$PVISIT_ID %in% corr_pid
+    pid_idx = paste0(sky_info$visit_id) %in% corr_pid
     
     sky_info = sky_info[grepl(VID, sky_info$fileim) & pid_idx & grepl(FILT, sky_info$filter) & !grepl("MIRIMAGE", sky_info$detector), ]
     return(list('sky_info' = sky_info, 'sky_filelist', sky_info$filesky))
@@ -914,7 +915,7 @@ do_modify_pedestal = function(input_args){
               replace_SKY_Super = temp_cal_sky$SKY_Super[,]$imDat + pro_new_sky$sky
               replace_SKY_P = temp_cal_sky$SCI$keyvalues$SKY_P + mean(pro_new_sky$sky, na.rm=TRUE)
               
-              Rfits_write_pix(replace_SCI, file_cal_sky_renorm, ext=which(ext_names == 'SCI'))
+              Rfits_write_pix(replace_SCI, file_cal_sky_renorm, ext=which(ext_names == 'SCI')[1])
               Rfits_write_pix(replace_SKY_Super, file_cal_sky_renorm, ext=which(ext_names == 'SKY_Super'))
               Rfits_write_key(file_cal_sky_renorm, keyname='SKY_P', keyvalue=replace_SKY_P, keycomment='SKY P coef in SKY = M.SuperSky + B + P', ext=2)
               Rfits_write_key(file_cal_sky_renorm, keyname='SKY_CHI', keyvalue=pro_new_sky$skyChiSq, keycomment='SKY Chi-Sq', ext=2)
