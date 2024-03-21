@@ -30,7 +30,7 @@ load_files = function(input_args, which_module, sky_info = NULL){
     scan_1oF = Rfits_key_scan(filelist = files_1oF,keylist = c("FILTER", "PROGRAM"))
     not_pid = grep(VID, scan_1oF$PROGRAM, fixed = T, value = T)
     not_pid = not_pid[substring(not_pid, 1, nchar(VID)) == VID]
-    not_pid_idx = !(sky_info$visit_id %in% not_pid)
+    not_pid_idx = !(scan_1oF$PROGRAM %in% not_pid)
     
     files_1oF = files_1oF[not_pid_idx]
     files_1oF = files_1oF[grepl(FILT, scan_1oF$FILTER[not_pid_idx])]
@@ -52,7 +52,7 @@ load_files = function(input_args, which_module, sky_info = NULL){
     scan_cal = Rfits_key_scan(filelist = files_cal, keylist = c("FILTER", "PROGRAM", "VISIT_ID"))
     not_pid = grep(VID, scan_cal$VISIT_ID, fixed = T, value = T)
     not_pid = not_pid[substring(not_pid, 1, nchar(VID)) == VID]
-    not_pid_idx = !(sky_info$visit_id %in% not_pid)
+    not_pid_idx = !(scan_cal$VISIT_ID %in% not_pid)
     
     files_cal = files_cal[not_pid_idx]
     files_cal = files_cal[grepl(FILT, scan_cal$FILTER[not_pid_idx])]
@@ -75,7 +75,7 @@ load_files = function(input_args, which_module, sky_info = NULL){
     scan_sky = Rfits_key_scan(filelist = files_sky, keylist = c("FILTER", "PROGRAM", "VISIT_ID"))
     not_pid = grep(VID, scan_sky$VISIT_ID, fixed = T, value = T)
     not_pid = not_pid[substring(not_pid, 1, nchar(VID)) == VID]
-    not_pid_idx = !(sky_info$visit_id %in% not_pid)
+    not_pid_idx = !(scan_sky$VISIT_ID %in% not_pid)
     
     files_sky = files_sky[not_pid_idx]
     files_sky = files_sky[grepl(FILT, scan_sky$FILTER[not_pid_idx])]
