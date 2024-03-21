@@ -379,12 +379,29 @@ do_cal_process = function(input_args){
     pro_out = pro_func(list(image = JWST_cal_image$imDat, mask = JWST_cal_mask))
     pro = pro_out$pro
     redoskysize = pro_out$redoskysize
-    # pro = profoundProFound(JWST_cal_image$imDat, mask=JWST_cal_mask,
-    #                        skycut=2, pixcut=5, box=512, redoskysize=101,
-    #                        roughpedestal=TRUE, tolerance=Inf)
 
-    #sky_redo = profoundMakeSkyGrid(JWST_cal_image$imDat, objects=pro$objects_redo, mask=JWST_cal_mask, sky=pro$sky, box=256, grid=128, boxiters=3)
-    sky_redo = profoundSkyPoly(JWST_cal_image$imDat, objects=pro$objects_redo, degree=2, quancut=0.99, mask=JWST_cal_mask)
+    # sky_redo = profoundSkyPoly(JWST_cal_image$imDat, objects=pro$objects_redo, degree=2, quancut=0.99, mask=JWST_cal_mask)
+    sky_redo_func = function(x){
+      tryCatch(
+        {
+          sky_redo = profoundSkyPoly(x$image, objects=x$pro$objects_redo, degree=2, quancut=0.99, mask=x$mask)
+          return(sky_redo)
+        },
+        error = function(cond){
+          message("Adjusting object mask for polynomial skies")
+          sky_redo = profoundSkyPoly(x$image, objects=x$pro$objects, degree=2, quancut=0.99, mask=x$mask)
+          return(sky_redo)
+        },
+        warning = function(cond){
+          NULL
+        },
+        finally = {
+          NULL
+        }
+      )
+    }
+    sky_redo = sky_redo_func(list(image = JWST_cal_image$imDat, pro = pro, mask = JWST_cal_mask))
+    
     pro_redo = profoundProFound(JWST_cal_image$imDat, mask=JWST_cal_mask, skycut=2, pixcut=5,
                                 box=512, redoskysize=redoskysize, sky=sky_redo$sky, redosky=FALSE, tolerance=Inf)
     
