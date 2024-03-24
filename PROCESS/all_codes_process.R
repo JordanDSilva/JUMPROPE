@@ -120,7 +120,7 @@ load_files = function(input_args, which_module, sky_info = NULL){
     
     scan_1oF = Rfits_key_scan(filelist = files_wisp,keylist = c("FILTER", "PROGRAM", "VISIT_ID"))
     corr_pid = grep(VID, scan_1oF$VISIT_ID, fixed = T, value = T)
-    corr_pid = not_pid[substring(corr_pid, 1, nchar(VID)) == VID]
+    corr_pid = corr_pid[substring(corr_pid, 1, nchar(VID)) == VID]
     pid_idx = scan_1oF$VISIT_ID %in% corr_pid
     
     files_wisp = files_wisp[pid_idx]
