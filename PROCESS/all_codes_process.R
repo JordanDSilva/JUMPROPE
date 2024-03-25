@@ -8,7 +8,7 @@ library(Cairo)
 library(ProPane)
 library(stringr)
 
-pipe_version = "1.1.4" ## Change nominal from too high version 2.0 (1.0.0 being release on GitHub)
+pipe_version = "1.1.5" ## Change nominal from too high version 2.0 (1.0.0 being release on GitHub)
 
 load_files = function(input_args, which_module, sky_info = NULL){
   ## Load the correct files for what ever task
@@ -235,18 +235,18 @@ do_1of = function(input_args){
                                trend_block = trend_block,
                                keep_trend = keep_trend)
     
-    CairoJPEG(filename = paste0(fullbase,'_orig.jpeg'), width=1000,height=1000)
-    par(mar=c(0.1,0.1,0.1,0.1))
-    magimage(temp_image$SCI$imDat, axes=FALSE, rem_med = T)
-    legend('topleft', legend=paste(basename, 'orig'))
-    dev.off()
-    
-    CairoJPEG(filename = paste0(fullbase,'_Pro1oF.jpeg'), width=1000,height=1000)
-    par(mar=c(0.1,0.1,0.1,0.1))
-    magimage(temp_zap$image_fix, axes=FALSE, rem_med = T)
-    legend('topleft', legend=paste(basename, 'Pro1oF'))
-    dev.off()
-    
+    # CairoJPEG(filename = paste0(fullbase,'_orig.jpeg'), width=1000,height=1000)
+    # par(mar=c(0.1,0.1,0.1,0.1))
+    # magimage(temp_image$SCI$imDat, axes=FALSE, rem_med = T)
+    # legend('topleft', legend=paste(basename, 'orig'))
+    # dev.off()
+    # 
+    # CairoJPEG(filename = paste0(fullbase,'_Pro1oF.jpeg'), width=1000,height=1000)
+    # par(mar=c(0.1,0.1,0.1,0.1))
+    # magimage(temp_zap$image_fix, axes=FALSE, rem_med = T)
+    # legend('topleft', legend=paste(basename, 'Pro1oF'))
+    # dev.off()
+    # 
     file.copy(filelist[i], paste0(fullbase,'_Pro1oF.fits'), overwrite=TRUE)
     Rfits_write_pix(temp_zap$image_fix, paste0(fullbase,'_Pro1oF.fits'), ext=2)
     
@@ -414,15 +414,15 @@ do_cal_process = function(input_args){
     sky_med = median(sky_redo$sky[JWST_cal_mask == 0 & pro_redo$objects_redo == 0], na.rm=TRUE)
     skyRMS_med = median(pro_redo$skyRMS[JWST_cal_mask == 0 & pro_redo$objects_redo == 0], na.rm=TRUE)
     
-    CairoJPEG(filename = paste0(fullbase,'_sky_',obs_info[i,"FILTER"],'.jpeg'), width=1000,height=1000)
-    layout(matrix(1:4,2))
-    par(mar=c(0.1,0.1,0.1,0.1))
-    magimage(JWST_cal_image$imDat, qdiff=T, rem_med=T, axes=FALSE)
-    profoundSegimPlot(pro_redo)
-    magimage(sky_redo$sky, qdiff=T, rem_med=T, axes=FALSE)
-    magimage(pro_redo$skyRMS, axes=FALSE)
-    dev.off()
-    
+    # CairoJPEG(filename = paste0(fullbase,'_sky_',obs_info[i,"FILTER"],'.jpeg'), width=1000,height=1000)
+    # layout(matrix(1:4,2))
+    # par(mar=c(0.1,0.1,0.1,0.1))
+    # magimage(JWST_cal_image$imDat, qdiff=T, rem_med=T, axes=FALSE)
+    # profoundSegimPlot(pro_redo)
+    # magimage(sky_redo$sky, qdiff=T, rem_med=T, axes=FALSE)
+    # magimage(pro_redo$skyRMS, axes=FALSE)
+    # dev.off()
+     
     maskpix = sum(JWST_cal_mask!=0, na.rm=TRUE)/Npix
     objpix = sum(pro_redo$objects_redo!=0, na.rm=TRUE)/Npix
     goodpix = sum(JWST_cal_mask==0 & pro_redo$objects_redo==0, na.rm=TRUE)/Npix
@@ -609,9 +609,9 @@ do_super_sky = function(input_args){
     }
     
     if(!is.null(sky_mean)){
-      CairoJPEG(filename = paste0(sky_super_dir,'/super_',combine_grid[i,1],'_',combine_grid[i,2],'.jpeg'), width=1000,height=1000)
-      magimage(sky_mean, qdiff=T)
-      dev.off()
+      # CairoJPEG(filename = paste0(sky_super_dir,'/super_',combine_grid[i,1],'_',combine_grid[i,2],'.jpeg'), width=1000,height=1000)
+      # magimage(sky_mean, qdiff=T)
+      # dev.off()
       
       file_super_sky = paste0(sky_super_dir,'/super_',combine_grid[i,1],'_',combine_grid[i,2],'.fits')
       Rfits_write_image(sky_mean, filename=file_super_sky)
@@ -1319,7 +1319,7 @@ do_wisp_rem = function(input_args){
   }
   
   registerDoParallel(cores = cores)  
-  temp = foreach(ii = 1:dim(info_wisp)[1])%dopar%{
+  temp = foreach(ii = 1:dim(info_wisp)[1], .errorhandling = "pass")%dopar%{
     ## copy original data to directory where we keep the wisps
     vid = paste0(info_wisp$VISIT_ID[ii])
     modl = paste0("NRC", info_wisp$MODULE[ii])
@@ -1597,7 +1597,7 @@ wispFixer = function(wisp_im, ref_im,
   wisp_im$imDat[is.infinite(wisp_im$imDat)] = NA
   
   #Step 1
-  ref_im_warp_untweak = propaneWarp(ref_im, keyvalues_out=wisp_im$keyvalues, cores=cores)
+  ref_im_warp_untweak = propaneWarp(ref_im, keyvalues_out=wisp_im$keyvalues, cores=cores, direction = "forward")
   
   ## 1i Align ref to wisp_im using propaneTweak
   ## Use only 1 core in case resources run out
