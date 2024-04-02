@@ -1329,16 +1329,28 @@ do_wisp_rem = function(input_args){
   
   ref_im_list = {}
   for(ii in 1:dim(mod_visit_grid)[1]){
-    ref_files = propaneFrameFinder(
-      dirlist = median_dir, 
-      RAcen = mod_visit_grid$CRVAL1[ii],
-      Deccen = mod_visit_grid$CRVAL2[ii],
-      rad = 0.1/3600, ## match within 0.1 asec
-      plot = FALSE, 
-      cores = cores
-    )$full ## Now do a frame finder to try and find long channel NOT in VIISITID (but could be in PROGRAM)
-    ref_files = ref_files[grepl("short.+fits$", ref_files)]
-
+    
+    ## Look for long channel in the same VID
+    ref_files = list.files(
+      median_dir, 
+      pattern = glob2rx(paste0(
+        "*", mod_visit_grid$VISIT_ID[ii], "*", mod_visit_grid$MODULE[ii], "*", "short", "*.fits"
+      )),
+      full.names = T)
+    
+    if(length(ref_files) == 0){
+      ## If no long channel exists, then perform a spatial search and use any overlapping long channel for Wisp Rem
+      ref_files = propaneFrameFinder(
+        dirlist = median_dir, 
+        RAcen = mod_visit_grid$CRVAL1[ii],
+        Deccen = mod_visit_grid$CRVAL2[ii],
+        rad = 0.1/3600, ## match within 0.1 asec
+        plot = FALSE, 
+        cores = cores
+      )$full ## Now do a frame finder to try and find long channel NOT in VIISITID (but could be in PROGRAM)
+      ref_files = ref_files[grepl("short.+fits$", ref_files)]
+    }
+    
     filter_long = c(
       str_match(ref_files, "F\\s*(.*?)\\s*M")[,2],
       str_match(ref_files, "F\\s*(.*?)\\s*W")[,2]
