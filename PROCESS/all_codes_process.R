@@ -1049,6 +1049,30 @@ do_gen_stack = function(input_args){
     module_A_WCS_long = cal_sky_info[grepl('NRCALONG', DETECTOR),list(CRVAL1=mean(CRVAL1), CRVAL2=mean(CRVAL2), CD1_1=mean(CD1_1), CD1_2=mean(CD1_2)), keyby=VISIT_ID]
     module_B_WCS_long = cal_sky_info[grepl('NRCBLONG', DETECTOR),list(CRVAL1=mean(CRVAL1), CRVAL2=mean(CRVAL2), CD1_1=mean(CD1_1), CD1_2=mean(CD1_2)), keyby=VISIT_ID]
     
+    if(dim(module_A_WCS_long)[1] == 0){
+      module_A_WCS_long = module_A_WCS_short
+      module_A_WCS_long$CD1_1 = module_A_WCS_long$CD1_1*2.0
+      module_A_WCS_long$CD1_2 = module_A_WCS_long$CD1_2*2.0
+    }
+    
+    if(dim(module_B_WCS_long)[1] == 0){
+      module_B_WCS_long = module_B_WCS_short
+      module_B_WCS_long$CD1_1 = module_B_WCS_long$CD1_1*2.0
+      module_B_WCS_long$CD1_2 = module_B_WCS_long$CD1_2*2.0
+    }
+    
+    if(dim(module_A_WCS_short)[1] == 0){
+      module_A_WCS_short = module_A_WCS_long
+      module_A_WCS_short$CD1_1 = module_A_WCS_short$CD1_1/2.0
+      module_A_WCS_short$CD1_2 = module_A_WCS_short$CD1_2/2.0
+    }
+    
+    if(dim(module_B_WCS_short)[1] == 0){
+      module_B_WCS_short = module_B_WCS_long
+      module_B_WCS_short$CD1_1 = module_B_WCS_short$CD1_1/2.0
+      module_B_WCS_short$CD1_2 = module_B_WCS_short$CD1_2/2.0
+    }
+    
     module_NIS = cal_sky_info[grepl('NIS', DETECTOR),list(CRVAL1=mean(CRVAL1), CRVAL2=mean(CRVAL2), CD1_1=mean(CD1_1), CD1_2=mean(CD1_2)), keyby=VISIT_ID]
     
     module_idx = sapply(list(module_A_WCS_long, module_A_WCS_short, 
@@ -1289,6 +1313,11 @@ do_wisp_rem = function(input_args){
   info = Rfits_key_scan(filelist = filelist,
                         keylist=c('DETECTOR', 'MODULE', 'FILTER', 'VISIT_ID'), cores = cores)
   
+  
+  wcs_info = Rfits_key_scan(filelist = filelist, 
+                            keylist = c("CRVAL1", "CRVAL2")) ## Find longest overlapping wisp frame
+  info = bind_cols(info, wcs_info)
+  
   if(keep_trend_data$do_claws){
     info_wisp = info[DETECTOR %in% c('NRCA1', 'NRCA2', 'NRCA3','NRCA4', 'NRCB1','NRCB2', 'NRCB3','NRCB4'),] ## Try do all short wavelength chips
   }else{
@@ -1303,11 +1332,21 @@ do_wisp_rem = function(input_args){
   
   ref_im_list = {}
   for(ii in 1:dim(mod_visit_grid)[1]){
-    ref_files = list.files(median_dir,
-                           pattern = glob2rx(paste0(
-                             "*", mod_visit_grid$VISIT_ID[ii], "*", mod_visit_grid$MODULE[ii], "*", "short", "*.fits"
-                           )),
-                           full.names = T)
+    ref_files = propaneFrameFinder(
+      dirlist = median_dir, 
+      RAcen = mod_visit_grid$CRVAL1[ii],
+      Deccen = mod_visit_grid$CRVAL2[ii],
+      rad = 0.1/3600, ## match within 0.1 asec
+      plot = FALSE, 
+      cores = cores
+    )$full ## Now do a frame finder to try and find long channel NOT in VIISITID (but could be in PROGRAM)
+    
+    # ref_files = list.files(median_dir,
+    #                        pattern = glob2rx(paste0(
+    #                          "*", mod_visit_grid$VISIT_ID[ii], "*", mod_visit_grid$MODULE[ii], "*", "short", "*.fits"
+    #                        )),
+    #                        full.names = T)
+    
     filter_long = c(
       str_match(ref_files, "F\\s*(.*?)\\s*M")[,2],
       str_match(ref_files, "F\\s*(.*?)\\s*W")[,2]
