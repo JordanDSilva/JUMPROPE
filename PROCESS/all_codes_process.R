@@ -1341,6 +1341,7 @@ do_wisp_rem = function(input_args){
         "*", mod_visit_grid$VISIT_ID[ii], "*", mod_visit_grid$MODULE[ii], "*", "short", "*.fits"
       )),
       full.names = T)
+    ref_files = ref_files[!grepl("F150W2|F070W|F090W|F115W|F150W|F200W|F140M|F162M|F182M|F210M|F164N|F187N|F212N", ref_files)] ## Remove the short wavelength filters
     
     if(length(ref_files) == 0){
       ## If no long channel exists, then perform a spatial search and use any overlapping long channel for Wisp Rem
