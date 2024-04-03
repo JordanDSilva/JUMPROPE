@@ -1365,7 +1365,7 @@ do_wisp_rem = function(input_args){
     ref_file_long = ref_files[ which.max(filter_long) ] #Get the longest filter
     print(ref_file_long)
     
-    ref_im_list = c(ref_im_list, Rfits_point(ref_file_long))
+    ref_im_list = c(ref_im_list, list(Rfits_point(ref_file_long))) ## Allow loop in wisp rem to read long wavelength reference
     message(paste("Loading reference for:", paste0(mod_visit_grid$VISIT_ID[ii]), mod_visit_grid$DETECTOR[ii] ))
   }
   
@@ -1389,7 +1389,7 @@ do_wisp_rem = function(input_args){
     
     # Rfits_write_image(data = wisp_frame, paste0(keep_wisp_stub, "/", vid, "/", info_wisp$file[ii]))
     
-    ref_im = ref_im_list[[ii]]
+    ref_im = ref_im_list[[ii]] ## read in long wavelength reference 
     
     if(any( (vid == keep_trend_data$ID_vlarge$VISIT_ID & modl == keep_trend_data$ID_vlarge$MODULE) | 
             (vid == keep_trend_data$ID_large$VISIT_ID & modl == keep_trend_data$ID_large$MODULE)) ){

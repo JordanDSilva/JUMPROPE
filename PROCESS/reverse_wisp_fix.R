@@ -47,9 +47,7 @@ info_wisp = info[DETECTOR %in% c('NRCA1', 'NRCA2', 'NRCA3','NRCA4', 'NRCB1','NRC
 module_list = paste0("NRC", unique(info$MODULE))
 unique_visits = unique(info_wisp$VID)
 
-message("Showing first <10 files:")
-print(head(info_wisp, 10), sep='\n')
-cat("...")
+message("Reversing wisp correction on short wavelength detectors:")
 cat('Processing',dim(info_wisp)[1],'files\n')
 
 temp = foreach(ii = 1:dim(info_wisp)[1], .errorhandling = "stop")%dopar%{
