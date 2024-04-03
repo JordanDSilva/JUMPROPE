@@ -1361,8 +1361,9 @@ do_wisp_rem = function(input_args){
       str_match(ref_files, "F\\s*(.*?)\\s*W")[,2]
       )
     filter_long[is.na(filter_long)] = -1
+    long_num = max(filter_long, na.rm = T)
     
-    ref_file_long = ref_files[ which.max(filter_long) ] #Get the longest filter
+    ref_file_long = ref_files[ which(grepl(long_num, ref_files))[1] ] #Get the longest filter
     print(ref_file_long)
     
     ref_im_list = c(ref_im_list, list(Rfits_point(ref_file_long))) ## Allow loop in wisp rem to read long wavelength reference
