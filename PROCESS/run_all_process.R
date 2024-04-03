@@ -4,17 +4,18 @@
 
 ## Make sure to edit the proper things in the "main" function
 
-library(Rfits)
+library(magicaxis)
 library(Rwcs)
+library(Rfits)
 library(ProPane)
 library(ProFound)
-library(magicaxis)
-library(data.table)
 library(stringr)
-library(foreach)
-library(doParallel)
 library(utils)
 library(Cairo)
+library(data.table)
+library(foreach)
+library(doParallel)
+library(dplyr)
 
 source("all_codes_process.R")
 source("initialise_variables.R")

@@ -1,12 +1,16 @@
-library(Rfits)
+## Required packages
+library(magicaxis)
 library(Rwcs)
+library(Rfits)
+library(ProPane)
 library(ProFound)
+library(stringr)
+library(utils)
+library(Cairo)
 library(data.table)
 library(foreach)
 library(doParallel)
-library(Cairo)
-library(ProPane)
-library(stringr)
+library(dplyr)
 
 pipe_version = "1.1.6" ## Change nominal from too high version 2.0 (1.0.0 being release on GitHub)
 
