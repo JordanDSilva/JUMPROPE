@@ -138,75 +138,80 @@ main = function(){
   
   raw_files = load_raw_files(dir_raw = dir_raw)
   
-  input_args = list(
-    filelist = raw_files,
-    keep_trend_data = keep_trend_data,
+  VID_list = unlist(strsplit(VID, "|", fixed = T))
+  
+  for(VID in VID_list){
     
-    Pro1oF_dir = Pro1oF_dir,
-    sky_frames_dir = sky_frames_dir,
-    sky_pro_dir = sky_pro_dir,
-    cal_sky_dir = cal_sky_dir,
-    cal_sky_renorm_dir = cal_sky_renorm_dir,
-    cal_sky_info_save_dir = cal_sky_info_save_dir,
-    ref_dir = ref_dir,
-    invar_dir = invar_dir, 
-    median_dir = median_dir, 
-    patch_dir = patch_dir,
+    input_args = list(
+      filelist = raw_files,
+      keep_trend_data = keep_trend_data,
+      
+      Pro1oF_dir = Pro1oF_dir,
+      sky_frames_dir = sky_frames_dir,
+      sky_pro_dir = sky_pro_dir,
+      cal_sky_dir = cal_sky_dir,
+      cal_sky_renorm_dir = cal_sky_renorm_dir,
+      cal_sky_info_save_dir = cal_sky_info_save_dir,
+      ref_dir = ref_dir,
+      invar_dir = invar_dir, 
+      median_dir = median_dir, 
+      patch_dir = patch_dir,
+      
+      magzero = 23.9,
+      
+      VID = VID,
+      FILT = FILT,
+      
+      do_NIRISS = do_NIRISS,
+      
+      cores_pro = cores_pro,
+      cores_stack = cores_stack,
+      tasks_stack = tasks_stack,
+  
+      SIGMA_LO = NULL #keep blurring at wisp rem stage off by default
+    )
+   
+    if(length(args) <= 1){
+      input_args$FILT = ""
+    }
     
-    magzero = 23.9,
+    do_1of(input_args)
+    do_cal_process(input_args)
+    do_regen_sky_info(input_args)
+    do_super_sky(input_args)
+    do_apply_super_sky(input_args)
+    do_modify_pedestal(input_args)
+    do_cal_sky_info(input_args)
+    do_gen_stack(input_args)
+  
+    if(input_args$do_NIRISS){
+      input_args$FILT = "CLEAR"
+      do_patch(input_args)
+      q()
+    }
+  
+    if(length(args) <= 1){
+      input_args$FILT = "F070W|F090W|F115W|F150W|F200W|F140M|F162M|F182M|F210M"
+    }
     
-    VID = VID,
-    FILT = FILT,
+    do_wisp_rem(input_args)
     
-    do_NIRISS = do_NIRISS,
+    wisp_fix_files = load_raw_files(dir_raw = dir_raw)
+    input_args$filelist = wisp_fix_files
     
-    cores_pro = cores_pro,
-    cores_stack = cores_stack,
-    tasks_stack = tasks_stack,
-
-    SIGMA_LO = NULL #keep blurring at wisp rem stage off by default
-  )
- 
-  if(length(args) <= 1){
+    do_1of(input_args)
+    do_cal_process(input_args)
+    do_regen_sky_info(input_args)
+    do_super_sky(input_args)
+    do_apply_super_sky(input_args)
+    do_modify_pedestal(input_args)
+    do_cal_sky_info(input_args)
+    do_gen_stack(input_args)
+    
     input_args$FILT = ""
-  }
-  
-  do_1of(input_args)
-  do_cal_process(input_args)
-  do_regen_sky_info(input_args)
-  do_super_sky(input_args)
-  do_apply_super_sky(input_args)
-  do_modify_pedestal(input_args)
-  do_cal_sky_info(input_args)
-  do_gen_stack(input_args)
-
-  if(input_args$do_NIRISS){
-    input_args$FILT = "CLEAR"
     do_patch(input_args)
-    q()
+    do_RGB(input_args)
   }
-
-  if(length(args) <= 1){
-    input_args$FILT = "F070W|F090W|F115W|F150W|F200W|F140M|F162M|F182M|F210M"
-  }
-  
-  do_wisp_rem(input_args)
-  
-  wisp_fix_files = load_raw_files(dir_raw = dir_raw)
-  input_args$filelist = wisp_fix_files
-  
-  do_1of(input_args)
-  do_cal_process(input_args)
-  do_regen_sky_info(input_args)
-  do_super_sky(input_args)
-  do_apply_super_sky(input_args)
-  do_modify_pedestal(input_args)
-  do_cal_sky_info(input_args)
-  do_gen_stack(input_args)
-  
-  input_args$FILT = ""
-  do_patch(input_args)
-  do_RGB(input_args)
 
 }
 

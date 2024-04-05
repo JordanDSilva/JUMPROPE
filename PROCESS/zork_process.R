@@ -198,41 +198,44 @@ zork = function(){
     'do_wisp_rem' = do_wisp_rem
   )
   
-  input_args = list(
-    filelist = raw_files,
-    keep_trend_data = keep_trend_data,
-    
-    Pro1oF_dir = Pro1oF_dir,
-    sky_frames_dir = sky_frames_dir,
-    sky_pro_dir = sky_pro_dir,
-    cal_sky_dir = cal_sky_dir,
-    cal_sky_renorm_dir = cal_sky_renorm_dir,
-    cal_sky_info_save_dir = cal_sky_info_save_dir,
-    ref_dir = ref_dir,
-    invar_dir = invar_dir, 
-    median_dir = median_dir, 
-    patch_dir = patch_dir,
-    
-    magzero = 23.9,
-    
-    VID = VID,
-    FILT = FILT,
-    
-    do_NIRISS = do_NIRISS,
-    
-    cores_pro = cores_pro,
-    cores_stack = cores_stack,
-    tasks_stack = tasks_stack,
-
-    SIGMA_LO = NULL
-  )
+  VID_list = unlist(strsplit(VID, "|", fixed = T))
   
-  lapply(select_code,
-         function(x){
-           code_organiser[[x]](input_args)
-         })
+  for(VID in VID_list){
+    input_args = list(
+      filelist = raw_files,
+      keep_trend_data = keep_trend_data,
+      
+      Pro1oF_dir = Pro1oF_dir,
+      sky_frames_dir = sky_frames_dir,
+      sky_pro_dir = sky_pro_dir,
+      cal_sky_dir = cal_sky_dir,
+      cal_sky_renorm_dir = cal_sky_renorm_dir,
+      cal_sky_info_save_dir = cal_sky_info_save_dir,
+      ref_dir = ref_dir,
+      invar_dir = invar_dir, 
+      median_dir = median_dir, 
+      patch_dir = patch_dir,
+      
+      magzero = 23.9,
+      
+      VID = VID,
+      FILT = FILT,
+      
+      do_NIRISS = do_NIRISS,
+      
+      cores_pro = cores_pro,
+      cores_stack = cores_stack,
+      tasks_stack = tasks_stack,
+      
+      SIGMA_LO = NULL
+    )
+    
+    lapply(select_code,
+           function(x){
+             code_organiser[[x]](input_args)
+           })
+  }
 
-  
   # if(select_code == "1"){
   #   do_1of(filelist = raw_files, keep_trend_data = keep_trend_data, Pro1oF_dir = Pro1oF_dir, VID = VID, FILT = FILT, cores = cores_pro)
   # }
