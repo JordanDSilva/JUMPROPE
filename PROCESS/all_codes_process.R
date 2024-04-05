@@ -34,7 +34,7 @@ load_files = function(input_args, which_module, sky_info = NULL){
     
     scan_1oF = Rfits_key_scan(filelist = files_1oF, keylist = c("FILTER", "PROGRAM", "VISIT_ID"))
     corr_pid = grep(VID, scan_1oF$VISIT_ID, fixed = T, value = T)
-    corr_pid = corr_pid[substring(corr_pid, 1, max(nchar(strsplit(VID, "|", fixed = T)))) %in% strsplit(VID, "|", fixed=T)] ## Make sure 4 digit PID is embedded in 10 digit VID
+    corr_pid = corr_pid[substring(corr_pid, 1, nchar(VID)) == VID] ## Make sure 4 digit PID is embedded in 10 digit VID
     pid_idx = scan_1oF$VISIT_ID %in% corr_pid
     
     files_1oF = files_1oF[pid_idx]
