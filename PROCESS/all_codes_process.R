@@ -11,6 +11,7 @@ library(data.table)
 library(foreach)
 library(doParallel)
 library(dplyr)
+library(imager)
 
 pipe_version = "1.1.6" ## Change nominal from too high version 2.0 (1.0.0 being release on GitHub)
 
