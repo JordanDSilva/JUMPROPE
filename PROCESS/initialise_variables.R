@@ -7,7 +7,7 @@ initialise_params = function(){
   ## Edit this:
 
   ## set up the keep_trend data
-  keep_trend_data = list(
+  additional_params = list(
     ## Keep trend data determines the aggressiveness of the 1/f. If nothing in this data frame, then default 1/f proceeds. 
     ## Default should be good for most blank fields.
     
@@ -39,10 +39,12 @@ initialise_params = function(){
    ## Claws removal mode
    ## I.e., perform "wisp removal" algorithm on all NIRCam short wavelength detectors
    ## and not only wisp affected [A3,A4,B3,B4]
-   do_claws = FALSE
-    
+   do_claws = FALSE, 
+   
+   ## Path to reference astrometric catalogue
+   tweak_catalogue = NULL
   )
   ## Finish editing
-  
+
   return( mget(ls()) )
 }

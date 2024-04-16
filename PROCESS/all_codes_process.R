@@ -12,6 +12,7 @@ library(foreach)
 library(doParallel)
 library(dplyr)
 library(imager)
+library(celestial)
 
 pipe_version = "1.1.6" ## Change nominal from too high version 2.0 (1.0.0 being release on GitHub)
 
@@ -141,7 +142,7 @@ do_1of = function(input_args){
   cat("\n")
   Sys.sleep(time = 5)
 
-  keep_trend_data = input_args$keep_trend_data
+  additional_params = input_args$additional_params
   filelist = input_args$filelist
   Pro1oF_dir = input_args$Pro1oF_dir
   VID = input_args$VID
@@ -162,11 +163,11 @@ do_1of = function(input_args){
   # 2736001001 B
   trend_block_large = 501 # good for frames with fairly large sources
   
-  ID_vlarge = keep_trend_data$ID_vlarge
-  ID_large = keep_trend_data$ID_large
+  ID_vlarge = additional_params$ID_vlarge
+  ID_large = additional_params$ID_large
   
-  ow_vlarge = keep_trend_data$ow_vlarge
-  ow_large = keep_trend_data$ow_large
+  ow_vlarge = additional_params$ow_vlarge
+  ow_large = additional_params$ow_large
   
   
   ### BITS TO EDIT END ###
@@ -1006,6 +1007,12 @@ do_gen_stack = function(input_args){
   cores = input_args$cores_stack
   tasks = input_args$tasks_stack
   
+  ref_cat = input_args$additional_params$ref_cat
+  if(is.null(ref_cat)){
+    do_tweak = F
+    ref_cat = data.frame(fread(ref_cat))
+  }
+  
   ## Optional editable params
   clip_tol = c(40,20) #default (80,40) hot and cold
   clip_sigma = 20
@@ -1046,7 +1053,11 @@ do_gen_stack = function(input_args){
     stack_grid = cal_sky_info[,list(FILTER=unique(FILTER)), keyby=VISIT_ID]
     stack_grid = stack_grid[grepl(FILT, stack_grid$FILTER), ]
     
-    print(stack_grid)
+    if(dim(stack_grid)[1] == 0){
+      next ## If the FILTER/VID combo is null then skip 
+    }else{
+      print(stack_grid)
+    }
     
     module_A_WCS_short = cal_sky_info[grepl('NRCA[1-4]', DETECTOR),list(CRVAL1=mean(CRVAL1), CRVAL2=mean(CRVAL2), CD1_1=mean(CD1_1), CD1_2=mean(CD1_2)), keyby=VISIT_ID]
     module_B_WCS_short = cal_sky_info[grepl('NRCB[1-4]', DETECTOR),list(CRVAL1=mean(CRVAL1), CRVAL2=mean(CRVAL2), CD1_1=mean(CD1_1), CD1_2=mean(CD1_2)), keyby=VISIT_ID]
@@ -1186,20 +1197,39 @@ do_gen_stack = function(input_args){
           JWST_cal_mask = profoundDilate(temp_mask %% 2 == 1, size=3)
           temp_image$imDat[JWST_cal_mask==1] = NA
           
-          # sn_mask = matrix(0L, nrow = dim(temp_mask)[1], ncol = dim(temp_mask)[2])
-          # rough_mask = temp_mask %% 4 == 0 & temp_mask > 0
-          # mask_label = as.matrix(imager::label(imager::as.cimg(rough_mask)))
-          # tally_pixels = tabulate(mask_label)
-          # sel = which(tally_pixels >= 150) #find the big snowballs
-          # mask_loc = which(matrix(mask_label %in% sel, dim(temp_mask)[1], dim(temp_mask)[2]), arr.ind=TRUE)
-          # sn_mask[mask_loc] = 1L
-          # snowball_mask_dilate = profoundDilate(sn_mask, size = 21) #extra dilation on big snowballs
-          # naxis = dim(sn_mask)[1]
-          # snowball_mask_dilate[1:20, ] = 0
-          # snowball_mask_dilate[, 1:20] = 0
-          # snowball_mask_dilate[(naxis):(naxis-20), ] = 0
-          # snowball_mask_dilate[, (naxis):(naxis-20)] = 0
-          # temp_image$imDat[snowball_mask_dilate==1] = NA
+          if(do_tweak){
+            pro_test = suppressMessages(profoundProFound(
+              image = temp_image, 
+              mask = JWST_cal_mask == 1,
+              sky = 0,
+              redosky = F,
+              pixcut = 10,
+              skycut = 3.0,
+              cliptol = 100,
+              tolerance = 1,
+              iters = 0,
+              redosegim = F,
+              box = dim(temp_image)[1]/10.0,
+              rem_mask = T
+            ))
+            
+            match_cat_idx = coordmatch(
+              coordref = ref_cat[, c("RA", "Dec")],
+              coordcompare = pro_test$segstats[,c("RAmax", "Decmax")],
+              rad = 2.0
+            )
+            tweak_solution = suppressMessages(propaneTweakCat(
+              cat_ref = ref_cat[match_cat_idx$bestmatch$refID, c("RA", "Dec")], 
+              cat_pre_fix = pro_test$segstats[match_cat_idx$bestmatch$compareID,c("RAmax", "Decmax")], 
+              mode = "coord", keyvalues_pre_fix = temp_image$keyvalues, delta_max = c(100, 100)
+            ))
+            temp_image = propaneWCSmod(
+              temp_image, 
+              delta_x = tweak_solution$par[1], 
+              delta_y = tweak_solution$par[2],
+              delta_rot = tweak_solution$par[3]
+            )
+          }
           
           rm(temp_mask)
           rm(JWST_cal_mask)
@@ -1306,7 +1336,7 @@ do_wisp_rem = function(input_args){
   median_dir = input_args$median_dir
   cores = input_args$cores_pro
   
-  keep_trend_data  = input_args$keep_trend_data
+  additional_params  = input_args$additional_params
 
   SIGMA_LO = input_args$SIGMA_LO
   message(paste0("Using ", ifelse(SIGMA_LO)))
@@ -1323,7 +1353,7 @@ do_wisp_rem = function(input_args){
                             keylist = c("CRVAL1", "CRVAL2")) ## Find longest overlapping wisp frame
   info = bind_cols(info, wcs_info[,c("CRVAL1", "CRVAL2")])
   
-  if(keep_trend_data$do_claws){
+  if(additional_params$do_claws){
     info_wisp = info[DETECTOR %in% c('NRCA1', 'NRCA2', 'NRCA3','NRCA4', 'NRCB1','NRCB2', 'NRCB3','NRCB4'),] ## Try do all short wavelength chips
   }else{
     info_wisp = info[DETECTOR %in% c('NRCA3','NRCA4', 'NRCB3','NRCB4'),] 
@@ -1393,8 +1423,8 @@ do_wisp_rem = function(input_args){
     
     ref_im = ref_im_list[[ii]] ## read in long wavelength reference 
     
-    if(any( (vid == keep_trend_data$ID_vlarge$VISIT_ID & modl == keep_trend_data$ID_vlarge$MODULE) | 
-            (vid == keep_trend_data$ID_large$VISIT_ID & modl == keep_trend_data$ID_large$MODULE)) ){
+    if(any( (vid == additional_params$ID_vlarge$VISIT_ID & modl == additional_params$ID_vlarge$MODULE) | 
+            (vid == additional_params$ID_large$VISIT_ID & modl == additional_params$ID_large$MODULE)) ){
       sigma_lo = NULL
     }else{
       sigma_lo = SIGMA_LO

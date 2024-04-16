@@ -24,7 +24,8 @@ input_args = list(
   Dec = colMeans(ref_cat)[2],     
   mosaic_size = NULL, ## Set the size of the search radius/mosaic size
   grid_size = "long", #default save on memory, 0.06arcsec/pix,
-  
+  rotation = "North", ## Rotation argument for ProPaneGenWCS, e.g., "North" for North-Up alignment
+
   program_id = NULL,  # Maybe we we just want to stack a single program e.g., Primer (1837) and not COSMOS Web (1727)
   cores = NULL ## If NULL then use half the number of cores in the system
 ) 
@@ -112,38 +113,9 @@ deep_stacker = function(input_args){
   for(grid_size in c(input_args$grid_size)){
     
     file_info = find_frames[grepl(grid_size, find_frames$file), ]
-
-    wcs = propaneGenWCS(filelist = file_info$full)
     
-    ## Make a very rudimentary inspection fits file
-    scale_factor = 10
-    inspect_wcs = Rwcs_keypass(
-      keyvalues = wcs 
-    )
-    inspect_wcs$NAXIS1 = round(inspect_wcs$NAXIS1/scale_factor)
-    inspect_wcs$NAXIS2 = round(inspect_wcs$NAXIS2/scale_factor)
-    inspect_wcs$CRPIX1 = round(inspect_wcs$CRPIX1/scale_factor)
-    inspect_wcs$CRPIX2 = round(inspect_wcs$CRPIX2/scale_factor)
-    inspect_wcs$CD1_1 = inspect_wcs$CD1_1 * scale_factor
-    inspect_wcs$CD2_2 = inspect_wcs$CD2_2 * scale_factor
+    wcs = propaneGenWCS(filelist = file_info$full, rotation = input_args$rotation)
     
-    temp_mat = matrix(0, 
-                      nrow = inspect_wcs$NAXIS1, ncol = inspect_wcs$NAXIS2)
-    extreme_coords = round(Rwcs_s2p(
-      RA = unlist(file_info[, c("centre_RA")]),
-      Dec = unlist(file_info[, c("centre_Dec")]),
-      keyvalues = inspect_wcs
-    ))
-    for(k in 1:dim(extreme_coords)[1]){
-      temp_mat[(extreme_coords[k,1] - 0.5*file_info$dim_1[k]/scale_factor):(extreme_coords[k,1] + 0.5*file_info$dim_1[k]/scale_factor),
-               (extreme_coords[k,2] - 0.5*file_info$dim_2[k]/scale_factor):(extreme_coords[k,2] + 0.5*file_info$dim_2[k]/scale_factor)] = 1
-    }
-    temp_fits = Rfits_create_image(data = temp_mat, keyvalues = inspect_wcs)
-    Rfits_write_image(
-      temp_fits, 
-      filename = paste0(mosaic_dir, input_args$super_name, "_coarse_inspect.fits")
-    )
-
     ref_cat = input_args$ref_cat
     
     UNIQUE_FILTERS = unique(stack_grid$FILTER)

@@ -90,8 +90,8 @@ main = function(){
     q()
   }
   
-  keep_trend_var = initialise_params()
-  list2env(keep_trend_var, .GlobalEnv)
+  additional_params_var = initialise_params()
+  list2env(additional_params_var, .GlobalEnv)
   
   env_var = Sys.getenv(
     x = c('JUMPROPE_RAW_DIR', 
@@ -144,7 +144,7 @@ main = function(){
     
     input_args = list(
       filelist = raw_files,
-      keep_trend_data = keep_trend_data,
+      additional_params = additional_params,
       
       Pro1oF_dir = Pro1oF_dir,
       sky_frames_dir = sky_frames_dir,
