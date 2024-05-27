@@ -1009,7 +1009,9 @@ do_gen_stack = function(input_args){
   
   ref_cat = input_args$additional_params$ref_cat
   if(is.null(ref_cat)){
-    do_tweak = F
+    do_tweak = FALSE
+  }else{
+    do_tweak = TRUE
     ref_cat = data.frame(fread(ref_cat))
   }
   
