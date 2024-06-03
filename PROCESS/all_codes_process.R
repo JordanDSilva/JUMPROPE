@@ -335,12 +335,6 @@ do_cal_process = function(input_args){
     temp_mask = Rfits_read_image(file_image, ext=4, header = FALSE)
     JWST_cal_mask = profoundDilate(temp_mask %% 2 == 1, size=3)
     
-    # if(sum(temp_mask!=0)/(prod(dim(temp_mask))) > 0.8){
-    #   JWST_cal_mask = profoundDilate(temp_mask %% 2 == 1, size=3)
-    # }else{
-    #   JWST_cal_mask = profoundDilate(temp_mask %% 2 == 1 | temp_mask == 4, size=3)
-    # }
-    
     #basic info
     suppressMessages({ #do not really want to see lots of SIP warnings!
       RA_im = centre(JWST_cal_image)[1]
@@ -349,10 +343,7 @@ do_cal_process = function(input_args){
     NAXIS1 = JWST_cal_image$keyvalues$NAXIS1
     NAXIS2 = JWST_cal_image$keyvalues$NAXIS2
     Npix = NAXIS1*NAXIS2
-    
-    #run pro sky routines
-    #pro = profoundProFound(JWST_cal_image$imDat, mask=JWST_cal_mask, box=256, redoskysize=101, roughpedestal=TRUE, tolerance=Inf, skycut=3, boxiters = 3)
-    
+
     ## TryCatch for ProFound in case there are not enough sky pixels to be sampled.
     ## Usually caused by zealous object dilation => lower redoskysize
     pro_func = function(x){
@@ -368,15 +359,16 @@ do_cal_process = function(input_args){
           return(list(pro = pro, redoskysize=101))
         },
         error = function(cond){
-          message("Adjusting redoskysize=21 from 101")
+          redoskysize = 21
+          message("Adjusting redoskysize=", redoskysize, " from 101")
           pro = profoundProFound(x$image, mask = x$mask, 
                                  skycut=2, 
                                  pixcut=5, 
                                  box=512, 
-                                 redoskysize = 21, 
+                                 redoskysize = redoskysize, 
                                  roughpedestal = TRUE, 
                                  tolerance=Inf)
-          return(list(pro=pro, redoskysize=21))
+          return(list(pro=pro, redoskysize=redoskysize))
         },
         warning = function(cond){
           NULL
@@ -391,7 +383,6 @@ do_cal_process = function(input_args){
     pro = pro_out$pro
     redoskysize = pro_out$redoskysize
 
-    # sky_redo = profoundSkyPoly(JWST_cal_image$imDat, objects=pro$objects_redo, degree=2, quancut=0.99, mask=JWST_cal_mask)
     sky_redo_func = function(x){
       tryCatch(
         {
@@ -420,15 +411,10 @@ do_cal_process = function(input_args){
     sky_med = median(sky_redo$sky[JWST_cal_mask == 0 & pro_redo$objects_redo == 0], na.rm=TRUE)
     skyRMS_med = median(pro_redo$skyRMS[JWST_cal_mask == 0 & pro_redo$objects_redo == 0], na.rm=TRUE)
     
-    # CairoJPEG(filename = paste0(fullbase,'_sky_',obs_info[i,"FILTER"],'.jpeg'), width=1000,height=1000)
-    # layout(matrix(1:4,2))
-    # par(mar=c(0.1,0.1,0.1,0.1))
-    # magimage(JWST_cal_image$imDat, qdiff=T, rem_med=T, axes=FALSE)
-    # profoundSegimPlot(pro_redo)
-    # magimage(sky_redo$sky, qdiff=T, rem_med=T, axes=FALSE)
-    # magimage(pro_redo$skyRMS, axes=FALSE)
-    # dev.off()
-     
+    if(is.infinite(pro_redo$skyChiSq) | is.na(pro_redo$skyChiSq)){
+      pro_redo$skyChiSq = 1e6 ## set to large value, Rfits no like Inf...
+    }
+    
     maskpix = sum(JWST_cal_mask!=0, na.rm=TRUE)/Npix
     objpix = sum(pro_redo$objects_redo!=0, na.rm=TRUE)/Npix
     goodpix = sum(JWST_cal_mask==0 & pro_redo$objects_redo==0, na.rm=TRUE)/Npix
@@ -479,14 +465,6 @@ do_cal_process = function(input_args){
     Rfits_write_image(pro_redo$objects_redo, filename=file_sky, create_file=FALSE)
     Rfits_write_key(filename=file_sky, ext=5, keyname='EXTNAME', keyvalue='OBJECTMASK', keycomment='extension name')
     
-    # return(c(
-    #   sky = sky_med,
-    #   skyRMS = skyRMS_med,
-    #   skyChiSq = pro_redo$skyChiSq,
-    #   maskpix = maskpix,
-    #   objpix = objpix,
-    #   goodpix = goodpix
-    #   ))
     return(NULL)
   }
   
