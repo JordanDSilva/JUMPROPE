@@ -11,10 +11,12 @@ library(Cairo)
 library(stringr)
 library(checkmate)
 library(dplyr)
+library(Highlander)
+library(matrixStats)
 
 source("./ProFound_settings.R")
 
-jumprope_version = "1.1.6"
+jumprope_version = "1.1.7"
 
 ######################
 ## for testing only ##
@@ -304,23 +306,19 @@ star_mask = function(input_args){
   }
   
   star_mask_dir = paste0(ref_dir, "/ProFound/Star_Masks/", VID, "/", MODULE, "/")
-  
   if(dir.exists(star_mask_dir)){
     unlink(star_mask_dir, recursive = T)
   }
   
   dir.create(star_mask_dir, showWarnings = F, recursive = T)
-  
   data_dir = paste0(ref_dir, "/Patch_Stacks/") #directory with the propanes
-  
   gaia_dir = paste0(ref_dir, "/ProFound/GAIA_Cats/", VID, "/")
-  
   file_list = list.files(data_dir, pattern=glob2rx(paste0("*", VID, "*", MODULE, "*long.fits")), full.names=TRUE) #list all the .fits files in a directory
   file_names = list.files(data_dir, pattern=glob2rx(paste0("*", VID, "*", MODULE, "*long.fits")), full.names=FALSE)
   
-  #make star masks on the F200W filter, and if it's missing use the shortest filter
+  #make star masks on the F277W filter, and if it's missing use the shortest filter
   file_idx = (
-    grepl("F200W", file_list) & 
+    grepl("F277W", file_list) & 
     grepl(VID, file_list) & 
     grepl(MODULE, file_list) &
     !grepl("hst", file_list)
@@ -340,34 +338,28 @@ star_mask = function(input_args){
   
   message(paste("Using", file_names, "to build star mask"))
   
-  f200w_ref = Rfits_read(filename = file_list, pointer = F)
-  imdim = dim(f200w_ref$image)
-  im_ra_dec = Rwcs_p2s(x = imdim[1], y = imdim[2], keyvalues = f200w_ref$image$keyvalues) #get extent of frame in RA and DEC coords
-  
+  ref = Rfits_read(filename = file_list, pointer = F)
+  imdim = dim(ref$image)
+  im_ra_dec = Rwcs_p2s(x = imdim[1], y = imdim[2], keyvalues = ref$image$keyvalues) #get extent of frame in RA and DEC coords
   #read in GAIA catalogue
   gaia_files = list.files(path = gaia_dir, pattern = glob2rx(paste0("*", VID, "*", MODULE, "*.csv")), full.names = T, recursive = T) 
-  
   gaia = data.frame(
     fread(
       file = gaia_files
     )
   )
-  
-  delta_time = as.double(substr(f200w_ref$image$keyvalues$DATE_END, 1, 4)) - gaia$ref_epoch
+  delta_time = as.double(substr(ref$image$keyvalues$DATE_END, 1, 4)) - gaia$ref_epoch
   gaia[, c("xpix", "ypix")] = Rwcs_s2p(RA = gaia$ra + 1e-3 * 1/3600 * ifelse(is.na(gaia$pmra), 0, gaia$pmra) * delta_time, ## Do proper motion correction
                                        Dec = gaia$dec + 1e-3 * 1/3600 * ifelse(is.na(gaia$pmdec), 0, gaia$pmdec) * delta_time, ## pmra[pmdec] = mas/yr
-                                       keyvalues = f200w_ref$image$keyvalues)
-  
+                                       keyvalues = ref$image$keyvalues)
   gaia[, c("xpix_nopm", "ypix_nopm")] = Rwcs_s2p(RA = gaia$ra, 
                                                  Dec = gaia$dec, 
-                                                 keyvalues = f200w_ref$image$keyvalues)
-  
+                                                 keyvalues = ref$image$keyvalues)
   gaia$ra_fix = gaia$ra + 1e-3 * 1/3600 * ifelse(is.na(gaia$pmra), 0, gaia$pmra) * delta_time
   gaia$dec_fix = gaia$dec + 1e-3 * 1/3600 * ifelse(is.na(gaia$pmdec), 0, gaia$pmdec) * delta_time
-  
-  gaia_idx = gaia$xpix >= 0 & gaia$xpix <= imdim[1] & gaia$ypix >= 0 & gaia$ypix <= imdim[2] & 
-    gaia$classprob_dsc_combmod_star > 0.98 & gaia$phot_bp_rp_excess_factor < 2.5
-  gaia_ra_dec = gaia[gaia_idx[!is.na(gaia_idx)],]
+  gaia_idx = gaia$xpix >= 0 & gaia$xpix <= imdim[1] & gaia$ypix >= 0 & gaia$ypix <= imdim[2] & gaia$classprob_dsc_combmod_star > 0.98 & gaia$phot_bp_rp_excess_factor < 2.5
+  gaia_idx[is.na(gaia_idx)] = FALSE
+  gaia_ra_dec = gaia[gaia_idx,]
   gaia_trim = gaia_ra_dec[order(gaia_ra_dec$phot_g_mean_mag), ]
 
   message(paste0("Building star mask for VID: ", VID, ", MODULE: ", MODULE))
@@ -379,15 +371,160 @@ star_mask = function(input_args){
       profoundEllipseSeg(image=image, xcen=xcen, ycen=ycen, rad=rad, axrat=0.07, ang=-60) +
       profoundEllipseSeg(image=image, xcen=xcen, ycen=ycen, rad=rad, axrat=0.07, ang=0)
     return(mask > 0)
+  } ## Define the PSF mask
+  psf_mask = psf_mask_function(image = ref$image$imDat)
+  sersic = function(R, p, Io, Ro){
+    ## Sersic function for profile fitting
+    Io * exp(-1*p[1] * (R-Ro)^(1/p[2]))
+  }
+  LL = function(p, Data){ 
+    ## Sersic LogLikelihood
+    loglike = sum(
+      dnorm(
+        x =  Data$ff,
+        mean = sersic(Data$rr, p, Data$Io, Data$Ro),
+        sd = Data$ff_err, log = T
+      ), na.rm = T)
+    return(-1*loglike)
+  }
+  star_masker = function(ref, gaia, pro, psf){
+    box = 5
+    quan_cut = c(0.0, 0.95)
+    
+    gama_func = function(x)(10^(2.6 - 0.17*x)/pixscale(ref, unit = "amin")) ## GAMA-esque star mask 
+    
+    approx_depth = sd(pro$sky, na.rm = TRUE)
+    segim_map = Rfits_create_image(data = pro$segim, keyvalues = ref$keyvalues)
+    sky_map = Rfits_create_image(data = pro$sky, keyvalues = ref$keyvalues)
+    skyRMS_map = Rfits_create_image(data = pro$skyRMS, keyvalues = ref$keyvalues)
+    
+    star_rad_list = foreach(kk = 1:dim(gaia)[1], .combine = "c") %dopar% {
+      
+      test_coords = c(gaia$xpix[kk], gaia$ypix[kk])
+      
+      dr_vec = 10^seq(0, log10(dim(ref)[1]), length.out = 200)
+      flux_mat = matrix(0L, nrow = 6, ncol = length(dr_vec))
+      flux_err_mat = matrix(0L, nrow = 6, ncol = length(dr_vec))
+      ## Calculate flux profiles along 6 radial rays
+      for(dr in 1:length(dr_vec)){
+        count = 1
+        for(theta in c(pi/6.0, pi/2.0, 5*pi/6)){
+          for(sgn in c(1,-1)){
+            new_coords = test_coords + (sgn * c(dr_vec[dr] * cos(theta), dr_vec[dr] * sin(theta)) )
+            flux = median(ref[new_coords[1], new_coords[2], box = box]$imDat, na.rm = FALSE)
+            flux_err = sd(ref[new_coords[1], new_coords[2], box = box]$imDat, na.rm = FALSE)
+            flux_mat[count, dr] = flux
+            flux_err_mat[count, dr] = flux_err
+            count = count + 1
+          }
+        }
+      }
+      
+      ## Find ray with most flux, use this as the test diffraction spike
+      flux_row_sums = rowSums(flux_mat, na.rm = TRUE)
+      flux_nonNA_sums = rowSums(!is.na(flux_mat))/200
+      
+      max_flux_idx = which(flux_row_sums == max(flux_row_sums[flux_nonNA_sums >= median(flux_nonNA_sums)]))
+      flux_vec = flux_mat[max_flux_idx, ]
+      flux_err_vec = flux_err_mat[max_flux_idx, ]
+      sn_vec = abs( flux_vec / flux_err_vec )
+      
+      rr = dr_vec[!is.na(flux_vec)]
+      ff = flux_vec[!is.na(flux_vec)]
+      ff[ff<=0] = 0
+      ff_err = flux_err_vec[!is.na(flux_vec)]
+      sn = ff / ff_err
+      
+      if(all(flux_row_sums == 0) | length(rr) < 30){
+        return(100)
+      }
+      ## Set some sensible limits for initial values for fitting
+      sm_ff = stats::filter(ff[rr > 10], rep(1/10,10), sides = 2)
+      Io = quantile(sm_ff, probs = 0.8, na.rm = T)
+      Ro = rr[which(ff<Io)[1]]
+      MaxR = max(rr)
+      
+      ## Fit sersic with Highlander
+      Data = list(
+        "rr" = c(rr, 2*dim(ref)[1]),
+        "ff" = c(ff, 0),
+        "ff_err" = c(ff_err+1e-4, 1e-8),
+        "Ro" = Ro,
+        "Io" = Io
+      )
+      highout = suppressMessages(Highlander(
+        parm = c(1, 1),
+        Data = Data,
+        likefunc = LL,
+        likefunctype = "CMA", liketype = "min",
+        lower = c(0, 0.5), upper = c(5, 4),
+        Niters = c(10000,10000),
+        NfinalMCMC = 10000, seed = 666
+      ))
+      
+      fitparm = colQuantiles(highout$LD_last$Posterior1, probs = c(0.5, 0.16, 0.84))
+      sersic_fun = function(R){sersic(R, p = fitparm[,1], Io = Io, Ro = Ro)}
+      rtest = Ro + seq(1, dim(ref)[1], 0.1)
+      ftest = sersic_fun(rtest)
+      
+      ## Find local background levels to truncate diffraction spike
+      local_RMS = skyRMS_map[test_coords[1], test_coords[2], box = Ro + 100]$imDat
+      local_sky = sky_map[test_coords[1], test_coords[2], box = Ro + 100]$imDat
+      
+      depth = pmax( median(local_RMS, na.rm = TRUE), 3*sd(local_sky, na.rm = TRUE))
+      if(is.na(depth)){
+        depth = approx_depth
+      }
+      star_rad = rtest[ftest < depth][1]
+      
+      ## If radius is much bigger than we would expect from the GAMA function
+      if(2*star_rad > 1.5*gama_func(gaia$phot_g_mean_mag[kk]) & gaia$phot_g_mean_mag[kk] >= 19){
+        star_rad = gama_func(gaia$phot_g_mean_mag[kk])/2.0
+      }
+      
+      avg_SN1 = quantile(sn_vec[dr_vec <= (Ro+MaxR)*0.5], 0.50, na.rm = TRUE)
+      avg_SN2 = quantile(sn_vec[dr_vec >= (Ro+MaxR)*0.5], 0.50, na.rm = TRUE)
+      init_coords = ref[test_coords[1], test_coords[2], box = Ro+2]$imDat
+      if( (sum(is.na(init_coords))/(Ro+2)^2 > 0.5) & avg_SN1 < 1.0 ){
+        ## If the center coords are mostly NA and the total S/N is pretty poor
+        message("Likely star out of bounds")
+        return(100)
+      }
+      return(star_rad)
+    }
+    
+    star_rad_list[is.na(star_rad_list)] = 1
+    
+    all_mask = profoundApplyMask(
+      image = ref$imDat, mask = psf>0, 
+      xcen = gaia$xpix, ycen = gaia$ypix,
+      xsize = star_rad_list*2,
+      ysize = star_rad_list*2
+    )
+    ## Extra dilation step to capture more flux if needed
+    pro_new = profoundProFound(
+      image = ref, 
+      segim = all_mask$mask, 
+      sky = pro$sky,
+      magzero = 23.9, 
+      rem_mask = TRUE, 
+      cliptol = 50, 
+      tolerance = Inf
+    )
+    mask = pro_new$objects_redo
+    gaia$PSFMASKRAD = star_rad_list
+    gaia = cbind(gaia, pro_new$segstats)
+    return(list("star_mask" = mask, "new_gaia" = gaia))
   }
   
+  ref$image$imDat[is.na(ref$image$imDat) | is.infinite(ref$image$imDat)] = NA ## For safefty just get rid of any Infs or NA...
   pro_stars = profoundProFound(
-    image = f200w_ref$image,
-    skycut = 10,
-    pixcut = 21,
-    tolerance = 1,
-    cliptol = 50,
-    rem_mask = T
+    image = ref$image, 
+    magzero = 23.9, 
+    rem_mask = TRUE, 
+    cliptol = 50, 
+    tolerance = Inf, 
+    box = 500
   )
   
   match_gaia = coordmatch(
@@ -395,38 +532,28 @@ star_mask = function(input_args){
     coordcompare = pro_stars$segstats[, c("RAmax", "Decmax")]
   )
   
-  if(length(match_gaia$bestmatch)>1){
-    R100_list = rep(50, dim(gaia_trim)[1])
-    R100_list[match_gaia$bestmatch$refID] = pro_stars$segstats$R100[match_gaia$bestmatch$compareID]/pixscale(f200w_ref$image)
-    
-    tweak_gaia = propaneTweakCat(
-      cat_pre_fix = gaia_trim[match_gaia$bestmatch$refID, c("xpix", "ypix")],
-      cat_ref = pro_stars$segstats[match_gaia$bestmatch$compareID, c("xmax", "ymax")]
-    )
-    
-    temp = matrix(1, 1500, 1500)
-    psf_mask = psf_mask_function(temp)
-    
-    all_mask = profoundApplyMask(
-      image = f200w_ref$image$imDat, mask = psf_mask, 
-      xcen = gaia_trim$xpix, ycen = gaia_trim$ypix,
-      xsize= R100_list * 8, 
-      ysize = R100_list * 8
-    )
+  if(length(match_gaia$bestmatch)>1){ ## Make sure that there are GAIA stars in frame
+    ## calculate radius of stars/diffraction spikes
+    cores_stars = input_args$cores_stack
+    registerDoParallel(cores = cores_stars)
+    star_mask_save = star_masker(ref$image, gaia_trim, pro_stars, psf_mask)
     
     message("Star mask complete")
     star_mask_redo = list()
-    star_mask_redo$mask = profoundDilate(all_mask$mask > 0, size = 3)
+    star_mask_redo$mask = star_mask_save[["star_mask"]]
     
     plot_stub = paste0(ref_dir, "/ProFound/Star_Masks/", VID, "/", MODULE, "/", VID, "_", MODULE, "_star_mask.pdf")
     CairoPDF(plot_stub, width = 10, height = 10)
     par(mfrow = c(1,1), mar = rep(0,4), oma = rep(0,4))
-    magimage(f200w_ref$image$imDat, flip = T, sparse = 1)
-    magimage(profoundDilate(star_mask_redo$mask, size = 21) - star_mask_redo$mask, col = c(NA, "magenta"), add = T)
+    magimage(ref$image$imDat, flip = T, sparse = 1)
+    magimage(star_mask_save[["star_mask"]], col = c(NA, rgb(1,0,0,0.4)), add = T)
     legend(x = "topleft", paste0(VID, "_", MODULE))
     dev.off()
+    
+    csv_stub = paste0(ref_dir, "/ProFound/Star_Masks/", VID, "/", MODULE, "/", VID, "_", MODULE, "_star_mask.csv")
+    fwrite(data.frame(star_mask_save[["new_gaia"]]), file = csv_stub)
   }else{
-    star_mask_redo = list(mask = matrix(0, nrow = dim(f200w_ref$image)[1], ncol = dim(f200w_ref$image)[2]))
+    star_mask_redo = list(mask = matrix(0, nrow = dim(ref$image)[1], ncol = dim(ref$image)[2]))
   }
 
   message("Saving star mask")

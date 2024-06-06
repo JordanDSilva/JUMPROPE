@@ -44,7 +44,7 @@ make_directory_structure = function(){
 }
 
 select_code_func = function(){
-  message("          JumProPe version: ", jumprope_version, "
+  message(" 
           ############################################################
           ############################################################
           ## Thank you for choosing ZORK for your JWST processing!  ##
