@@ -365,11 +365,11 @@ star_mask = function(input_args){
   message(paste0("Building star mask for VID: ", VID, ", MODULE: ", MODULE))
   psf_mask_function = function(image, xcen=dim(image)[1]/2, ycen=dim(image)[2]/2, rad=dim(image)[2]/2){
     mask =
-      profoundEllipseSeg(image=image, xcen=xcen, ycen=ycen, rad=rad/4.0, axrat=1) +
-      profoundEllipseSeg(image=image, xcen=xcen, ycen=ycen, rad=rad/2.0, axrat=0.05, ang=90) +
-      profoundEllipseSeg(image=image, xcen=xcen, ycen=ycen, rad=rad, axrat=0.07, ang=60) +
-      profoundEllipseSeg(image=image, xcen=xcen, ycen=ycen, rad=rad, axrat=0.07, ang=-60) +
-      profoundEllipseSeg(image=image, xcen=xcen, ycen=ycen, rad=rad, axrat=0.07, ang=0)
+      profoundEllipseSeg(image=image, xcen=xcen, ycen=ycen, rad=rad/8.0, axrat=1) +
+      profoundEllipseSeg(image=image, xcen=xcen, ycen=ycen, rad=rad/2, axrat=0.01, ang=90) +
+      profoundEllipseSeg(image=image, xcen=xcen, ycen=ycen, rad=rad, axrat=0.01, ang=60) +
+      profoundEllipseSeg(image=image, xcen=xcen, ycen=ycen, rad=rad, axrat=0.01, ang=-60) +
+      profoundEllipseSeg(image=image, xcen=xcen, ycen=ycen, rad=rad, axrat=0.01, ang=0)
     return(mask > 0)
   } ## Define the PSF mask
   psf_mask = psf_mask_function(image = ref$image$imDat)
