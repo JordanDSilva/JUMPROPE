@@ -513,7 +513,9 @@ star_mask = function(input_args){
     )
     mask = pro_new$objects_redo
     gaia$PSFMASKRAD = star_rad_list
-    gaia = cbind(gaia, pro_new$segstats)
+    if(dim(gaia)[1] == dim(pro_new$segstats)[1]){
+      gaia = cbind(gaia, pro_new$segstats)
+    }
     return(list("star_mask" = mask, "new_gaia" = gaia))
   }
   
@@ -583,7 +585,7 @@ star_mask_tile = function(input_args){
     file_names = list.files(data_dir, pattern=".fits", full.names=FALSE)
     
     file_idx = (
-      grepl("F200W", file_list) & 
+      grepl("F277W", file_list) & 
         grepl(VID, file_list) & 
         grepl(MODULE, file_list) &
         !grepl("hst", file_list)
@@ -601,8 +603,8 @@ star_mask_tile = function(input_args){
       file_names = file_names[file_idx]
     }
     
-    f200w_ref = Rfits_read_image(filename = file_list, ext = 1)
-    keyvalues =f200w_ref$keyvalues
+    ref = Rfits_read_image(filename = file_list, ext = 1)
+    keyvalues =ref$keyvalues
     input_info = Rfits_read_table(filename = file_list, ext = 7)
     
     input_VID = na.exclude(
@@ -678,9 +680,9 @@ star_mask_tile = function(input_args){
     
     message("Saving star mask...")
     plot_stub = paste0(ref_dir, "/ProFound/Star_Masks/", VID, "/", MODULE, "/", VID, "_", MODULE, "_star_mask.png")
-    png(plot_stub, width = dim(f200w_ref)[1], height = dim(f200w_ref)[2], res = 72)
+    png(plot_stub, width = dim(ref)[1], height = dim(ref)[2], res = 72)
     par(mfrow = c(1,1), mar = rep(0,4), oma = rep(0,4))
-    magimage(f200w_ref$imDat, flip = T, sparse = 2)
+    magimage(ref$imDat, flip = T, sparse = 2)
     magimage(profoundDilate(big_star_mask, size = 21) - big_star_mask, col = c(NA, "magenta"), add = T, sparse = 2)
     legend(x = "topleft", paste0(VID, "_", MODULE))
     dev.off()
