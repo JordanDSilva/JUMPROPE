@@ -522,10 +522,7 @@ star_mask = function(input_args){
     image = ref$image, 
     magzero = 23.9, 
     rem_mask = TRUE, 
-    cliptol = 50, 
-    tolerance = Inf, 
-    box = 500
-  )
+    cliptol = 50)
   
   match_gaia = coordmatch(
     coordref = gaia_trim[, c("ra_fix", "dec_fix")],
