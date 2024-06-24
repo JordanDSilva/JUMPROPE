@@ -96,6 +96,7 @@ main = function(){
   env_var = Sys.getenv(
     x = c('JUMPROPE_RAW_DIR', 
           'JUMPROPE_do_NIRISS', 
+          'JUMPROPE_do_MIRI',
           'JUMPROPE_cores_pro',
           'JUMPROPE_cores_stack',
           'JUMPROPE_tasks_stack')
@@ -107,6 +108,8 @@ main = function(){
   }
   
   do_NIRISS = ifelse(grepl("T|TRUE|True", env_var['JUMPROPE_do_NIRISS']), T, F) 
+  do_MIRI = ifelse(grepl("T|TRUE|True", env_var['JUMPROPE_do_MIRI']), T, F) 
+  
   
   cores_pro = as.integer(env_var['JUMPROPE_cores_pro'])
   cores_stack = as.integer(env_var['JUMPROPE_cores_stack'])
@@ -163,6 +166,7 @@ main = function(){
       FILT = FILT,
       
       do_NIRISS = do_NIRISS,
+      do_MIRI = do_MIRI,
       
       cores_pro = cores_pro,
       cores_stack = cores_stack,
@@ -186,6 +190,10 @@ main = function(){
   
     if(input_args$do_NIRISS){
       input_args$FILT = "CLEAR"
+      do_patch(input_args)
+      q()
+    }
+    if(input_args$do_MIRI){
       do_patch(input_args)
       q()
     }
