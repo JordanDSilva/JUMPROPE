@@ -29,6 +29,7 @@ load_files = function(input_args, which_module, sky_info = NULL){
   cal_sky_dir = input_args$cal_sky_dir
   
   do_NIRISS = input_args$do_NIRISS
+  do_MIRI = input_args$do_MIRI
   
   if(which_module == "1oF"){
     files_1oF = input_args$filelist
@@ -51,9 +52,11 @@ load_files = function(input_args, which_module, sky_info = NULL){
                  pattern = glob2rx(paste0("*",VID,"*.fits")))
     )
     if(do_NIRISS){
-      files_cal = files_cal[!grepl('_miri_',files_cal) & grepl('_nis_',files_cal) & grepl(".fits$", files_cal)]
+      files_cal = files_cal[!grepl('_mirimage_',files_cal) & grepl('_nis_',files_cal) & grepl(".fits$", files_cal)]
+    }else if (do_MIRI){
+      files_cal = files_cal[grepl('_mirimage_',files_cal) & !grepl('_nis_',files_cal) & grepl(".fits$", files_cal)]
     }else{
-      files_cal = files_cal[!grepl('_miri_',files_cal) & !grepl('_nis_', files_cal) & grepl(".fits$", files_cal)]
+      files_cal = files_cal[!grepl('_mirimage_',files_cal) & !grepl('_nis_', files_cal) & grepl(".fits$", files_cal)]
     }
     
     scan_cal = Rfits_key_scan(filelist = files_cal,keylist = c("FILTER", "PROGRAM", "VISIT_ID"))
@@ -74,9 +77,11 @@ load_files = function(input_args, which_module, sky_info = NULL){
                            pattern = glob2rx(paste0("*", VID, "*.fits")))
 
     if(do_NIRISS){
-      files_sky = files_sky[!grepl('_miri_',files_sky) & grepl('_nis_',files_sky) & grepl('.fits$',files_sky) ]
+      files_sky = files_sky[!grepl('_mirimage_',files_sky) & grepl('_nis_',files_sky) & grepl(".fits$", files_sky)]
+    }else if (do_MIRI){
+      files_sky = files_sky[grepl('_mirimage_',files_sky) & !grepl('_nis_',files_sky) & grepl(".fits$", files_sky)]
     }else{
-      files_sky = files_sky[!grepl('_miri_',files_sky) & !grepl('_nis_', files_sky) & grepl('.fits$',files_sky) ]
+      files_sky = files_sky[!grepl('_mirimage_',files_sky) & !grepl('_nis_', files_sky) & grepl(".fits$", files_sky)]
     }
     
     scan_sky = Rfits_key_scan(filelist = files_sky, keylist = c("FILTER", "PROGRAM", "VISIT_ID"))
@@ -95,7 +100,14 @@ load_files = function(input_args, which_module, sky_info = NULL){
     corr_pid = corr_pid[substring(corr_pid, 1, nchar(VID)) == VID] ## Make sure 4 digit PID is embedded in 10 digit VID
     pid_idx = paste0(sky_info$visit_id) %in% corr_pid
     
-    sky_info = sky_info[grepl(VID, sky_info$fileim) & pid_idx & grepl(FILT, sky_info$filter) & !grepl("MIRIMAGE", sky_info$detector), ]
+    sky_info = sky_info[grepl(VID, sky_info$fileim) & pid_idx & grepl(FILT, sky_info$filter), ]
+    
+    if(do_NIRISS){
+      sky_info = sky_info[grepl("NIS", sky_info$detector), ]
+    }else if (do_MIRI){
+      sky_info = sky_info[grepl("MIRIMAGE", sky_info$detector), ]
+    }
+    
     return(list('sky_info' = sky_info, 'sky_filelist', sky_info$filesky))
   }
   
@@ -105,10 +117,12 @@ load_files = function(input_args, which_module, sky_info = NULL){
     )
     
     if(do_NIRISS){
-      files_cal_sky = files_cal_sky[!grepl('_miri_',files_cal_sky) & grepl("nis", files_cal_sky) & grepl(".fits$", files_cal_sky)]
+      files_cal_sky = files_cal_sky[!grepl('_mirimage_',files_cal_sky) & grepl('_nis_',files_cal_sky) & grepl(".fits$", files_cal_sky)]
+    }else if (do_MIRI){
+      files_cal_sky = files_cal_sky[grepl('_mirimage_',files_cal_sky) & !grepl('_nis_',files_cal_sky) & grepl(".fits$", files_cal_sky)]
     }else{
-      files_cal_sky = files_cal_sky[!grepl('_miri_',files_cal_sky) & !grepl("nis", files_cal_sky) & grepl(".fits$", files_cal_sky)]
-      }
+      files_cal_sky = files_cal_sky[!grepl('_mirimage_',files_cal_sky) & !grepl('_nis_', files_cal_sky) & grepl(".fits$", files_cal_sky)]
+    }
     
     scan_cal_sky = Rfits_key_scan(filelist = files_cal_sky, keylist = c("FILTER", "PROGRAM", "VISIT_ID"))
     corr_pid = grep(VID, scan_cal_sky$VISIT_ID, fixed = T, value = T)
@@ -149,6 +163,8 @@ do_1of = function(input_args){
   FILT = input_args$FILT
   cores = input_args$cores_pro
   
+  do_MIRI = input_args$do_MIRI ## Because we need to alter the dimensions of the image for processing
+  
   ### EXAMPLE BITS TO EDIT
   
   #very large sources
@@ -168,7 +184,6 @@ do_1of = function(input_args){
   
   ow_vlarge = additional_params$ow_vlarge
   ow_large = additional_params$ow_large
-  
   
   ### BITS TO EDIT END ###
   
@@ -194,25 +209,32 @@ do_1of = function(input_args){
     
     temp_image = Rfits_read(filelist[i], pointer=FALSE)
     
-    if(!(any(c(ow_vlarge, ow_large)))){
-      if(any(temp_image[[1]]$keyvalues$VISIT_ID == ID_vlarge$VISIT_ID & temp_image[[1]]$keyvalues$MODULE == ID_vlarge$MODULE)){
-        trend_block = trend_block_vlarge
-        keep_trend = TRUE
-        message(temp_image[[1]]$keyvalues$VISIT_ID,' ',temp_image[[1]]$keyvalues$MODULE, ' KT: TRUE', ' TB: ',trend_block)
-      }else if(any(temp_image[[1]]$keyvalues$VISIT_ID == ID_large$VISIT_ID & temp_image[[1]]$keyvalues$MODULE == ID_large$MODULE)){
-        trend_block = trend_block_large
-        keep_trend = TRUE
-        message(temp_image[[1]]$keyvalues$VISIT_ID,' ',temp_image[[1]]$keyvalues$MODULE, ' KT: TRUE', ' TB: ',trend_block)
-      }else if(any(temp_image[[1]]$keyvalues$VISIT_ID == ID_large$VISIT_ID & temp_image[[1]]$keyvalues$INSTRUME == ID_large$MODULE)){
-        trend_block = trend_block_large
-        keep_trend = TRUE
-        message(temp_image[[1]]$keyvalues$VISIT_ID,' ',temp_image[[1]]$keyvalues$INSTRUME, ' KT: TRUE', ' TB: ',trend_block)
-      }else{
-        keep_trend = FALSE
-        message(temp_image[[1]]$keyvalues$VISIT_ID,' ',temp_image[[1]]$keyvalues$MODULE, ' KT: FALSE')
+    if(do_MIRI){
+      imdim = dim(temp_image$SCI)
+      xpix = 413:imdim[1]
+      # xpix = 1:imdim[1]
+      ypix = 1:imdim[2]
+      
+      new_centre = suppressMessages(Rwcs_p2s(
+        x = floor(median(xpix)),
+        y = floor(median(ypix)),
+        keyvalues = temp_image$SCI$keyvalues
+      ))
+      
+      dq = temp_image$DQ$imDat
+      
+      temp_image$SCI = temp_image$SCI[xpix, ypix]
+      temp_image$ERR$imDat = temp_image$ERR[xpix, ypix]$imDat
+      temp_image$DQ$imDat = dq[xpix, ypix]
+      temp_image$AREA$imDat = temp_image$AREA[xpix, ypix]$imDat
+      temp_image$VAR_POISSON$imDat = temp_image$VAR_POISSON[xpix, ypix]$imDat
+      temp_image$VAR_RNOISE$imDat = temp_image$VAR_RNOISE[xpix, ypix]$imDat
+      temp_image$VAR_FLAT$imDat = temp_image$VAR_FLAT[xpix, ypix]$imDat
+      
+      for(ext in c("ERR", "DQ", "AREA", "AREA", "VAR_POISSON", "VAR_RNOISE", "VAR_FLAT")){
+        temp_image[[ext]]$keyvalues$NAXIS1 = imdim[1] - 413
       }
-    }else{
-      ## set over write
+      
       if(ow_large & ow_vlarge){
         message("Can't use both LARGE and VLARGE keep_trend \n Defaulting to keep_trend FALSE")
         keep_trend = FALSE
@@ -228,53 +250,97 @@ do_1of = function(input_args){
           message("KT: TRUE", " TB ", trend_block_large)
         }
       }
-    }
-    
-    temp_mask = temp_image$DQ$imDat
-    JWST_cal_mask = profoundDilate(temp_mask %% 2 == 1, size=3)
-
-    temp_zap = profoundSkyScan(image = temp_image$SCI$imDat,
-                               mask = (temp_image$SCI$imDat==0) | JWST_cal_mask,
-                               # mask = foo,
-                               clip = c(0.0,0.9),
-                               scan_block = c(512, 2048),
-                               trend_block = trend_block,
-                               keep_trend = keep_trend)
-    
-    # CairoJPEG(filename = paste0(fullbase,'_orig.jpeg'), width=1000,height=1000)
-    # par(mar=c(0.1,0.1,0.1,0.1))
-    # magimage(temp_image$SCI$imDat, axes=FALSE, rem_med = T)
-    # legend('topleft', legend=paste(basename, 'orig'))
-    # dev.off()
-    # 
-    # CairoJPEG(filename = paste0(fullbase,'_Pro1oF.jpeg'), width=1000,height=1000)
-    # par(mar=c(0.1,0.1,0.1,0.1))
-    # magimage(temp_zap$image_fix, axes=FALSE, rem_med = T)
-    # legend('topleft', legend=paste(basename, 'Pro1oF'))
-    # dev.off()
-    # 
-    file.copy(filelist[i], paste0(fullbase,'_Pro1oF.fits'), overwrite=TRUE)
-    Rfits_write_pix(temp_zap$image_fix, paste0(fullbase,'_Pro1oF.fits'), ext=2)
-    
-    # check_Nhdu = Rfits_nhdu(paste0(fullbase,'_Pro1oF.fits'))
-    # if(check_Nhdu == 9){
-    #   Rfits_write_image(temp_zap$row_map + temp_zap$col_map, filename=paste0(fullbase,'_Pro1oF.fits'), create_file=FALSE)
-    #   Rfits_write_key(filename=paste0(fullbase,'_Pro1oF.fits'), ext=check_Nhdu+1, keyname='EXTNAME', keyvalue='SKY_Pro1oF', keycomment='extension name')
-    # }else{
-    #   Rfits_write_pix(temp_zap$row_map + temp_zap$col_map, paste0(fullbase,'_Pro1oF.fits'), ext=check_Nhdu)
-    #   Rfits_write_key(filename=paste0(fullbase,'_Pro1oF.fits'), ext=check_Nhdu, keyname='EXTNAME', keyvalue='SKY_Pro1oF', keycomment='extension name')
-    # }
-    
-    check_Nhdu = Rfits_nhdu(paste0(fullbase,'_Pro1oF.fits'))
-    extloc = Rfits_extname_to_ext(paste0(fullbase,'_Pro1oF.fits'), 'SKY_Pro1oF')
-    
-    if(is.na(extloc)){
-      Rfits_write_image(temp_zap$row_map + temp_zap$col_map, filename=paste0(fullbase,'_Pro1oF.fits'), create_file=FALSE)
-      Rfits_write_key(filename=paste0(fullbase,'_Pro1oF.fits'), ext=check_Nhdu+1, keyname='EXTNAME', keyvalue='SKY_Pro1oF', keycomment='extension name')
+      
+      temp_mask = temp_image$DQ$imDat
+      JWST_cal_mask = profoundDilate(temp_mask %% 2 == 1, size=3)
+      
+      temp_zap = profoundSkyScan(image = temp_image$SCI$imDat,
+                                 mask = (temp_image$SCI$imDat==0) | JWST_cal_mask,
+                                 # mask = foo,
+                                 clip = c(0.0,0.9),
+                                 scan_block = c(1024),
+                                 scan_direction = "y",
+                                 trend_block = trend_block,
+                                 keep_trend = keep_trend)
+      
+      Rfits_write(
+        data = temp_image,
+        filename = paste0(fullbase,'_MIRI_trim.fits')
+      )
+      # file.copy(filelist[i], paste0(fullbase,'_MIRI_trim.fits'), overwrite=TRUE)
+      Rfits_write_pix(temp_zap$image_fix, paste0(fullbase,'_MIRI_trim.fits'), ext=2)
+      
+      check_Nhdu = Rfits_nhdu(paste0(fullbase,'_MIRI_trim.fits'))
+      extloc = Rfits_extname_to_ext(paste0(fullbase,'_MIRI_trim.fits'), 'SKY_Pro1oF')
+      
+      if(is.na(extloc)){
+        Rfits_write_image(temp_zap$row_map + temp_zap$col_map, filename=paste0(fullbase,'_MIRI_trim.fits'), create_file=FALSE)
+        Rfits_write_key(filename=paste0(fullbase,'_MIRI_trim.fits'), ext=check_Nhdu+1, keyname='EXTNAME', keyvalue='SKY_Pro1oF', keycomment='extension name')
+      }else{
+        Rfits_write_pix(temp_zap$row_map + temp_zap$col_map, paste0(fullbase,'_MIRI_trim.fits'), ext=extloc)
+      }
     }else{
-      Rfits_write_pix(temp_zap$row_map + temp_zap$col_map, paste0(fullbase,'_Pro1oF.fits'), ext=extloc)
+      if(!(any(c(ow_vlarge, ow_large)))){
+        if(any(temp_image[[1]]$keyvalues$VISIT_ID == ID_vlarge$VISIT_ID & temp_image[[1]]$keyvalues$MODULE == ID_vlarge$MODULE)){
+          trend_block = trend_block_vlarge
+          keep_trend = TRUE
+          message(temp_image[[1]]$keyvalues$VISIT_ID,' ',temp_image[[1]]$keyvalues$MODULE, ' KT: TRUE', ' TB: ',trend_block)
+        }else if(any(temp_image[[1]]$keyvalues$VISIT_ID == ID_large$VISIT_ID & temp_image[[1]]$keyvalues$MODULE == ID_large$MODULE)){
+          trend_block = trend_block_large
+          keep_trend = TRUE
+          message(temp_image[[1]]$keyvalues$VISIT_ID,' ',temp_image[[1]]$keyvalues$MODULE, ' KT: TRUE', ' TB: ',trend_block)
+        }else if(any(temp_image[[1]]$keyvalues$VISIT_ID == ID_large$VISIT_ID & temp_image[[1]]$keyvalues$INSTRUME == ID_large$MODULE)){
+          trend_block = trend_block_large
+          keep_trend = TRUE
+          message(temp_image[[1]]$keyvalues$VISIT_ID,' ',temp_image[[1]]$keyvalues$INSTRUME, ' KT: TRUE', ' TB: ',trend_block)
+        }else{
+          keep_trend = FALSE
+          message(temp_image[[1]]$keyvalues$VISIT_ID,' ',temp_image[[1]]$keyvalues$MODULE, ' KT: FALSE')
+        }
+      }else{
+        ## set over write
+        if(ow_large & ow_vlarge){
+          message("Can't use both LARGE and VLARGE keep_trend \n Defaulting to keep_trend FALSE")
+          keep_trend = FALSE
+        }else{
+          if(ow_vlarge){
+            keep_trend = TRUE
+            trend_block = trend_block_vlarge
+            message("KT: TRUE", " TB ", trend_block_vlarge)
+          }
+          if(ow_large){
+            keep_trend = TRUE
+            trend_block = trend_block_large
+            message("KT: TRUE", " TB ", trend_block_large)
+          }
+        }
+      }
+      
+      temp_mask = temp_image$DQ$imDat
+      JWST_cal_mask = profoundDilate(temp_mask %% 2 == 1, size=3)
+      
+      temp_zap = profoundSkyScan(image = temp_image$SCI$imDat,
+                                 mask = (temp_image$SCI$imDat==0) | JWST_cal_mask,
+                                 # mask = foo,
+                                 clip = c(0.0,0.9),
+                                 scan_block = c(512, 2048),
+                                 trend_block = trend_block,
+                                 keep_trend = keep_trend)
+      
+      file.copy(filelist[i], paste0(fullbase,'_Pro1oF.fits'), overwrite=TRUE)
+      Rfits_write_pix(temp_zap$image_fix, paste0(fullbase,'_Pro1oF.fits'), ext=2)
+
+      check_Nhdu = Rfits_nhdu(paste0(fullbase,'_Pro1oF.fits'))
+      extloc = Rfits_extname_to_ext(paste0(fullbase,'_Pro1oF.fits'), 'SKY_Pro1oF')
+      
+      if(is.na(extloc)){
+        Rfits_write_image(temp_zap$row_map + temp_zap$col_map, filename=paste0(fullbase,'_Pro1oF.fits'), create_file=FALSE)
+        Rfits_write_key(filename=paste0(fullbase,'_Pro1oF.fits'), ext=check_Nhdu+1, keyname='EXTNAME', keyvalue='SKY_Pro1oF', keycomment='extension name')
+      }else{
+        Rfits_write_pix(temp_zap$row_map + temp_zap$col_map, paste0(fullbase,'_Pro1oF.fits'), ext=extloc)
+      }
     }
-    
+  
     return(NULL)
   }
 }
@@ -291,6 +357,7 @@ do_cal_process = function(input_args){
   FILT = input_args$FILT
   cores = input_args$cores_pro
   do_NIRISS = input_args$do_NIRISS
+  do_MIRI = input_args$do_MIRI
   
   filelist = load_files(input_args, which_module = "cal_process")
   
@@ -344,6 +411,16 @@ do_cal_process = function(input_args){
     NAXIS2 = JWST_cal_image$keyvalues$NAXIS2
     Npix = NAXIS1*NAXIS2
 
+    if(do_MIRI){
+      box = 128
+      redoskysize = 7
+      sky_poly_deg = 3
+    }else{
+      box = 512
+      redoskysize = 101
+      sky_poly_deg = 2
+    }
+    
     ## TryCatch for ProFound in case there are not enough sky pixels to be sampled.
     ## Usually caused by zealous object dilation => lower redoskysize
     pro_func = function(x){
@@ -352,11 +429,11 @@ do_cal_process = function(input_args){
           pro = profoundProFound(x$image, mask = x$mask, 
                                  skycut=2, 
                                  pixcut=5, 
-                                 box=512, 
-                                 redoskysize = 101, 
+                                 box=x$box, 
+                                 redoskysize = x$redoskysize, 
                                  roughpedestal = TRUE, 
                                  tolerance=Inf)
-          return(list(pro = pro, redoskysize=101))
+          return(list(pro = pro, redoskysize=11))
         },
         error = function(cond){
           redoskysize = 21
@@ -364,7 +441,7 @@ do_cal_process = function(input_args){
           pro = profoundProFound(x$image, mask = x$mask, 
                                  skycut=2, 
                                  pixcut=5, 
-                                 box=512, 
+                                 box=x$box, 
                                  redoskysize = redoskysize, 
                                  roughpedestal = TRUE, 
                                  tolerance=Inf)
@@ -379,35 +456,34 @@ do_cal_process = function(input_args){
       )
     }
     
-    pro_out = pro_func(list(image = JWST_cal_image$imDat, mask = JWST_cal_mask))
+    pro_out = pro_func(list(image = JWST_cal_image$imDat, mask = JWST_cal_mask, box = box, redoskysize = redoskysize))
     pro = pro_out$pro
     redoskysize = pro_out$redoskysize
-
+    
     sky_redo_func = function(x){
-      tryCatch(
-        {
-          sky_redo = profoundSkyPoly(x$image, objects=x$pro$objects_redo, degree=2, quancut=0.99, mask=x$mask)
-          return(sky_redo)
-        },
-        error = function(cond){
-          message("Adjusting object mask for polynomial skies")
-          sky_redo = profoundSkyPoly(x$image, objects=x$pro$objects, degree=2, quancut=0.99, mask=x$mask)
-          return(sky_redo)
-        },
-        warning = function(cond){
-          NULL
-        },
-        finally = {
-          NULL
-        }
-      )
+        tryCatch(
+          {
+            sky_redo = profoundSkyPoly(x$image, objects=x$pro$objects_redo, degree=x$sky_poly_deg, quancut=0.99, mask=x$mask)
+            return(sky_redo)
+          },
+          error = function(cond){
+            message("Adjusting object mask for polynomial skies")
+            sky_redo = profoundSkyPoly(x$image, objects=x$pro$objects, degree=x$sky_poly_deg, quancut=0.99, mask=x$mask)
+            return(sky_redo)
+          },
+          warning = function(cond){
+            NULL
+          },
+          finally = {
+            NULL
+          }
+        )
     }
-    sky_redo = sky_redo_func(list(image = JWST_cal_image$imDat, pro = pro, mask = JWST_cal_mask))
+    sky_redo = sky_redo_func(list(image = JWST_cal_image$imDat, pro = pro, mask = JWST_cal_mask, sky_poly_deg = sky_poly_deg))
     
     pro_redo = profoundProFound(JWST_cal_image$imDat, mask=JWST_cal_mask, skycut=2, pixcut=5,
-                                box=512, redoskysize=redoskysize, sky=sky_redo$sky, redosky=FALSE, tolerance=Inf)
-    
-    
+                                box=box, grid = box, redoskysize=redoskysize, sky=sky_redo$sky, redosky=FALSE, tolerance=Inf)
+
     sky_med = median(sky_redo$sky[JWST_cal_mask == 0 & pro_redo$objects_redo == 0], na.rm=TRUE)
     skyRMS_med = median(pro_redo$skyRMS[JWST_cal_mask == 0 & pro_redo$objects_redo == 0], na.rm=TRUE)
     
@@ -529,13 +605,14 @@ do_super_sky = function(input_args){
   sky_info = sky_info[gsub("//", "/", paste0(sky_info$pathsky, "/", sky_info$filesky))%in%gsub("//", "/",filelist), ]
 
   niriss_det = c("NIS")
+  miri_det = c("MIRIMAGE")
   short_det = c("NRCA1", "NRCA2", "NRCA3", "NRCA4", "NRCB1", "NRCB2", "NRCB3", "NRCB4")
   long_det = c("NRCALONG", "NRCBLONG")
-  #miri_det = 'MIRIMAGE' #we don't care about MIRI for now
   
   short_filt = sort(unique(sky_info[detector %in% short_det,filter]))
   long_filt = sort(unique(sky_info[detector %in% long_det,filter]))
   nis_filt = sort(unique(sky_info[detector %in% niriss_det,filter]))
+  miri_filt = sort(unique(sky_info[detector %in% miri_det,filter]))
   
   #short_filt = c("F090W", "F115W", "F150W", "F182M", "F200W", "F210M")
   #long_filt = c("F277W", "F300M", "F335M", "F356W", "F360M", "F410M", "F444W")
@@ -544,8 +621,9 @@ do_super_sky = function(input_args){
   combine_grid_short = expand.grid(short_det, short_filt, stringsAsFactors=FALSE)
   combine_grid_long = expand.grid(long_det, long_filt, stringsAsFactors=FALSE)
   combine_grid_nis = expand.grid(niriss_det, nis_filt, stringsAsFactors=FALSE)
+  combine_grid_miri = expand.grid(miri_det, miri_filt, stringsAsFactors=FALSE)
   #combine_grid_miri = expand.grid(miri_det, miri_filt, stringsAsFactors=FALSE) #we don't care about MIRI for now
-  combine_grid = rbind(combine_grid_short, combine_grid_long, combine_grid_nis)
+  combine_grid = rbind(combine_grid_short, combine_grid_long, combine_grid_nis, combine_grid_miri)
   
   sky_filelist = list.files(sky_info[1,pathsky], pattern = ".fits$")
 
@@ -597,9 +675,9 @@ do_super_sky = function(input_args){
     }
     
     if(!is.null(sky_mean)){
-      # CairoJPEG(filename = paste0(sky_super_dir,'/super_',combine_grid[i,1],'_',combine_grid[i,2],'.jpeg'), width=1000,height=1000)
-      # magimage(sky_mean, qdiff=T)
-      # dev.off()
+      CairoJPEG(filename = paste0(sky_super_dir,'/super_',combine_grid[i,1],'_',combine_grid[i,2],'.jpeg'), width=1000,height=1000)
+      magimage(sky_mean, qdiff=T)
+      dev.off()
       
       file_super_sky = paste0(sky_super_dir,'/super_',combine_grid[i,1],'_',combine_grid[i,2],'.fits')
       Rfits_write_image(sky_mean, filename=file_super_sky)
@@ -641,7 +719,8 @@ do_apply_super_sky = function(input_args){
   }
   
   sky_filelist = list.files(sky_info[1,pathsky])
-  # sky_filelist = load_files(input_args, which_module = "apply_super", sky_info = sky_info)$sky_filelist
+
+    # sky_filelist = load_files(input_args, which_module = "apply_super", sky_info = sky_info)$sky_filelist
   sky_info = load_files(input_args, which_module = "apply_super", sky_info = sky_info)$sky_info
   sky_filelist = sky_info$filesky
 
@@ -695,18 +774,38 @@ do_apply_super_sky = function(input_args){
     
     #pedestal check - basically use the extremes of the frame to find a safe pedestal:
     
-    #edges (here we ignore the first 10 pixels since these are often ratty):
-    LHS = median(temp_cal_sky[11:15,], na.rm=TRUE)
-    RHS = median(temp_cal_sky[2049-11:15,], na.rm=TRUE)
-    BHS = median(temp_cal_sky[,11:15], na.rm=TRUE)
-    THS = median(temp_cal_sky[,2049-11:15], na.rm=TRUE)
+    pix_buffer = 10+1 ## Ignore first 10 pixels since these are often ratty
+    imdim = dim(temp_cal_sky)
+
+    edge_pix = (pix_buffer):(pix_buffer+4)
+    
+    LHS = median(temp_cal_sky[edge_pix,], na.rm=TRUE)
+    RHS = median(temp_cal_sky[imdim[1]-edge_pix,], na.rm=TRUE)
+    BHS = median(temp_cal_sky[,edge_pix], na.rm=TRUE)
+    THS = median(temp_cal_sky[,imdim[2]-edge_pix], na.rm=TRUE)
+    
     #corners (with masking, this gives about as many pixels as the edge above):
-    BL = median(temp_cal_sky[11:110,11:110], na.rm=TRUE)
-    TL = median(temp_cal_sky[11:110,2049-11:110], na.rm=TRUE)
-    TR = median(temp_cal_sky[2049-11:110,2049-11:110], na.rm=TRUE)
-    BR = median(temp_cal_sky[2049-11:110,11:110], na.rm=TRUE)
+    corner_pix = (pix_buffer):(pix_buffer*10)
+    BL = median(temp_cal_sky[corner_pix,corner_pix], na.rm=TRUE)
+    TL = median(temp_cal_sky[corner_pix,imdim[2]-corner_pix], na.rm=TRUE)
+    TR = median(temp_cal_sky[imdim[1]-corner_pix,imdim[2]-corner_pix], na.rm=TRUE)
+    BR = median(temp_cal_sky[imdim[1]-corner_pix,corner_pix], na.rm=TRUE)
+    
     #centre
-    CC = median(temp_cal_sky[974:1073,974:1073], na.rm=TRUE)
+    CC = median( magcutout(temp_cal_sky, box = c(100, 100))$image, na.rm=TRUE)
+    
+    # #edges (here we ignore the first 10 pixels since these are often ratty):
+    # LHS = median(temp_cal_sky[11:15,], na.rm=TRUE)
+    # RHS = median(temp_cal_sky[2049-11:15,], na.rm=TRUE)
+    # BHS = median(temp_cal_sky[,11:15], na.rm=TRUE)
+    # THS = median(temp_cal_sky[,2049-11:15], na.rm=TRUE)
+    # #corners (with masking, this gives about as many pixels as the edge above):
+    # BL = median(temp_cal_sky[11:110,11:110], na.rm=TRUE)
+    # TL = median(temp_cal_sky[11:110,2049-11:110], na.rm=TRUE)
+    # TR = median(temp_cal_sky[2049-11:110,2049-11:110], na.rm=TRUE)
+    # BR = median(temp_cal_sky[2049-11:110,11:110], na.rm=TRUE)
+    # #centre
+    # CC = median(temp_cal_sky[974:1073,974:1073], na.rm=TRUE)
     
     pedestals = c(BL, LHS, TL, THS, TR, RHS, BR, BHS, CC)
     
@@ -794,6 +893,7 @@ do_modify_pedestal = function(input_args){
   FILT = input_args$FILT
   cores = input_args$cores_pro
   do_NIRISS = input_args$do_NIRISS
+  do_MIRI = input_args$do_MIRI
   
   filelist = load_files(input_args, which_module = "modify_pedestal")
   
@@ -824,6 +924,20 @@ do_modify_pedestal = function(input_args){
   hi_loop = dim(cal_sky_info)[1]
   
   if(do_NIRISS){
+    dummy = foreach(i = lo_loop:hi_loop)%dopar%{
+      if(i %% 100 == 0){
+        message('File ',i,' of ', hi_loop)
+      }
+      file_cal_sky_renorm = paste0(cal_sky_renorm_dir,'/',cal_sky_info[i,file])
+      
+      if(file.exists(file_cal_sky_renorm)){
+        message('Removing old cal_sky file: ',file_cal_sky_renorm)
+        file.remove(file_cal_sky_renorm)
+      }
+      file.copy(cal_sky_info[i,full], cal_sky_renorm_dir) #no pedestal adjustment for NIRISS
+      return(NULL)
+    }
+  }else if(do_MIRI){
     dummy = foreach(i = lo_loop:hi_loop)%dopar%{
       if(i %% 100 == 0){
         message('File ',i,' of ', hi_loop)
@@ -985,6 +1099,7 @@ do_gen_stack = function(input_args){
   FILT = input_args$FILT
   ref_dir = input_args$ref_dir
   do_NIRISS = input_args$do_NIRISS
+  do_MIRI = input_args$do_MIRI
   magzero = input_args$magzero
   cores = input_args$cores_stack
   tasks = input_args$tasks_stack
@@ -1029,6 +1144,8 @@ do_gen_stack = function(input_args){
     
     if(do_NIRISS){
       cal_sky_info = orig_cal_sky_info[grepl(VID, orig_cal_sky_info$VISIT_ID) & grepl("NIS", orig_cal_sky_info$DETECTOR),]
+    }else if(do_MIRI){
+      cal_sky_info = orig_cal_sky_info[grepl(VID, orig_cal_sky_info$VISIT_ID) & grepl("MIRIMAGE", orig_cal_sky_info$DETECTOR),]
     }else{
       cal_sky_info = orig_cal_sky_info[grepl(VID, orig_cal_sky_info$VISIT_ID) & !grepl("NIS", orig_cal_sky_info$DETECTOR),]
     }
@@ -1075,12 +1192,14 @@ do_gen_stack = function(input_args){
     
     module_NIS = cal_sky_info[grepl('NIS', DETECTOR),list(CRVAL1=mean(CRVAL1), CRVAL2=mean(CRVAL2), CD1_1=mean(CD1_1), CD1_2=mean(CD1_2)), keyby=VISIT_ID]
     
+    module_MIRIMAGE = cal_sky_info[grepl('MIRIMAGE', DETECTOR),list(CRVAL1=median(CRVAL1), CRVAL2=median(CRVAL2), CD1_1=mean(CD1_1), CD1_2=mean(CD1_2)), keyby=VISIT_ID]
+    
     module_idx = sapply(list(module_A_WCS_long, module_A_WCS_short, 
                              module_B_WCS_long, module_B_WCS_short,
-                             module_NIS), 
+                             module_NIS, module_MIRIMAGE), 
                         function(x){y = dim(x)[1]
                         y > 0})
-    module_list = c('NRCA_short', 'NRCA_long', 'NRCB_short', 'NRCB_long', 'NIS')[module_idx]
+    module_list = c('NRCA_short', 'NRCA_long', 'NRCB_short', 'NRCB_long', 'NIS', 'MIRIMAGE')[module_idx]
     
     registerDoParallel(cores=tasks)
     
@@ -1098,6 +1217,16 @@ do_gen_stack = function(input_args){
       message('Stacking ', i,' of ',hi_loop)
       for(j in module_list){
         message('  Processing ',stack_grid[i,VISIT_ID],' ',stack_grid[i,FILTER], ' ', j)
+        
+        if(j == 'MIRIMAGE'){
+          input_info = cal_sky_info[VISIT_ID==stack_grid[i,VISIT_ID] & FILTER==stack_grid[i,FILTER] & grepl('MIRIMAGE', DETECTOR),]
+          CRVAL1 = module_MIRIMAGE[VISIT_ID == stack_grid[i,VISIT_ID], CRVAL1]
+          CRVAL2 = module_MIRIMAGE[VISIT_ID == stack_grid[i,VISIT_ID], CRVAL2]
+          CD1_1 = module_MIRIMAGE[VISIT_ID == stack_grid[i,VISIT_ID], CD1_1]
+          CD1_2 = module_MIRIMAGE[VISIT_ID == stack_grid[i,VISIT_ID], CD1_2]
+          NAXIS = 1200
+          CRPIX = 600
+        }
         
         if(j == 'NIS'){
           input_info = cal_sky_info[VISIT_ID==stack_grid[i,VISIT_ID] & FILTER==stack_grid[i,FILTER] & grepl('NIS', DETECTOR),]
@@ -1455,12 +1584,15 @@ do_patch = function(input_args){
   patch_dir = input_args$patch_dir
   cores = input_args$cores_stack
   do_NIRISS = input_args$do_NIRISS
+  do_MIRI = input_args$do_MIRI
   
   registerDoParallel(cores = cores)
   patch_stub = patch_dir
   
   if(do_NIRISS){
     pixscale_list = c("NIS")
+  }else if(do_MIRI){
+    pixscale_list = c("MIRIMAGE")
   }else{
     pixscale_list = c("short", "long")
   }
