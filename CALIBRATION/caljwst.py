@@ -19,6 +19,8 @@ import argparse #to run from command line, run <python3 calwebb.py -h> to displa
 parser = argparse.ArgumentParser()
 parser.add_argument("--VISITID",
                     help = "VISITID. e.g., `2736001001` for SMACS")
+parser.add_argument("--INSTRUMENT",
+                    help = "Instrument/Camera e.g., NIRCAM or MIRI")
 parser.add_argument("--redo",
                     type = bool,
                     help = "Should we redo the calibration even if files exist?",
@@ -27,7 +29,7 @@ parser.add_argument("--max_cores", help = "How many cores e.g., 'half'", default
 args = parser.parse_args()
 
 def run1(input_data):
-    """Process every uncal to cal"""
+    """Process every uncal to cal. These are hard coded for convenience. Users should edit this function directly to make changes as per the recommendations on the JWST Calibration Pipeline documentation."""
 
     files = input_data
     detector1 = calwebb_detector1.Detector1Pipeline()
@@ -73,21 +75,24 @@ if __name__ == "__main__":
         parser.print_help()
         sys.exit(1)
     elif args.VISITID is not None:
+
+        instrument = args.INSTRUMENT
+
         visitid = args.VISITID
         PID = str(visitid)[0:4]
         ref_dir = JUMPROPE_DOWNLOAD_DIR
-        uncal_dir = os.path.join(ref_dir, PID, 'UNCAL/NIRCAM') # folder must  be present in input directory
+        uncal_dir = os.path.join(ref_dir, PID, 'UNCAL/', instrument) # folder must  be present in input directory
         files = glob.glob(uncal_dir + "/*fits")
         files = [s for s in files if visitid in s]
         uncal_files = [foo.split("_uncal")[0].split("/")[-1] for foo in files]
 
         #dir_frames = "/Volumes/Expansion/JWST/"
-        rates_dir = os.path.join(ref_dir, PID, 'RATES/NIRCAM') # rates directory
+        rates_dir = os.path.join(ref_dir, PID, 'RATES/', instrument) # rates directory
         rates_files = glob.glob(rates_dir + "/*fits")
         rates_files = [s for s in rates_files if visitid in s]
         rates_files_names = [foo.split("_cal")[0].split("/")[-1] for foo in rates_files]
 
-        cal_dir = os.path.join(ref_dir, PID, 'CAL/NIRCAM') # cal directory
+        cal_dir = os.path.join(ref_dir, PID, 'CAL/', instrument) # cal directory
         cal_files = glob.glob(cal_dir + "/*fits")
         cal_files = [s for s in cal_files if visitid in s]
         cal_files_names = [foo.split("_cal")[0].split("/")[-1] for foo in cal_files]
@@ -100,7 +105,7 @@ if __name__ == "__main__":
         obs_table = Observations.query_criteria(proposal_id=PID,
                                                 project='JWST',
                                                 dataproduct_type="IMAGE",
-                                                instrument_name=["NIRCAM", "NIRCAM/IMAGE"])
+                                                instrument_name=[instrument, instrument+"/IMAGE"])
         data_products = Observations.get_product_list(obs_table)
         products_stage2 = Observations.filter_products(data_products,
                                                        extension="fits",
