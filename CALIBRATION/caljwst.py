@@ -19,7 +19,10 @@ import argparse  # to run from command line, run <python3 calwebb.py -h> to disp
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--VISITID",
-                    help="VISITID. e.g., `2736001001` for SMACS")
+                    help = "VISITID. e.g., `2736001001` for SMACS")
+parser.add_argument("--INSTRUMENT",
+                    help = "Instrument/Camera e.g., NIRCAM or MIRI",
+                    default = "NIRCAM")
 parser.add_argument("--redo",
                     type=bool,
                     help="Should we redo the calibration even if files exist?",
@@ -29,7 +32,7 @@ args = parser.parse_args()
 
 
 def run1(input_data):
-    """Process every uncal to cal"""
+    """Process every uncal to cal. These are hard coded for convenience. Users should edit this function directly to make changes as per the recommendations on the JWST Calibration Pipeline documentation."""
 
     files = input_data
     detector1 = calwebb_detector1.Detector1Pipeline()
@@ -76,21 +79,25 @@ if __name__ == "__main__":
         parser.print_help()
         sys.exit(1)
     elif args.VISITID is not None:
+
+        instrument = args.INSTRUMENT
+
         visitid = args.VISITID
         PID = str(visitid)[0:4]
         ref_dir = JUMPROPE_DOWNLOAD_DIR
-        uncal_dir = os.path.join(ref_dir, PID, 'UNCAL/NIRCAM')  # folder must  be present in input directory
+
+        uncal_dir = os.path.join(ref_dir, PID, 'UNCAL/', instrument) # folder must  be present in input directory
         files = glob.glob(uncal_dir + "/*fits")
         # files = [s for s in files if visitid in s]
         uncal_files = [foo.split("_uncal")[0].split("/")[-1] for foo in files]
 
-        # dir_frames = "/Volumes/Expansion/JWST/"
-        rates_dir = os.path.join(ref_dir, PID, 'RATES/NIRCAM')  # rates directory
+
+        rates_dir = os.path.join(ref_dir, PID, 'RATES/', instrument) # rates directory
         rates_files = glob.glob(rates_dir + "/*fits")
         # rates_files = [s for s in rates_files if visitid in s]
         rates_files_names = [foo.split("_cal")[0].split("/")[-1] for foo in rates_files]
 
-        cal_dir = os.path.join(ref_dir, PID, 'CAL/NIRCAM')  # cal directory
+        cal_dir = os.path.join(ref_dir, PID, 'CAL/', instrument) # cal directory
         cal_files = glob.glob(cal_dir + "/*fits")
         # cal_files = [s for s in cal_files if visitid in s]
         cal_files_names = [foo.split("_cal")[0].split("/")[-1] for foo in cal_files]
@@ -101,44 +108,44 @@ if __name__ == "__main__":
 
         ## download csv from mast to check expected files and their sizes
         obs_table = Observations.query_criteria(proposal_id=PID,
-                                               project='JWST',
-                                               dataproduct_type="IMAGE",
-                                               instrument_name=["NIRCAM", "NIRCAM/IMAGE"])
+                                                project='JWST',
+                                                dataproduct_type="IMAGE",
+                                                instrument_name=[instrument, instrument+"/IMAGE"])
         data_products = Observations.get_product_list(obs_table)
         products_stage2 = Observations.filter_products(data_products,
-                                                      extension="fits",
-                                                      productSubGroupDescription="CAL",
-                                                      )
+                                                       extension="fits",
+                                                       productSubGroupDescription="CAL",
+                                                       )
         visit_ids = np.array([obs[3:13] for obs in products_stage2["obs_id"]])
         idx = np.flatnonzero(np.core.defchararray.find(visit_ids, str(visitid)) != -1)
         df = products_stage2[idx].to_pandas().drop_duplicates("productFilename")
+        # df = dff[dff["dataRights"] == "PUBLIC"]
         if(len(df) > len(files)):
-           print("Some files appear to be missing in VISIT PROGRAM " + visitid + "\n compared to what I can find on MAST.")
+            print("Some files appear to be missing in VISIT PROGRAM " + visitid + "\n compared to what I can find on MAST.")
 
-           if sum(df["dataRights"] == "EXCLUSIVE_ACCESS") == len(df) - len(uncal_files):
-               print("Exclusive access files found.")
-               df = df[df["dataRights"] == "PUBLIC"]
-           else:
-               df = df[df["obs_id"].isin(uncal_files)]
+            if sum(df["dataRights"] == "EXCLUSIVE_ACCESS") == len(df) - len(uncal_files):
+                print("Exclusive access files found.")
+                df = df[df["dataRights"] == "PUBLIC"]
+            else:
+                df = df[df["obs_id"].isin(uncal_files)]
 
         if args.redo:  ## override previous checks. In case we want to use a new pmap of calibration version for example
-           for cal, rate in zip(cal_files, rates_files):
-               print("Removing " + str(cal))
-               os.remove(cal)
-               print("Removing " + str(rate))
-               os.remove(rate)
-           files_redo = files
+            for cal, rate in zip(cal_files, rates_files):
+                print("Removing " + str(cal))
+                os.remove(cal)
+                print("Removing " + str(rate))
+                os.remove(rate)
+            files_redo = files
         else:
-           files_redo = []
-           if sum(df["obs_id"].isin(cal_files_names)) != len(df["obs_id"]): ## check that all of the expected cal files have been produced
+            files_redo = []
+            if sum(df["obs_id"].isin(cal_files_names)) != len(df["obs_id"]): ## check that all of the expected cal files have been produced
 
-               idx = list(~df["obs_id"].isin(cal_files_names))
+                idx = list(~df["obs_id"].isin(cal_files_names))
 
-               for i,j in enumerate(idx):
-                   if j:
-                       files_redo.append(files[i])
+                for i,j in enumerate(idx):
+                    if j:
+                        files_redo.append(files[i])
 
-        files_redo = files
         print("Running " + str(len(files_redo)) + " files")
         for ff in files_redo:
             run1(ff)
