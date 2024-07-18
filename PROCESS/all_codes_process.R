@@ -14,7 +14,7 @@ library(dplyr)
 library(imager)
 library(celestial)
 
-pipe_version = "1.1.7" ## Change nominal from too high version 2.0 (1.0.0 being release on GitHub)
+pipe_version = "1.1.8" ## Change nominal from too high version 2.0 (1.0.0 being release on GitHub)
 
 load_files = function(input_args, which_module, sky_info = NULL){
   ## Load the correct files for what ever task
@@ -489,7 +489,6 @@ do_regen_sky_info = function(input_args){
   
   cat('Processing',length(filelist),'files\n')
   
-
   sky_info = foreach(i = 1:length(filelist), .combine="rbind")%dopar%{
     temp_info = Rfits_read_header(filelist[i])$keyvalues
     temp_info[1:4] = NULL
