@@ -33,7 +33,7 @@ initialise_params = function(){
     
    ## overwrite and use one 1/f setting for everything. 
    ## so you don't have to laboriously type out every single VISITID and MODULE combination :D
-   ow_vlarge = FALSE,
+   ow_vlarge = TRUE,
    ow_large = FALSE,
    
    ## Claws removal mode

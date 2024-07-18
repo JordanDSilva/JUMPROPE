@@ -489,11 +489,16 @@ do_regen_sky_info = function(input_args){
   
   cat('Processing',length(filelist),'files\n')
   
-  sky_info = foreach(i = 1:length(filelist), .combine='rbind')%dopar%{
+
+  sky_info = foreach(i = 1:length(filelist), .combine="rbind")%dopar%{
     temp_info = Rfits_read_header(filelist[i])$keyvalues
     temp_info[1:4] = NULL
     temp_info$EXTNAME = NULL
     return(temp_info)
+  }
+  if(length(filelist)==1){
+    class(sky_info) = "list"
+    sky_info = data.frame((sky_info))
   }
   colnames(sky_info) = tolower(colnames(sky_info))
   

@@ -74,68 +74,70 @@ if __name__ == "__main__":
         sys.exit(1)
     elif args.VISITID is not None:
         visitid = args.VISITID
-        PID = str(visitid)[0:4]
+        #PID = str(visitid)[0:4]
+        PID = str(9999)
         ref_dir = JUMPROPE_DOWNLOAD_DIR
         uncal_dir = os.path.join(ref_dir, PID, 'UNCAL/NIRCAM') # folder must  be present in input directory
         files = glob.glob(uncal_dir + "/*fits")
-        files = [s for s in files if visitid in s]
+        #files = [s for s in files if visitid in s]
         uncal_files = [foo.split("_uncal")[0].split("/")[-1] for foo in files]
 
         #dir_frames = "/Volumes/Expansion/JWST/"
         rates_dir = os.path.join(ref_dir, PID, 'RATES/NIRCAM') # rates directory
         rates_files = glob.glob(rates_dir + "/*fits")
-        rates_files = [s for s in rates_files if visitid in s]
+        #rates_files = [s for s in rates_files if visitid in s]
         rates_files_names = [foo.split("_cal")[0].split("/")[-1] for foo in rates_files]
 
         cal_dir = os.path.join(ref_dir, PID, 'CAL/NIRCAM') # cal directory
         cal_files = glob.glob(cal_dir + "/*fits")
-        cal_files = [s for s in cal_files if visitid in s]
+        #cal_files = [s for s in cal_files if visitid in s]
         cal_files_names = [foo.split("_cal")[0].split("/")[-1] for foo in cal_files]
 
         # # Make the cal and rates directories
         os.makedirs(cal_dir, exist_ok=True)
         os.makedirs(rates_dir, exist_ok=True)
 
-        ## download csv from mast to check expected files and their sizes
-        obs_table = Observations.query_criteria(proposal_id=PID,
-                                                project='JWST',
-                                                dataproduct_type="IMAGE",
-                                                instrument_name=["NIRCAM", "NIRCAM/IMAGE"])
-        data_products = Observations.get_product_list(obs_table)
-        products_stage2 = Observations.filter_products(data_products,
-                                                       extension="fits",
-                                                       productSubGroupDescription="CAL",
-                                                       )
-        visit_ids = np.array([obs[3:13] for obs in products_stage2["obs_id"]])
-        idx = np.flatnonzero(np.core.defchararray.find(visit_ids, str(visitid)) != -1)
-        df = products_stage2[idx].to_pandas().drop_duplicates("productFilename")
-        # df = dff[dff["dataRights"] == "PUBLIC"]
-        if(len(df) > len(files)):
-            print("Some files appear to be missing in VISIT PROGRAM " + visitid + "\n compared to what I can find on MAST.")
-
-            if sum(df["dataRights"] == "EXCLUSIVE_ACCESS") == len(df) - len(uncal_files):
-                print("Exclusive access files found.")
-                df = df[df["dataRights"] == "PUBLIC"]
-            else:
-                df = df[df["obs_id"].isin(uncal_files)]
-
-        if args.redo:  ## override previous checks. In case we want to use a new pmap of calibration version for example
-            for cal, rate in zip(cal_files, rates_files):
-                print("Removing " + str(cal))
-                os.remove(cal)
-                print("Removing " + str(rate))
-                os.remove(rate)
-            files_redo = files
-        else:
-            files_redo = []
-            if sum(df["obs_id"].isin(cal_files_names)) != len(df["obs_id"]): ## check that all of the expected cal files have been produced
-
-                idx = list(~df["obs_id"].isin(cal_files_names))
-
-                for i,j in enumerate(idx):
-                    if j:
-                        files_redo.append(files[i])
-
+#        ## download csv from mast to check expected files and their sizes
+#        obs_table = Observations.query_criteria(proposal_id=PID,
+#                                                project='JWST',
+#                                                dataproduct_type="IMAGE",
+#                                                instrument_name=["NIRCAM", "NIRCAM/IMAGE"])
+#        data_products = Observations.get_product_list(obs_table)
+#        products_stage2 = Observations.filter_products(data_products,
+#                                                       extension="fits",
+#                                                       productSubGroupDescription="CAL",
+#                                                       )
+#        visit_ids = np.array([obs[3:13] for obs in products_stage2["obs_id"]])
+#        idx = np.flatnonzero(np.core.defchararray.find(visit_ids, str(visitid)) != -1)
+#        df = products_stage2[idx].to_pandas().drop_duplicates("productFilename")
+#        # df = dff[dff["dataRights"] == "PUBLIC"]
+#        if(len(df) > len(files)):
+#            print("Some files appear to be missing in VISIT PROGRAM " + visitid + "\n compared to what I can find on MAST.")
+#
+#            if sum(df["dataRights"] == "EXCLUSIVE_ACCESS") == len(df) - len(uncal_files):
+#                print("Exclusive access files found.")
+#                df = df[df["dataRights"] == "PUBLIC"]
+#            else:
+#                df = df[df["obs_id"].isin(uncal_files)]
+#
+#        if args.redo:  ## override previous checks. In case we want to use a new pmap of calibration version for example
+#            for cal, rate in zip(cal_files, rates_files):
+#                print("Removing " + str(cal))
+#                os.remove(cal)
+#                print("Removing " + str(rate))
+#                os.remove(rate)
+#            files_redo = files
+#        else:
+#            files_redo = []
+#            if sum(df["obs_id"].isin(cal_files_names)) != len(df["obs_id"]): ## check that all of the expected cal files have been produced
+#
+#                idx = list(~df["obs_id"].isin(cal_files_names))
+#
+#                for i,j in enumerate(idx):
+#                    if j:
+#                        files_redo.append(files[i])
+#
+        files_redo = files 
         print("Running " + str(len(files_redo)) + " files")
         for ff in files_redo:
           run1(ff)
