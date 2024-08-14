@@ -1287,7 +1287,9 @@ do_gen_stack = function(input_args){
         
         median_stack = propaneStackWarpMed(dirlist = dump_stub,
                                            pattern = glob2rx('*image_warp*'), 
-                                           keyvalues_out = output_stack$image$keyvalues)
+                                           keyvalues_out = output_stack$image$keyvalues, 
+                                           cores = cores,
+                                           multitype = "cluster")
         
         file.remove(temp_file)
         

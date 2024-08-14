@@ -250,7 +250,9 @@ deep_stacker = function(input_args){
       med_stack = propaneStackWarpMed(
         dirlist = deep_frame$dump_dir,
         pattern = glob2rx("*image*.fits"),
-        keyvalues_out = deep_frame$image$keyvalues
+        keyvalues_out = deep_frame$image$keyvalues, 
+        cores = cores, 
+        multitype = "cluster"
       )
       
       Rfits_write(

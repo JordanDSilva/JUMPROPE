@@ -16,7 +16,7 @@ library(matrixStats)
 
 source("./ProFound_settings.R")
 
-jumprope_version = "1.1.7"
+jumprope_version = "1.1.8"
 
 ######################
 ## for testing only ##
@@ -769,8 +769,7 @@ do_detect = function(input_args, detect_bands = detect_bands_load, profound_func
   message("Finding sources with ProFound...")
   profound = profound_function(frame = patch_stack_image$image, 
                                skyRMS = stack_image$skyRMS, 
-                               star_mask = star_mask$mask, 
-                               pix_mask = NULL)
+                               star_mask = star_mask$mask)
 
   profound$segstats$MODULE = rep(MODULE, dim(profound$segstats)[1])
   profound$segstats$VID = rep(VID, dim(profound$segstats)[1])
