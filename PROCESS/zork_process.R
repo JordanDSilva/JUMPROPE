@@ -198,7 +198,12 @@ zork = function(){
     'do_wisp_rem' = do_wisp_rem
   )
   
-  VID_list = ifelse(VID != "", unlist(strsplit(VID, "|", fixed = T)), list(c("")))
+  #VID_list = ifelse(VID != "", unlist(strsplit(VID, "|", fixed = T)), list(c("")))
+  if(VID != ""){
+   VID_list = unlist(strsplit(VID, "|", fixed = T)) 
+  }else{
+   VID_list = list(c("")) 
+  }
   
   for(VID in VID_list){
     input_args = list(
