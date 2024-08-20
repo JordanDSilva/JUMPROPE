@@ -184,7 +184,7 @@ deep_stacker = function(input_args){
         
         match_cat = coordmatch(
           coordref = ref_cat,
-          coordcompare = pro_test$segstats[, c("RAcen", "Deccen")]
+          coordcompare = pro_test$segstats[, c("RAmax", "Decmax")]
         )
         
         if(any(is.na(match_cat$bestmatch))){
@@ -192,7 +192,7 @@ deep_stacker = function(input_args){
         }else{
           pix_cat = Rwcs_s2p(RA = ref_cat$RA, Dec = ref_cat$Dec, keyvalues = image_list[[k]]$keyvalues)
           tweak_cat = propaneTweakCat(cat_ref = pix_cat[match_cat$bestmatch$refID, ], 
-                                      cat_pre_fix = pro_test$segstats[match_cat$bestmatch$compareID,c("xcen","ycen")],
+                                      cat_pre_fix = pro_test$segstats[match_cat$bestmatch$compareID,c("xmax","ymax")],
                                       delta_max = c(20,1),
                                       mode = "pix")
         }

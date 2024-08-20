@@ -74,8 +74,7 @@ if __name__ == "__main__":
         sys.exit(1)
     elif args.VISITID is not None:
         visitid = args.VISITID
-        #PID = str(visitid)[0:4]
-        PID = str(9999)
+        PID = str(visitid)[0:4]
         ref_dir = JUMPROPE_DOWNLOAD_DIR
         uncal_dir = os.path.join(ref_dir, PID, 'UNCAL/NIRCAM') # folder must  be present in input directory
         files = glob.glob(uncal_dir + "/*fits")
