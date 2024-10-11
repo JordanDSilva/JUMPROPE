@@ -12,22 +12,24 @@ library(stringr)
 library(Cairo)
 
 ## User defined inputs here
- ref_cat = fread("ref_cats/ceers_ref_cat.csv") #example for HST catalogue in EGS field
+ref_cat = fread("~/Documents/RefCats/a2744_astro.csv") #example for HST catalogue in EGS field
+
+names(ref_cat) = c("RA", "Dec")
 
 input_args = list(
-  ref_dir = "", ## Directory containing the ProPane/ProFound/JUMPROPE stuff
-  super_name = "", ## Name of mosaic. Advise against including "_"  
+  ref_dir = "/Volumes/Expansion/totJP/", ## Directory containing the ProPane/ProFound/JUMPROPE stuff
+  super_name = "A2744", ## Name of mosaic. Advise against including "_"  
 
   ref_cat = ref_cat, ## Reference catalogue for alignment
   
   RA = colMeans(ref_cat)[1], ## Coords to search for frames
   Dec = colMeans(ref_cat)[2],     
   mosaic_size = NULL, ## Set the size of the search radius/mosaic size
-  grid_size = "long", #default save on memory, 0.06arcsec/pix,
+  grid_size = "short", #default save on memory, 0.06arcsec/pix,
   rotation = "North", ## Rotation argument for ProPaneGenWCS, e.g., "North" for North-Up alignment
 
-  program_id = NULL,  # Maybe we we just want to stack a single program e.g., Primer (1837) and not COSMOS Web (1727)
-  cores = NULL ## If NULL then use half the number of cores in the system
+  program_id = "2561",  # Maybe we we just want to stack a single program e.g., Primer (1837) and not COSMOS Web (1727)
+  cores = 2 ## If NULL then use half the number of cores in the system
 ) 
 
 
@@ -51,13 +53,13 @@ deep_stacker = function(input_args){
   dir.create(mosaic_med, recursive = T)
   dir.create(mosaic_patch, recursive = T)
   
-  cal_sky_info = fread(
-    paste0(
-      input_args$ref_dir, "/Pro1oF/cal_sky_info.csv"
-    )
-  )
+  #cal_sky_info = fread(
+  #  paste0(
+  #    input_args$ref_dir, "/Pro1oF/cal_sky_info.csv"
+  #  )
+  #)
   
-  VIDS = paste0(cal_sky_info$VISIT_ID)
+  #VIDS = paste0(cal_sky_info$VISIT_ID)
   
   if(is.null(input_args$mosaic_size)){
     search_rad = 2.0
@@ -98,6 +100,7 @@ deep_stacker = function(input_args){
     cores = 8,
     plot=F
   )
+
   
   filters_w2 = str_extract(find_frames$file, pattern = regex("F(\\d+).W2")) ## string match F and W with only digits in between 
   filters_all = str_extract(find_frames$file, pattern = regex("F(\\d+).W|F(\\d+).M"))
@@ -106,10 +109,14 @@ deep_stacker = function(input_args){
   
   find_frames$FILT = filters_all
   
-  UNIQUE_VIDS = VIDS[sapply(VIDS, function(x){any(grepl(x,find_frames$file))} )==TRUE]
+  #UNIQUE_VIDS = VIDS[sapply(VIDS, function(x){any(grepl(x,find_frames$file))} )==TRUE]
   # 
-  stack_grid = cal_sky_info[paste0(cal_sky_info$VISIT_ID) %in% UNIQUE_VIDS, c("VISIT_ID", "FILTER", "DETECTOR")]
-  
+#  stack_grid = cal_sky_info[paste0(cal_sky_info$VISIT_ID) %in% UNIQUE_VIDS, c("VISIT_ID", "FILTER", "DETECTOR")]
+ 
+  stack_grid = data.frame("VISIT_ID" = c(rep("2561001002",7), rep("2561001003",7)), 
+                          "FILTER" = c("F115W", "F150W", "F200W", "F277W", "F356W", "F410M", "F444W", "F115W", "F150W", "F200W", "F277W", "F356W", "F410M", "F444W"), 
+                          "DETECTOR" = rep("NRCB", 14)) 
+ 
   for(grid_size in c(input_args$grid_size)){
     
     file_info = find_frames[grepl(grid_size, find_frames$file), ]
@@ -120,11 +127,13 @@ deep_stacker = function(input_args){
     
     UNIQUE_FILTERS = unique(stack_grid$FILTER)
     UNIQUE_FILTERS=UNIQUE_FILTERS[!grepl("CLEAR", UNIQUE_FILTERS) & UNIQUE_FILTERS %in% file_info$FILT]
-    for(i in 1:length(UNIQUE_FILTERS)){
+    for(i in which(UNIQUE_FILTERS == "F115W")){
       
       file_info_filt = file_info[file_info$FILT == paste0(UNIQUE_FILTERS[i]),]
       filenames = file_info_filt$full
-      
+ 
+      print(filenames)
+       
       image_extlist = sapply(filenames, function(x)Rfits_extname_to_ext(x, extname = "image"))
       inVar_extlist = sapply(filenames, function(x)Rfits_extname_to_ext(x, extname = "inVar"))
       weight_extlist = sapply(filenames, function(x)Rfits_extname_to_ext(x, extname = "weight"))
@@ -479,44 +488,3 @@ test_wcs = function(input_args){
   message("Optimum mosaic size: ", mosaic_size_deg, " deg")
   return(list(radius=mosaic_size_deg, wcs = wcs))
 }
-# wcs_info = Rfits_key_scan(
-#   filelist = file_info$full,
-#   keylist = c("CRVAL1",
-#               "CRVAL2",
-#               "CD1_1",
-#               "CD1_2",
-#               "CD2_1",
-#               "CD2_2",
-#               "NAXIS1",
-#               "NAXIS2",
-#               "CRPIX1",
-#               "CRPIX2"),
-#   get_pixscale = T,
-#   get_centre = T,
-#   cores = 8
-# )
-# 
-# pixscale_deg = mean(file_info$pixscale)/3600
-# 
-# if(input_args$at_these_coords){
-#   RA_val = input_args$RA
-#   Dec_val = input_args$Dec
-# }else{
-#   RA_val = mean(wcs_info$centre_RA)
-#   Dec_val = mean(wcs_info$centre_Dec)
-# }
-# 
-# wcs = Rwcs_keypass(
-#   CRVAL1 = RA_val,
-#   CRVAL2 = Dec_val,
-#   CD1_1 = pixscale_deg,
-#   CD1_2 = 0,
-#   CD2_1 = 0,
-#   CD2_2 = pixscale_deg
-# )
-# 
-# wcs$NAXIS1 = ceiling(input_args$mosaic_size_deg / pixscale_deg)
-# wcs$NAXIS2 = ceiling(input_args$mosaic_size_deg / pixscale_deg)
-# wcs$CRPIX1 = wcs$NAXIS1/2.0
-# 
-# wcs$CRPIX2 = wcs$NAXIS2/2.0
