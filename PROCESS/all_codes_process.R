@@ -13,6 +13,7 @@ library(doParallel)
 library(dplyr)
 library(imager)
 library(celestial)
+library(matrixStats)
 
 pipe_version = "1.1.8" ## Change nominal from too high version 2.0 (1.0.0 being release on GitHub)
 
@@ -211,7 +212,7 @@ do_1of = function(input_args){
     
     if(do_MIRI){
       imdim = dim(temp_image$SCI)
-      xpix = 413:imdim[1]
+      xpix = 360:imdim[1]
       # xpix = 1:imdim[1]
       ypix = 1:imdim[2]
       
@@ -232,23 +233,27 @@ do_1of = function(input_args){
       temp_image$VAR_FLAT$imDat = temp_image$VAR_FLAT[xpix, ypix]$imDat
       
       for(ext in c("ERR", "DQ", "AREA", "AREA", "VAR_POISSON", "VAR_RNOISE", "VAR_FLAT")){
-        temp_image[[ext]]$keyvalues$NAXIS1 = imdim[1] - 413
+        temp_image[[ext]]$keyvalues$NAXIS1 = imdim[1] - 360
       }
       
+      keep_trend = FALSE
       if(ow_large & ow_vlarge){
         message("Can't use both LARGE and VLARGE keep_trend \n Defaulting to keep_trend FALSE")
         keep_trend = FALSE
       }else{
+        
         if(ow_vlarge){
           keep_trend = TRUE
           trend_block = trend_block_vlarge
           message("KT: TRUE", " TB ", trend_block_vlarge)
         }
+        
         if(ow_large){
           keep_trend = TRUE
           trend_block = trend_block_large
           message("KT: TRUE", " TB ", trend_block_large)
         }
+        
       }
       
       temp_mask = temp_image$DQ$imDat
@@ -258,8 +263,8 @@ do_1of = function(input_args){
                                  mask = (temp_image$SCI$imDat==0) | JWST_cal_mask,
                                  # mask = foo,
                                  clip = c(0.0,0.9),
-                                 scan_block = c(1024),
-                                 scan_direction = "y",
+                                 scan_block = c(672, 1024),
+                                 # scan_direction = "y",
                                  trend_block = trend_block,
                                  keep_trend = keep_trend)
       
@@ -412,8 +417,8 @@ do_cal_process = function(input_args){
     Npix = NAXIS1*NAXIS2
 
     if(do_MIRI){
-      box = 128
-      redoskysize = 7
+      box = 64
+      redoskysize = 21
       sky_poly_deg = 3
     }else{
       box = 512
@@ -433,11 +438,11 @@ do_cal_process = function(input_args){
                                  redoskysize = x$redoskysize, 
                                  roughpedestal = TRUE, 
                                  tolerance=Inf)
-          return(list(pro = pro, redoskysize=11))
+          return(list(pro = pro, redoskysize=101))
         },
         error = function(cond){
-          redoskysize = 21
           message("Adjusting redoskysize=", redoskysize, " from 101")
+          redoskysize = 21
           pro = profoundProFound(x$image, mask = x$mask, 
                                  skycut=2, 
                                  pixcut=5, 
@@ -479,15 +484,25 @@ do_cal_process = function(input_args){
           }
         )
     }
-    sky_redo = sky_redo_func(list(image = JWST_cal_image$imDat, pro = pro, mask = JWST_cal_mask, sky_poly_deg = sky_poly_deg))
     
-    pro_redo = profoundProFound(JWST_cal_image$imDat, mask=JWST_cal_mask, skycut=2, pixcut=5,
-                                box=box, grid = box, redoskysize=redoskysize, sky=sky_redo$sky, redosky=FALSE, tolerance=Inf)
+    if(do_MIRI){
+      sky_redo = list(sky = pro$sky)
+      pro_redo = pro
+    }else{
+      sky_redo = sky_redo_func(list(image = JWST_cal_image$imDat, pro = pro, mask = JWST_cal_mask, sky_poly_deg = sky_poly_deg))
+      pro_redo = profoundProFound(JWST_cal_image$imDat, mask=JWST_cal_mask, skycut=2, pixcut=5, box=box, grid = box, redoskysize=redoskysize, sky=sky_redo$sky, redosky=FALSE, tolerance=Inf)
+    }
 
+    ## what to do if no objects in frame
+    if(is.null(pro_redo$objects_redo)){
+      pro_redo$objects_redo = matrix(0L, dim(JWST_cal_image$imDat)[1], dim(JWST_cal_image$imDat)[2])
+    }
     sky_med = median(sky_redo$sky[JWST_cal_mask == 0 & pro_redo$objects_redo == 0], na.rm=TRUE)
     skyRMS_med = median(pro_redo$skyRMS[JWST_cal_mask == 0 & pro_redo$objects_redo == 0], na.rm=TRUE)
     
-    if(is.infinite(pro_redo$skyChiSq) | is.na(pro_redo$skyChiSq)){
+    if(is.null(pro_redo$skyChiSq)){
+      pro_redo$skyChiSq = 1e6
+    }else if(is.infinite(pro_redo$skyChiSq) | is.na(pro_redo$skyChiSq)){
       pro_redo$skyChiSq = 1e6 ## set to large value, Rfits no like Inf...
     }
     
@@ -520,8 +535,8 @@ do_cal_process = function(input_args){
       NAXIS1 = NAXIS1,
       NAXIS2 = NAXIS2,
       NPIX = Npix,
-      SKY = sky_med,
-      SKYRMS = skyRMS_med,
+      SKY = ifelse(is.na(sky_med), -999, sky_med),
+      SKYRMS = ifelse(is.na(skyRMS_med), -999, skyRMS_med),
       SKYCHI = pro_redo$skyChiSq,
       MASK = maskpix,
       OBJ = objpix,
@@ -543,8 +558,8 @@ do_cal_process = function(input_args){
     
     return(NULL)
   }
-  
 }
+
 do_regen_sky_info = function(input_args){
   
   cat("\n")
@@ -638,7 +653,7 @@ do_super_sky = function(input_args){
   # }
   
   dummy = foreach(i = 1:dim(combine_grid)[1], .inorder=FALSE)%dopar%{
-    if(combine_grid[i,1] %in% c('NRCA1','NRCA2','NRCA3','NRCA4','NRCB1','NRCB2','NRCB3','NRCB4')){
+    if(combine_grid[i,1] %in% c('NRCA1','NRCA2','NRCA3','NRCA4','NRCB1','NRCB2','NRCB3','NRCB4', 'MIRIMAGE')){
       temp_info = sky_info[detector == combine_grid[i,1] & filter == combine_grid[i,2] & skychi < sky_ChiSq_cut & goodpix >= good_pix_cut,]
     }else{
       temp_info = sky_info[detector == combine_grid[i,1] & filter == combine_grid[i,2] & skychi < sky_ChiSq_cut,]

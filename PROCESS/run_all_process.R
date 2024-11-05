@@ -110,7 +110,6 @@ main = function(){
   do_NIRISS = ifelse(grepl("T|TRUE|True", env_var['JUMPROPE_do_NIRISS']), T, F) 
   do_MIRI = ifelse(grepl("T|TRUE|True", env_var['JUMPROPE_do_MIRI']), T, F) 
   
-  
   cores_pro = as.integer(env_var['JUMPROPE_cores_pro'])
   cores_stack = as.integer(env_var['JUMPROPE_cores_stack'])
   tasks_stack = as.integer(env_var['JUMPROPE_tasks_stack'])
@@ -141,7 +140,11 @@ main = function(){
   
   raw_files = load_raw_files(dir_raw = dir_raw)
   
-  VID_list = unlist(strsplit(VID, "|", fixed = T))
+  VID_list = ifelse(
+    VID == "",
+    c(""),
+    unlist(strsplit(VID, "|", fixed = T))
+  )
   
   for(VID in VID_list){
     
@@ -191,33 +194,30 @@ main = function(){
     if(input_args$do_NIRISS){
       input_args$FILT = "CLEAR"
       do_patch(input_args)
-      q()
-    }
-    if(input_args$do_MIRI){
+    }else if(input_args$do_MIRI){
       do_patch(input_args)
-      q()
+    }else{
+      if(length(args) <= 1){
+        input_args$FILT = "F070W|F090W|F115W|F150W|F200W|F140M|F162M|F182M|F210M"
+      }
+      
+      do_wisp_rem(input_args)
+      
+      wisp_fix_files = load_raw_files(dir_raw = dir_raw)
+      input_args$filelist = wisp_fix_files
+      
+      do_1of(input_args)
+      do_cal_process(input_args)
+      do_regen_sky_info(input_args)
+      do_super_sky(input_args)
+      do_apply_super_sky(input_args)
+      do_modify_pedestal(input_args)
+      do_cal_sky_info(input_args)
+      do_gen_stack(input_args)
+      
+      input_args$FILT = ""
+      do_patch(input_args)
     }
-  
-    if(length(args) <= 1){
-      input_args$FILT = "F070W|F090W|F115W|F150W|F200W|F140M|F162M|F182M|F210M"
-    }
-    
-    do_wisp_rem(input_args)
-    
-    wisp_fix_files = load_raw_files(dir_raw = dir_raw)
-    input_args$filelist = wisp_fix_files
-    
-    do_1of(input_args)
-    do_cal_process(input_args)
-    do_regen_sky_info(input_args)
-    do_super_sky(input_args)
-    do_apply_super_sky(input_args)
-    do_modify_pedestal(input_args)
-    do_cal_sky_info(input_args)
-    do_gen_stack(input_args)
-    
-    input_args$FILT = ""
-    do_patch(input_args)
     do_RGB(input_args)
   }
 

@@ -12,24 +12,24 @@ library(stringr)
 library(Cairo)
 
 ## User defined inputs here
-ref_cat = fread("~/Documents/RefCats/a2744_astro.csv") #example for HST catalogue in EGS field
+ref_cat = fread("put astrometric catalogue here") #example for HST catalogue in EGS field
 
 names(ref_cat) = c("RA", "Dec")
 
 input_args = list(
-  ref_dir = "/Volumes/Expansion/totJP/", ## Directory containing the ProPane/ProFound/JUMPROPE stuff
-  super_name = "A2744", ## Name of mosaic. Advise against including "_"  
+  ref_dir = "", ## Directory containing the ProPane/ProFound/JUMPROPE stuff
+  super_name = "", ## Name of mosaic. Advise against including "_"  
 
   ref_cat = ref_cat, ## Reference catalogue for alignment
   
   RA = colMeans(ref_cat)[1], ## Coords to search for frames
   Dec = colMeans(ref_cat)[2],     
   mosaic_size = NULL, ## Set the size of the search radius/mosaic size
-  grid_size = "short", #default save on memory, 0.06arcsec/pix,
+  grid_size = "", #default save on memory, 0.06arcsec/pix,
   rotation = "North", ## Rotation argument for ProPaneGenWCS, e.g., "North" for North-Up alignment
 
-  program_id = "2561",  # Maybe we we just want to stack a single program e.g., Primer (1837) and not COSMOS Web (1727)
-  cores = 2 ## If NULL then use half the number of cores in the system
+  program_id = NULL,  # Maybe we we just want to stack a single program e.g., Primer (1837) and not COSMOS Web (1727)
+  cores = 1 ## If NULL then use half the number of cores in the system
 ) 
 
 
@@ -42,7 +42,6 @@ deep_stacker = function(input_args){
   patch_dir = paste0(input_args$ref_dir, "/Patch_Stacks")
   dump_dir = paste0(input_args$ref_dir, "/dump")
   
-  
   mosaic_dir = paste0(input_args$ref_dir, "/Mosaic_Stacks/")
   mosaic_invar = paste0(mosaic_dir, "/inVar/")
   mosaic_med = paste0(mosaic_dir, "/Median/")
@@ -53,13 +52,13 @@ deep_stacker = function(input_args){
   dir.create(mosaic_med, recursive = T)
   dir.create(mosaic_patch, recursive = T)
   
-  #cal_sky_info = fread(
-  #  paste0(
-  #    input_args$ref_dir, "/Pro1oF/cal_sky_info.csv"
-  #  )
-  #)
-  
-  #VIDS = paste0(cal_sky_info$VISIT_ID)
+  cal_sky_info = fread(
+   paste0(
+     input_args$ref_dir, "/Pro1oF/cal_sky_info.csv"
+   )
+  )
+
+  VIDS = paste0(cal_sky_info$VISIT_ID)
   
   if(is.null(input_args$mosaic_size)){
     search_rad = 2.0
@@ -109,13 +108,9 @@ deep_stacker = function(input_args){
   
   find_frames$FILT = filters_all
   
-  #UNIQUE_VIDS = VIDS[sapply(VIDS, function(x){any(grepl(x,find_frames$file))} )==TRUE]
-  # 
-#  stack_grid = cal_sky_info[paste0(cal_sky_info$VISIT_ID) %in% UNIQUE_VIDS, c("VISIT_ID", "FILTER", "DETECTOR")]
- 
-  stack_grid = data.frame("VISIT_ID" = c(rep("2561001002",7), rep("2561001003",7)), 
-                          "FILTER" = c("F115W", "F150W", "F200W", "F277W", "F356W", "F410M", "F444W", "F115W", "F150W", "F200W", "F277W", "F356W", "F410M", "F444W"), 
-                          "DETECTOR" = rep("NRCB", 14)) 
+  UNIQUE_VIDS = VIDS[sapply(VIDS, function(x){any(grepl(x,find_frames$file))} )==TRUE]
+
+  stack_grid = cal_sky_info[paste0(cal_sky_info$VISIT_ID) %in% UNIQUE_VIDS, c("VISIT_ID", "FILTER", "DETECTOR")]
  
   for(grid_size in c(input_args$grid_size)){
     
@@ -127,7 +122,7 @@ deep_stacker = function(input_args){
     
     UNIQUE_FILTERS = unique(stack_grid$FILTER)
     UNIQUE_FILTERS=UNIQUE_FILTERS[!grepl("CLEAR", UNIQUE_FILTERS) & UNIQUE_FILTERS %in% file_info$FILT]
-    for(i in which(UNIQUE_FILTERS == "F115W")){
+    for(i in 1:length(UNIQUE_FILTERS)){
       
       file_info_filt = file_info[file_info$FILT == paste0(UNIQUE_FILTERS[i]),]
       filenames = file_info_filt$full
@@ -179,21 +174,21 @@ deep_stacker = function(input_args){
         )
         pro_test = profoundProFound(
           image = image_list[[k]][,],
-          skyRMS = 1/sqrt(inVar_list[[k]][,]$imDat),
-          sky = 0,
-          redosky = F,
-          pixcut = 20,
-          skycut = 10.0,
-          cliptol = 100,
-          tolerance = Inf,
-          box = dim(image_list[[k]])/10.0,
+          # skyRMS = 1/sqrt(inVar_list[[k]][,]$imDat),
+          # sky = 0,
+          # redosky = F,
+          # pixcut = 20,
+          # skycut = 1.5,
+          # cliptol = 100,
+          # tolerance = Inf,
+          # box = dim(image_list[[k]])/10.0,
           mask = is.infinite(image_list[[k]][,]$imDat),
           rem_mask = T
         )
         
         match_cat = coordmatch(
           coordref = ref_cat,
-          coordcompare = pro_test$segstats[, c("RAmax", "Decmax")]
+          coordcompare = pro_test$segstats[pro_test$segstats$mag < 27, c("RAmax", "Decmax")]
         )
         
         if(any(is.na(match_cat$bestmatch))){
