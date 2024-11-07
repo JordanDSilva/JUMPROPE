@@ -15,7 +15,7 @@ library(imager)
 library(celestial)
 library(matrixStats)
 
-pipe_version = "1.1.8" ## Change nominal from too high version 2.0 (1.0.0 being release on GitHub)
+pipe_version = "1.2.0" ## Change nominal from too high version 2.0 (1.0.0 being release on GitHub)
 
 load_files = function(input_args, which_module, sky_info = NULL){
   ## Load the correct files for what ever task
@@ -263,8 +263,7 @@ do_1of = function(input_args){
                                  mask = (temp_image$SCI$imDat==0) | JWST_cal_mask,
                                  # mask = foo,
                                  clip = c(0.0,0.9),
-                                 scan_block = c(672, 1024),
-                                 # scan_direction = "y",
+                                 scan_block = c(nrow(temp_image$SCI$imDat), ncol(temp_image$SCI$imDat)),
                                  trend_block = trend_block,
                                  keep_trend = keep_trend)
       
@@ -272,7 +271,6 @@ do_1of = function(input_args){
         data = temp_image,
         filename = paste0(fullbase,'_MIRI_trim.fits')
       )
-      # file.copy(filelist[i], paste0(fullbase,'_MIRI_trim.fits'), overwrite=TRUE)
       Rfits_write_pix(temp_zap$image_fix, paste0(fullbase,'_MIRI_trim.fits'), ext=2)
       
       check_Nhdu = Rfits_nhdu(paste0(fullbase,'_MIRI_trim.fits'))
@@ -369,7 +367,7 @@ do_cal_process = function(input_args){
   message("Showing first <10 files:")
   cat(head(filelist, 10), sep='\n')
   cat("...")
-  cat('Processing',length(filelist),'files\n')
+  cat('Processing',length(filelist),'files...\n')
 
   #get main info:
   obs_info = Rfits_key_scan(filelist = filelist,
@@ -419,7 +417,7 @@ do_cal_process = function(input_args){
     if(do_MIRI){
       box = 64
       redoskysize = 21
-      sky_poly_deg = 3
+      sky_poly_deg = 2
     }else{
       box = 512
       redoskysize = 101
@@ -492,6 +490,7 @@ do_cal_process = function(input_args){
       sky_redo = sky_redo_func(list(image = JWST_cal_image$imDat, pro = pro, mask = JWST_cal_mask, sky_poly_deg = sky_poly_deg))
       pro_redo = profoundProFound(JWST_cal_image$imDat, mask=JWST_cal_mask, skycut=2, pixcut=5, box=box, grid = box, redoskysize=redoskysize, sky=sky_redo$sky, redosky=FALSE, tolerance=Inf)
     }
+    
 
     ## what to do if no objects in frame
     if(is.null(pro_redo$objects_redo)){
@@ -559,7 +558,6 @@ do_cal_process = function(input_args){
     return(NULL)
   }
 }
-
 do_regen_sky_info = function(input_args){
   
   cat("\n")
@@ -739,7 +737,7 @@ do_apply_super_sky = function(input_args){
   sky_info = load_files(input_args, which_module = "apply_super", sky_info = sky_info)$sky_info
   sky_filelist = sky_info$filesky
 
-  cat('Processing',length(sky_filelist),'files\n')
+  cat('Processing ',length(sky_filelist),'files...\n')
   
   lo_loop = 1
   hi_loop = length(sky_filelist)
@@ -912,7 +910,7 @@ do_modify_pedestal = function(input_args){
   
   filelist = load_files(input_args, which_module = "modify_pedestal")
   
-  cat('Processing',length(filelist),'files\n')
+  cat('Processing',length(filelist),'file...\n')
   
   cal_sky_info_ext1 = Rfits_key_scan(filelist = filelist,
                                      keylist = c('VISIT_ID', 'OBS_ID', 'EXPOSURE', 'DETECTOR', 'MODULE', 'CHANNEL', 'FILTER'),
@@ -952,13 +950,13 @@ do_modify_pedestal = function(input_args){
       file.copy(cal_sky_info[i,full], cal_sky_renorm_dir) #no pedestal adjustment for NIRISS
       return(NULL)
     }
-  }else if(do_MIRI){
+  } else if(do_MIRI){
     dummy = foreach(i = lo_loop:hi_loop)%dopar%{
       if(i %% 100 == 0){
         message('File ',i,' of ', hi_loop)
       }
       file_cal_sky_renorm = paste0(cal_sky_renorm_dir,'/',cal_sky_info[i,file])
-      
+
       if(file.exists(file_cal_sky_renorm)){
         message('Removing old cal_sky file: ',file_cal_sky_renorm)
         file.remove(file_cal_sky_renorm)
@@ -983,45 +981,12 @@ do_modify_pedestal = function(input_args){
         temp_cal_sky = Rfits_read(cal_sky_info[i,full])
         ext_names = names(temp_cal_sky)
         
-        # current_ped = temp_cal_sky$SCI$keyvalues$SKY_B + temp_cal_sky$SCI$keyvalues$SKY_P
-        # new_ped = ped_info[OBS_ID == temp_cal_sky[[1]]$keyvalues$OBS_ID & EXPOSURE == temp_cal_sky[[1]]$keyvalues$EXPOSURE, ped_med]
-        # 
-        # if((current_ped - new_ped)/new_ped > 0.1){ #if the pedestal differs from the median by more than 20% then fix it
-        #   message('Renorm pedestal: ',cal_sky_info[i,file])
-        #   
-        #   replace_SCI = temp_cal_sky$SCI[,]$imDat + current_ped - new_ped
-        #   replace_SKY_Super = temp_cal_sky$SKY_Super[,]$imDat - current_ped + new_ped
-        #   replace_SKY_P = temp_cal_sky$SCI$keyvalues$SKY_P - current_ped + new_ped
-        #   
-        #   message('Testing sky with ProFound: ',cal_sky_info[i,file])
-        #   pro_current_sky = profoundProFound(temp_cal_sky$SCI[,]$imDat, mask=temp_cal_sky$DQ[,]$imDat != 0, sky=0, redosky = FALSE)
-        #   if(pro_current_sky$skyChiSq < 0.95 | pro_current_sky$skyChiSq > 1.05){
-        #     message('Bad Sky: ',cal_sky_info[i,file],'. Current: ',round(pro_current_sky$skyChiSq,2),' Trying to make better sky with ProFound')
-        #     if(sum(pro_current_sky$objects) / prod(dim(replace_SCI)) < 0.2){
-        #       pro_new_sky = profoundProFound(replace_SCI, mask=temp_cal_sky$DQ[,]$imDat != 0, box=512, roughpedestal = TRUE)
-        #       if(pro_new_sky$skyChiSq > 0.95 & pro_new_sky$skyChiSq < 1.05){
-        #         message('Using better ProFound Sky: ',cal_sky_info[i,file],' Old: ',round(pro_current_sky$skyChiSq,2),' New: ',round(pro_new_sky$skyChiSq,2))
-        #         replace_SCI = replace_SCI - pro_new_sky$sky
-        #         replace_SKY_Super = replace_SKY_Super + pro_new_sky$sky
-        #         replace_SKY_P = replace_SKY_P + mean(pro_new_sky$sky, na.rm=TRUE)
-        #       }
-        #     }
-        #   }
-        #   Rfits_write_pix(replace_SCI, file_cal_sky_renorm, ext=which(ext_names == 'SCI'))
-        #   Rfits_write_pix(replace_SKY_Super, file_cal_sky_renorm, ext=which(ext_names == 'SKY_Super'))
-        #   Rfits_write_key(file_cal_sky_renorm, keyname='SKY_P', keyvalue=replace_SKY_P, keycomment='SKY P coef in SKY = M.SuperSky + B + P', ext=2)
-        # }else{
         message('Testing sky with ProFound: ',cal_sky_info[i,file])
-        
-        temp_mask = temp_cal_sky$DQ[,]$imDat
+        temp_mask = Rfits_read_image(cal_sky_info[i,full], ext = "DQ", header = F)
         JWST_cal_mask = profoundDilate(temp_mask %% 2 == 1, size=3)
-        # if(sum(temp_mask!=0)/(prod(dim(temp_mask))) > 0.8){
-        #   JWST_cal_mask = profoundDilate(temp_mask %% 2 == 1, size=3)
-        # }else{
-        #   JWST_cal_mask = profoundDilate(temp_mask %% 2 == 1 | temp_mask == 4, size=3) 
-        # }
         
         pro_current_sky = profoundProFound(temp_cal_sky$SCI[,]$imDat, mask=JWST_cal_mask, sky=0, box=683, redosky = FALSE)
+
         if(pro_current_sky$skyChiSq < 0.9 | pro_current_sky$skyChiSq > 1.1){
           message('Bad Sky: ',cal_sky_info[i,file],'. Current: ',round(pro_current_sky$skyChiSq,2),' Trying to make better sky with ProFound')
           if(sum(pro_current_sky$objects) / prod(dim(temp_cal_sky$SCI)) < 0.2){
@@ -1585,6 +1550,145 @@ do_wisp_rem = function(input_args){
     return(NULL)
   }
 }
+do_miri_bkgnd = function(input_args){
+  ## Remove interference substructure in MIRI images 
+  ## algo inspired by https://arxiv.org/pdf/2405.15972
+  
+  cat("\n")
+  message("## Removing MIRI backgrounds ##")
+  cat("\n")
+  Sys.sleep(time = 5)
+  
+  filelist = load_files(input_args = input_args, which_module = "modify_pedestal") ## cal_sky
+  VID = input_args$VID
+  FILT = input_args$FILT
+  median_dir = input_args$median_dir
+  cores = input_args$cores_pro
+  
+  registerDoParallel(cores = cores)
+  
+  cal_info_raw = Rfits_key_scan(
+    filelist = filelist,
+    extlist = 1,
+    keylist = c("FILTER", "VISIT_ID")
+  )
+  
+  cal_info = cal_info_raw[
+    grepl(FILT, cal_info_raw$FILTER) & grepl(VID, cal_info_raw$VISIT_ID), 
+  ]
+  
+  for(VID in unique(cal_info$VISIT_ID)){
+    for(FILT in unique(cal_info$FILTER)){
+      
+      bkgnd_grid = cal_info[
+        cal_info$VISIT_ID == VID & cal_info$FILTER == FILT, 
+      ]
+      message("Running VISIT: ", VID, ", FILTER: ", FILT)
+      message("...Processing ", dim(bkgnd_grid)[1], " files...")
+      if(dim(bkgnd_grid)[1] == 0){
+        next
+      }
+      ff_stack = Rfits_point(
+        filename = paste0(median_dir, "/med_", VID, "_", FILT, "_MIRIMAGE.fits")
+      )
+      
+      frames = lapply(
+        bkgnd_grid$full, 
+        function(x){
+          ff = Rfits_read(x)
+          
+          ff_stackw = suppressMessages(propaneWarp(
+            image_in = ff_stack,
+            keyvalues_out = ff$SCI$keyvalues,
+            magzero_in = 23.9, magzero_out = 23.9
+          ))
+          pro_stackw = suppressMessages(profoundProFound(
+            image = ff_stackw, skycut = 10.0, pixcut = 9, magzero = 23.9, rem_mask = TRUE
+          ))
+          
+          temp_cal = ff$SCI$imDat
+          JWST_mask = profoundDilate(ff$DQ$imDat %% 2 == 1, size = 3)
+          
+          temp_cal[JWST_mask == 1L | pro_stackw$objects == 1] = NA
+          temp_cal = temp_cal - median(temp_cal, na.rm = TRUE)
+          
+          return(temp_cal)
+        }
+      )
+      
+      ## Make median stack with sources clipped out
+      median_stack = propaneStackFlatMed(
+        image_list = frames, 
+        na.rm = TRUE
+      )
+      
+      ## Blur the median stack - interpolate
+      med_blur = profoundImBlur(
+        image = median_stack$image, 
+        sigma = 1.0
+      )
+
+      sel = which(is.na(median_stack$image))
+      median_stack$image[sel] = med_blur[sel]
+      
+      temp = foreach(i = 1:dim(bkgnd_grid)[1], .inorder = FALSE) %dopar% {
+        
+        message(
+          "Adjusting MIRI background: ", bkgnd_grid$stub[i]
+        )
+        
+        fname = bkgnd_grid$full[i]
+        check_Nhdu = Rfits_nhdu(fname)
+        extloc = Rfits_extname_to_ext(fname, 'SCI_ORIG')
+        
+        ff = Rfits_read(fname)
+        temp_cal = ff$SCI
+        temp_dq = Rfits_read_image(fname, ext = 4, header = FALSE)
+        
+        ff_stackw = suppressMessages(propaneWarp(
+          image_in = ff_stack,
+          keyvalues_out = ff$SCI$keyvalues,
+          magzero_in = 23.9, magzero_out = 23.9
+        ))
+        pro_stackw = suppressMessages(profoundProFound(
+          image = ff_stackw, magzero = 23.9, rem_mask = TRUE
+        ))
+        
+        ## Save original extension 2
+        if(is.na(extloc)){ ## only make the SCI_ORIG if it doesn't already exist, otherwise we risk overwriting with something that isn't the original science frame!
+          Rfits_write_image(temp_cal, filename=fname, create_file=FALSE)
+          Rfits_write_key(filename=fname, ext=check_Nhdu+1, keyname='EXTNAME', keyvalue='SCI_ORIG', keycomment='No background corr')
+        }
+        
+        ## Remove median stack sky with ProFound
+        pro_new = profoundProFound(
+          temp_cal$imDat, 
+          sky = median_stack$image,
+          segim = pro_stackw$segim,
+          objects = pro_stackw$objects_redo,
+          mask = pro_stackw$objects_redo == 1 | profoundDilate(temp_dq %% 2 == 1 , size = 3)
+        )
+        
+        bkgnd_fix = pro_new$image - pro_new$sky
+        
+        ## Remove residual 2D structure
+        pro_tram = profoundSkyScan(
+          image = bkgnd_fix,
+          mask = profoundDilate(temp_dq %% 2 == 1, size = 3.0),
+          scan_block = c(nrow(bkgnd_fix), ncol(bkgnd_fix)), 
+          clip = c(0.0, 0.9), 
+          keep_trend = FALSE,
+          trend_block = 101
+        )
+        ## Overwrite extension 2
+        Rfits_write_pix(data = pro_tram$image_fix, filename = fname, ext = 2)
+        
+        return( NULL )
+      }
+    }
+  }
+  
+}
 do_patch = function(input_args){
   
   cat("\n")
@@ -1685,9 +1789,9 @@ do_RGB = function(input_args){
   ref_dir = input_args$ref_dir
   patch_dir = input_args$patch_dir
   
-  blue_filters = "F070W|F090W|F115W|F150W|F140M|F162"
+  blue_filters = "F070W|F090W|F115W|F150W|F140M|F162M"
   green_filters = "F200W|F277W|F182M|F210M"
-  red_filters = "F356W|F444W|F250M|F300M|F335M|F360M|F410M|F430|F460M|F480M"
+  red_filters = "F356W|F444W|F250M|F300M|F335M|F360M|F410M|F430|F460M|F480M|F560W|F770W|F1000W|F1130W|F1280W|F1500W|F1800W|F2100W|F2550W"
   locut = 1e-6
   hicut = 0.05
   

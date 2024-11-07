@@ -43,7 +43,8 @@ filelist = filelist_all[not_pid_idx]
 
 info = Rfits_key_scan(filelist = filelist,
                       keylist=c('DETECTOR', 'MODULE', 'FILTER', 'VID'), cores=1)
-info_wisp = info[DETECTOR %in% c('NRCA1', 'NRCA2', 'NRCA3','NRCA4', 'NRCB1','NRCB2', 'NRCB3','NRCB4'),]
+info_wisp = info[DETECTOR %in% c('NRCA1', 'NRCA2', 'NRCA3','NRCA4', 'NRCB1','NRCB2', 'NRCB3','NRCB4', 'MIRIMAGE'),] 
+## WISP remove reverseal for NIRCam (step 11) and background remove reversal for MIRI (step 12)
 module_list = paste0("NRC", unique(info$MODULE))
 unique_visits = unique(info_wisp$VID)
 

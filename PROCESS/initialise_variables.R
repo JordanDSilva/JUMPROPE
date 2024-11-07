@@ -41,7 +41,7 @@ initialise_params = function(){
    ## and not only wisp affected [A3,A4,B3,B4]
    do_claws = FALSE, 
    
-   ## Path to reference astrometric catalogue
+   ## Path to reference astrometric catalogue - to make the ProPane stacks
    tweak_catalogue = NULL
   )
   ## Finish editing

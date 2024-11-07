@@ -195,6 +195,10 @@ main = function(){
       input_args$FILT = "CLEAR"
       do_patch(input_args)
     }else if(input_args$do_MIRI){
+      do_miri_bkgnd(input_args)
+      do_modify_pedestal(input_args)
+      do_cal_sky_info(input_args)
+      do_gen_stack(input_args)
       do_patch(input_args)
     }else{
       if(length(args) <= 1){
