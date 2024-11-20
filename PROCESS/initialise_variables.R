@@ -42,7 +42,10 @@ initialise_params = function(){
    do_claws = FALSE, 
    
    ## Path to reference astrometric catalogue - to make the ProPane stacks
-   tweak_catalogue = NULL
+   tweak_catalogue = "~/Desktop/astro.csv",
+
+   NAXIS_long = NULL, ## Size of the long pixel scales mosaic, keep NULL for default (3000 pixels) 
+   NAXIS_short = NULL ## Size of the short pixel scales mosaic, keep NULL for default (6000 pixels) 
   )
   ## Finish editing
 

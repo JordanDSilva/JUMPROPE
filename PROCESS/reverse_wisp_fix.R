@@ -35,10 +35,14 @@ filelist_all = c(
              pattern = glob2rx(paste0("*", VID, "*.fits$")), 
              full.names = TRUE)
 )
-scan_wisp_rem = Rfits_key_scan(filelist = filelist_all, keylist = c("FILTER", "PROGRAM"))
-not_pid_idx = sapply(scan_wisp_rem$PROGRAM, function(x)grepl(x, VID, fixed = T)) ## make sure PID is not embedded in string of VID
 
-filelist = filelist_all[not_pid_idx]
+if(VID != ""){
+  scan_wisp_rem = Rfits_key_scan(filelist = filelist_all, keylist = c("FILTER", "PROGRAM"))
+  not_pid_idx = sapply(scan_wisp_rem$PROGRAM, function(x)grepl(x, VID, fixed = T)) ## make sure PID is not embedded in string of VID
+  filelist = filelist_all[not_pid_idx]
+}else{
+  filelist = filelist_all
+}
 ## stop edit 
 
 info = Rfits_key_scan(filelist = filelist,

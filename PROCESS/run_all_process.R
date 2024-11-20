@@ -205,19 +205,27 @@ main = function(){
         input_args$FILT = "F070W|F090W|F115W|F150W|F200W|F140M|F162M|F182M|F210M"
       }
       
-      do_wisp_rem(input_args)
-      
-      wisp_fix_files = load_raw_files(dir_raw = dir_raw)
-      input_args$filelist = wisp_fix_files
-      
-      do_1of(input_args)
-      do_cal_process(input_args)
-      do_regen_sky_info(input_args)
-      do_super_sky(input_args)
-      do_apply_super_sky(input_args)
-      do_modify_pedestal(input_args)
-      do_cal_sky_info(input_args)
-      do_gen_stack(input_args)
+      ## Test for any short frames to process 
+      sky_info = fread(
+        paste0(
+          input_args$sky_pro, "/sky_info.csv"
+        )
+      )
+      if( length(grep(input_args$FILT, sky_info$filter)) > 0 ){
+        do_wisp_rem(input_args)
+        
+        wisp_fix_files = load_raw_files(dir_raw = dir_raw)
+        input_args$filelist = wisp_fix_files
+        
+        do_1of(input_args)
+        do_cal_process(input_args)
+        do_regen_sky_info(input_args)
+        do_super_sky(input_args)
+        do_apply_super_sky(input_args)
+        do_modify_pedestal(input_args)
+        do_cal_sky_info(input_args)
+        do_gen_stack(input_args)
+      }
       
       input_args$FILT = ""
       do_patch(input_args)

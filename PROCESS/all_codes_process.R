@@ -15,7 +15,7 @@ library(imager)
 library(celestial)
 library(matrixStats)
 
-pipe_version = "1.2.0" ## Change nominal from too high version 2.0 (1.0.0 being release on GitHub)
+pipe_version = "1.2.1" ## Change nominal from too high version 2.0 (1.0.0 being release on GitHub)
 
 load_files = function(input_args, which_module, sky_info = NULL){
   ## Load the correct files for what ever task
@@ -322,11 +322,19 @@ do_1of = function(input_args){
       temp_mask = temp_image$DQ$imDat
       JWST_cal_mask = profoundDilate(temp_mask %% 2 == 1, size=3)
       
+      if(nrow(temp_image$SCI$imDat) != 2048 | ncol(temp_image$SCI$imDat) != 2048){
+        scan_block = c(
+          nrow(temp_image$SCI$imDat),
+          ncol(temp_image$SCI$imDat)
+        )
+      }else{
+        scan_block = c(512, 2048)
+      }
+      
       temp_zap = profoundSkyScan(image = temp_image$SCI$imDat,
                                  mask = (temp_image$SCI$imDat==0) | JWST_cal_mask,
-                                 # mask = foo,
                                  clip = c(0.0,0.9),
-                                 scan_block = c(512, 2048),
+                                 scan_block = scan_block,
                                  trend_block = trend_block,
                                  keep_trend = keep_trend)
       
@@ -1097,9 +1105,17 @@ do_gen_stack = function(input_args){
   clip_sigma = 20
   clip_dilate = 3
   doclip = F
-  NAXIS_short = 6000 #good for ceers, need 6000 for cosmos web
-  NAXIS_long = 3000
-  ## Keep these constant so don't use in function args
+  
+  ## Allow user to change these
+  NAXIS_short = ifelse(
+    is.null(input_args$additional_params$NAXIS_short), 
+    6000, #good for ceers, need 6000 for cosmos web
+    input_args$additional_params$NAXIS_short) 
+  NAXIS_long = ifelse(
+    is.null(input_args$additional_params$NAXIS_long), 
+    3000, 
+    input_args$additional_params$NAXIS_long) 
+  
   
   invar_dir = paste0(ref_dir, "/InVar_Stacks/")
   median_dir = paste0(ref_dir, "/Median_Stacks/")

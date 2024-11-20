@@ -16,7 +16,7 @@ library(matrixStats)
 
 source("./ProFound_settings.R")
 
-jumprope_version = "1.2.0"
+jumprope_version = "1.2.1"
 
 ######################
 ## for testing only ##

@@ -16,7 +16,7 @@ from astropy.coordinates import SkyCoord
 from astropy.table import vstack
 import time
 
-Observations.enable_cloud_dataset(provider='AWS')
+#Observations.enable_cloud_dataset(provider='AWS')
 
 parser = argparse.ArgumentParser(description='Download from MAST')
 
@@ -30,7 +30,7 @@ parser.add_argument('--TELESCOPE', type=str, nargs="*", help="Telescope to downl
 parser.add_argument('--CAMERA', type=str, nargs="*", help="Camera to download", default = ["ALL"])
 parser.add_argument('--FILTER', type=str, nargs="*", help="Filter to download", default = ["ALL"])
 
-parser.add_argument('--STAGE', type=str, nargs="*", default = "UNCAL",
+parser.add_argument('--STAGE', type=str, nargs="*", default = ["UNCAL"],
                     help='Product level (e.g., UN/CAL for un/cal files)')
 
 parser.add_argument('--VISITID', type=int, nargs="*", help="VISIT ID (e.g., 2736 for SMACS)", default = None)
@@ -175,11 +175,14 @@ def main(args_dict):
     JUMPROPE_MAST_TOKEN = os.getenv('JUMPROPE_MAST_TOKEN')
     JUMPROPE_DOWNLOAD_DIR = os.getenv('JUMPROPE_DOWNLOAD_DIR')
 
-    if None in [JUMPROPE_MAST_TOKEN, JUMPROPE_DOWNLOAD_DIR]:
+    if None in [JUMPROPE_DOWNLOAD_DIR]:
         print("Please set ENV variables. ")
         exit()
 
-    my_session = Observations.login(token=str(JUMPROPE_MAST_TOKEN))
+    if JUMPROPE_MAST_TOKEN is not None:
+        ## Used for proprietary data, not a requirement for JP
+        my_session = Observations.login(token=str(JUMPROPE_MAST_TOKEN))
+
     ref_dir = str(JUMPROPE_DOWNLOAD_DIR)
 
     if args_dict["VISITID"] is not None:
