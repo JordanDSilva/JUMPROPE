@@ -20,7 +20,7 @@ parser.add_argument('--RA', type=float, nargs="?",
 parser.add_argument('--DEC', type=float, nargs="?", help="Central declination of catalogue (deg)", default=-73.4391)
 parser.add_argument('--RAD', type=float, nargs="?", help="Search radius (deg)", default=1.0)
 
-parser.add_argument('--VISITID', type=str, nargs="+", help="VISIT ID (e.g., 2736 for SMACS)", default = None)
+parser.add_argument('--VISITID', type=str, help="VISIT ID (e.g., 2736 for SMACS)", default = None)
 
 parser.add_argument("--redo",
                     type=bool,
@@ -29,7 +29,7 @@ parser.add_argument("--redo",
 parser.add_argument("--max_cores", help="How many cores. Must be written as e.g., 'half', 'quarter' or 'all'", default="half")
 args = parser.parse_args()
 
-def run1(input_data, cal_dir):
+def run1(input_data, rate_dir, cal_dir):
     """Process every uncal to cal"""
 
     # detector1.clean_flicker_noise.fit_method = 'fft'
@@ -40,11 +40,13 @@ def run1(input_data, cal_dir):
     # detector1.min_jump_to_flag_neighbors = 100000
 
     # # Make the cal and rates directories
+    os.makedirs(rate_dir, exist_ok=True)
     os.makedirs(cal_dir, exist_ok=True)
 
     files = input_data
     detector1 = calwebb_detector1.Detector1Pipeline()
 
+    detector1.output_dir = rate_dir
     detector1.jump.maximum_cores = args.max_cores
     detector1.ramp_fit.maximum_cores = args.max_cores
 
@@ -71,20 +73,30 @@ def cal(ref_dir, ra, dec, rad, visitid):
     files = glob.glob(uncal_dir + "/**/*fits", recursive = True)
     uncal_files = [foo.split("_uncal")[0].split("/")[-1] for foo in files]
 
+
+    rate_dir = []
+    rate_files = []
+
     cal_dir = []
     cal_files = []
     for i in range(len(files)):
         getUncalPath = os.path.dirname(files[i])
+
+        getRatePath = getUncalPath.replace("UNCAL", "RATE")
+        rate_dir.append(getRatePath)
+        getRateFile = os.path.join(getRatePath, uncal_files[i] + "_trapsfilled.fits")
+        rate_files.append(getRateFile)
+
         getCalPath = getUncalPath.replace("UNCAL", "CAL")
         cal_dir.append(getCalPath)
         getCalFile = os.path.join(getCalPath, uncal_files[i] + "_cal.fits")
         cal_files.append(getCalFile)
-    cal_files_names = [foo.split("_cal")[0].split("/")[-1] for foo in cal_files]
 
     ## Read info tables from cone search
     info_tables = glob.glob(
         uncal_dir + "*info.csv"
     )
+    print(uncal_dir)
     df = pd.concat((pd.read_csv(f) for f in info_tables), ignore_index=True)
 
     if (len(df) > len(files)):
@@ -92,22 +104,25 @@ def cal(ref_dir, ra, dec, rad, visitid):
 
     if args.redo:  ## override previous checks. In case we want to use a new pmap of calibration version for example
         for cal in cal_files:
-            print("Removing " + str(cal))
             if os.path.isfile(cal):
+                print("Removing " + str(cal))
                 os.remove(cal)
         files_redo = files
     else:
         files_redo = []
-        for cal in cal_files:
-            if not os.path.isfile(cal):
-                files_redo.append(cal)
+        rate_dir_redo = []
+        cal_dir_redo = []
+        for i in range(len(files)):
+            if not os.path.isfile(cal_files[i]):
+                files_redo.append(files[i])
+                rate_dir_redo.append(rate_dir[i])
+                cal_dir_redo.append(cal_dir[i])
 
-    print(files_redo)
     print("Running " + str(len(files_redo)) + " files")
 
     if len(files_redo) > 0:
         for i, ff in enumerate(files_redo):
-            run1(ff, cal_dir[i])
+            run1(ff, rate_dir_redo[i], cal_dir_redo[i])
     else:
         exit()
 
