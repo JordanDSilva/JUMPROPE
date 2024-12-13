@@ -16,19 +16,7 @@ library(matrixStats)
 
 source("./ProFound_settings.R")
 
-jumprope_version = "1.2.1"
-
-######################
-## for testing only ##
-######################
-input_args = list(
-  ref_dir = "/Volumes/RAIDY/JWST/",
-  VID = "NGDEEP",
-  MODULE = "NGDEEP",
-  cores_stack = 1
-)
-######################
-
+jumprope_version = "1.2.2"
 
 frame_info = function(ref_dir){
   
@@ -148,7 +136,7 @@ frame_info = function(ref_dir){
   fwrite(foo, csv_stub)
 } ##<--Compute the long warp frame info needed for querying GAIA and HST via MAST
 
-
+## Moving files for source detection codes
 warp_short_to_long = function(input_args){
   
   message("Running warp_short_to_long")
@@ -292,7 +280,7 @@ copy_long = function(input_args){
   # return(c(frames_short_to_long, frames_long))
 } ##<-- Copy the long pixelscale to Data dir. File redundancy but safer option for detects.
 
-
+## Star mask codes
 star_mask = function(input_args){
   
   message("Running star mask")
@@ -694,7 +682,6 @@ star_mask_tile = function(input_args){
   }
 } ## <-- Create star mask for a big mosaic using per VID star masks
 
-
 ## ProFound source detection codes
 do_detect = function(input_args, detect_bands = detect_bands_load, profound_function = profound_detect_master){
   
@@ -829,7 +816,6 @@ do_detect = function(input_args, detect_bands = detect_bands_load, profound_func
 
   return(NULL)
 }
-
 
 ## ProFound measurement codes
 getCircle = function(r){
@@ -1091,7 +1077,6 @@ do_measure = function(input_args){
   }
   write.csv(csvout, file = file.path(measurements_dir,paste(VID,MODULE,"photometry.csv",sep='_')))
 }
-
 
 ## HST codes
 hst_warp_stack = function(input_args){
@@ -1525,7 +1510,6 @@ copy_hst_for_tile = function(input_args){
   }
 }
 
-
 ## python codes. Super sketchy :P
 query_gaia = function(input_args){
   
@@ -1591,6 +1575,4 @@ query_hst = function(input_args){
   }
   return(NULL)
 }
-
-
 

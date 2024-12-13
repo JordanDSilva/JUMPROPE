@@ -37,7 +37,6 @@ select_code_func = function(){
           ## 9 = Patch                                              ##
           ## 10 = RGB                                               ##
           ## 11 = Wisp remove                                       ##
-          ## 12 = MIRI background remove                            ##
           ##                                                        ##
           ##  e.g., 1,2,3,4,5,6,7,8,11 for everything + wisp rem    ##
           ## CONTROL + /\ to EXIT                                    ##
@@ -52,7 +51,7 @@ select_code_func = function(){
     )[[1]]
   )
   
-  if( sum(select_vector %in% 1:12) == 0){
+  if( sum(select_vector %in% 1:11) == 0){
     message("Oops, I think you made a mistake. Trying again.")
     select_code_func()
   }
@@ -194,8 +193,7 @@ zork = function(){
     'do_gen_stack' = do_gen_stack,
     'do_patch' = do_patch,
     'do_rgb' = do_RGB,
-    'do_wisp_rem' = do_wisp_rem,
-    'do_miri_bkgnd' = do_miri_bkgnd
+    'do_wisp_rem' = do_wisp_rem
   )
   
   #VID_list = ifelse(VID != "", unlist(strsplit(VID, "|", fixed = T)), list(c("")))

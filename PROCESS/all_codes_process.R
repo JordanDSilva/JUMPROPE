@@ -15,7 +15,7 @@ library(imager)
 library(celestial)
 library(matrixStats)
 
-pipe_version = "1.2.1" ## Change nominal from too high version 2.0 (1.0.0 being release on GitHub)
+pipe_version = "1.2.2" 
 
 load_files = function(input_args, which_module, sky_info = NULL){
   ## Load the correct files for what ever task
@@ -150,6 +150,7 @@ load_files = function(input_args, which_module, sky_info = NULL){
   
 }
 
+## Processing codes
 do_1of = function(input_args){
   
   cat("\n")
@@ -355,7 +356,7 @@ do_1of = function(input_args){
     return(NULL)
   }
 }
-do_cal_process = function(input_args){
+do_cal_process = function(input_args, filelist = NULL){
   
   cat("\n")
   message("## Calculating sky statistics ##")
@@ -370,7 +371,9 @@ do_cal_process = function(input_args){
   do_NIRISS = input_args$do_NIRISS
   do_MIRI = input_args$do_MIRI
   
-  filelist = load_files(input_args, which_module = "cal_process")
+  if(is.null(filelist)){
+    filelist = load_files(input_args, which_module = "cal_process")
+  }
   
   message("Showing first <10 files:")
   cat(head(filelist, 10), sep='\n')
@@ -498,7 +501,6 @@ do_cal_process = function(input_args){
       sky_redo = sky_redo_func(list(image = JWST_cal_image$imDat, pro = pro, mask = JWST_cal_mask, sky_poly_deg = sky_poly_deg))
       pro_redo = profoundProFound(JWST_cal_image$imDat, mask=JWST_cal_mask, skycut=2, pixcut=5, box=box, grid = box, redoskysize=redoskysize, sky=sky_redo$sky, redosky=FALSE, tolerance=Inf)
     }
-    
 
     ## what to do if no objects in frame
     if(is.null(pro_redo$objects_redo)){
@@ -1566,145 +1568,6 @@ do_wisp_rem = function(input_args){
     return(NULL)
   }
 }
-do_miri_bkgnd = function(input_args){
-  ## Remove interference substructure in MIRI images 
-  ## algo inspired by https://arxiv.org/pdf/2405.15972
-  
-  cat("\n")
-  message("## Removing MIRI backgrounds ##")
-  cat("\n")
-  Sys.sleep(time = 5)
-  
-  filelist = load_files(input_args = input_args, which_module = "modify_pedestal") ## cal_sky
-  VID = input_args$VID
-  FILT = input_args$FILT
-  median_dir = input_args$median_dir
-  cores = input_args$cores_pro
-  
-  registerDoParallel(cores = cores)
-  
-  cal_info_raw = Rfits_key_scan(
-    filelist = filelist,
-    extlist = 1,
-    keylist = c("FILTER", "VISIT_ID")
-  )
-  
-  cal_info = cal_info_raw[
-    grepl(FILT, cal_info_raw$FILTER) & grepl(VID, cal_info_raw$VISIT_ID), 
-  ]
-  
-  for(VID in unique(cal_info$VISIT_ID)){
-    for(FILT in unique(cal_info$FILTER)){
-      
-      bkgnd_grid = cal_info[
-        cal_info$VISIT_ID == VID & cal_info$FILTER == FILT, 
-      ]
-      message("Running VISIT: ", VID, ", FILTER: ", FILT)
-      message("...Processing ", dim(bkgnd_grid)[1], " files...")
-      if(dim(bkgnd_grid)[1] == 0){
-        next
-      }
-      ff_stack = Rfits_point(
-        filename = paste0(median_dir, "/med_", VID, "_", FILT, "_MIRIMAGE.fits")
-      )
-      
-      frames = lapply(
-        bkgnd_grid$full, 
-        function(x){
-          ff = Rfits_read(x)
-          
-          ff_stackw = suppressMessages(propaneWarp(
-            image_in = ff_stack,
-            keyvalues_out = ff$SCI$keyvalues,
-            magzero_in = 23.9, magzero_out = 23.9
-          ))
-          pro_stackw = suppressMessages(profoundProFound(
-            image = ff_stackw, skycut = 10.0, pixcut = 9, magzero = 23.9, rem_mask = TRUE
-          ))
-          
-          temp_cal = ff$SCI$imDat
-          JWST_mask = profoundDilate(ff$DQ$imDat %% 2 == 1, size = 3)
-          
-          temp_cal[JWST_mask == 1L | pro_stackw$objects == 1] = NA
-          temp_cal = temp_cal - median(temp_cal, na.rm = TRUE)
-          
-          return(temp_cal)
-        }
-      )
-      
-      ## Make median stack with sources clipped out
-      median_stack = propaneStackFlatMed(
-        image_list = frames, 
-        na.rm = TRUE
-      )
-      
-      ## Blur the median stack - interpolate
-      med_blur = profoundImBlur(
-        image = median_stack$image, 
-        sigma = 1.0
-      )
-
-      sel = which(is.na(median_stack$image))
-      median_stack$image[sel] = med_blur[sel]
-      
-      temp = foreach(i = 1:dim(bkgnd_grid)[1], .inorder = FALSE) %dopar% {
-        
-        message(
-          "Adjusting MIRI background: ", bkgnd_grid$stub[i]
-        )
-        
-        fname = bkgnd_grid$full[i]
-        check_Nhdu = Rfits_nhdu(fname)
-        extloc = Rfits_extname_to_ext(fname, 'SCI_ORIG')
-        
-        ff = Rfits_read(fname)
-        temp_cal = ff$SCI
-        temp_dq = Rfits_read_image(fname, ext = 4, header = FALSE)
-        
-        ff_stackw = suppressMessages(propaneWarp(
-          image_in = ff_stack,
-          keyvalues_out = ff$SCI$keyvalues,
-          magzero_in = 23.9, magzero_out = 23.9
-        ))
-        pro_stackw = suppressMessages(profoundProFound(
-          image = ff_stackw, magzero = 23.9, rem_mask = TRUE
-        ))
-        
-        ## Save original extension 2
-        if(is.na(extloc)){ ## only make the SCI_ORIG if it doesn't already exist, otherwise we risk overwriting with something that isn't the original science frame!
-          Rfits_write_image(temp_cal, filename=fname, create_file=FALSE)
-          Rfits_write_key(filename=fname, ext=check_Nhdu+1, keyname='EXTNAME', keyvalue='SCI_ORIG', keycomment='No background corr')
-        }
-        
-        ## Remove median stack sky with ProFound
-        pro_new = profoundProFound(
-          temp_cal$imDat, 
-          sky = median_stack$image,
-          segim = pro_stackw$segim,
-          objects = pro_stackw$objects_redo,
-          mask = pro_stackw$objects_redo == 1 | profoundDilate(temp_dq %% 2 == 1 , size = 3)
-        )
-        
-        bkgnd_fix = pro_new$image - pro_new$sky
-        
-        ## Remove residual 2D structure
-        pro_tram = profoundSkyScan(
-          image = bkgnd_fix,
-          mask = profoundDilate(temp_dq %% 2 == 1, size = 3.0),
-          scan_block = c(nrow(bkgnd_fix), ncol(bkgnd_fix)), 
-          clip = c(0.0, 0.9), 
-          keep_trend = FALSE,
-          trend_block = 101
-        )
-        ## Overwrite extension 2
-        Rfits_write_pix(data = pro_tram$image_fix, filename = fname, ext = 2)
-        
-        return( NULL )
-      }
-    }
-  }
-  
-}
 do_patch = function(input_args){
   
   cat("\n")
@@ -2002,4 +1865,3 @@ wispFixer = function(wisp_im, ref_im,
   
   return(list(wisp_fix=wisp_im, wisp_template=wisp_template, ref_im_warp=ref_im_warp))
 }
-

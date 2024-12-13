@@ -29,8 +29,8 @@ parser.add_argument("--redo",
 parser.add_argument("--max_cores", help="How many cores. Must be written as e.g., 'half', 'quarter' or 'all'", default="half")
 args = parser.parse_args()
 
-def run1(input_data, rate_dir, cal_dir):
-    """Process every uncal to cal"""
+def run1(input_data, rate_dir, cal_dir, files_bad_dir):
+    """ Process every uncal to cal """
 
     # detector1.clean_flicker_noise.fit_method = 'fft'
     # detector1.jump.rejection_threshold = 4.0
@@ -39,7 +39,7 @@ def run1(input_data, rate_dir, cal_dir):
     # detector1.max_jump_to_flag_neighbors = 1
     # detector1.min_jump_to_flag_neighbors = 100000
 
-    # # Make the cal and rates directories
+    ## Make the cal and rates directories
     os.makedirs(rate_dir, exist_ok=True)
     os.makedirs(cal_dir, exist_ok=True)
 
@@ -49,6 +49,15 @@ def run1(input_data, rate_dir, cal_dir):
     detector1.output_dir = rate_dir
     detector1.jump.maximum_cores = args.max_cores
     detector1.ramp_fit.maximum_cores = args.max_cores
+
+    try:
+        run_output = detector1.run(files)
+    except:
+        ## in case the uncal mucks up
+        files_bad_stub = (files.split("UNCAL")[1].split("/"))[-1]
+        os.rename(files, files_bad_dir + "/" + files_bad_stub)
+        print("Bad file :(")
+        return None
 
     run_output = detector1.run(files)
 
@@ -66,9 +75,16 @@ def cal(ref_dir, ra, dec, rad, visitid):
                                  str(round(ra, 2)) + "_" + str(round(dec, 2)) + "_" +
                                  str(round(rad, 2)),
                                  "UNCAL") + str("/")
+        files_bad_dir = os.path.join(ref_dir, "JWST",
+                                 str(round(ra, 2)) + "_" + str(round(dec, 2)) + "_" +
+                                 str(round(rad, 2)),
+                                 "bad") + str("/")
     else:
         print("CALJWST in region")
         uncal_dir = os.path.join(ref_dir, str(visitid), "UNCAL") + str("/")
+        files_bad_dir = os.path.join(ref_dir, str(visitid), "bad") + str("/")
+
+    os.makedirs(files_bad_dir, exist_ok=True) ## in case uncal files are corrupted
 
     files = glob.glob(uncal_dir + "/**/*fits", recursive = True)
     uncal_files = [foo.split("_uncal")[0].split("/")[-1] for foo in files]
@@ -122,7 +138,7 @@ def cal(ref_dir, ra, dec, rad, visitid):
 
     if len(files_redo) > 0:
         for i, ff in enumerate(files_redo):
-            run1(ff, rate_dir_redo[i], cal_dir_redo[i])
+            run1(ff, rate_dir_redo[i], cal_dir_redo[i], files_bad_dir)
     else:
         exit()
 
