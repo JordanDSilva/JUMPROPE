@@ -42,6 +42,13 @@ parser.add_argument('--dry_run', type=bool, nargs=1,
 
 args = parser.parse_args()
 
+def check_dl_size(products_stage2):
+    ind = np.unique(products_stage2['obsID'], return_index = True)[1]
+    TBD = np.round(np.sum(products_stage2['size'][ind]) / 10**9, decimals=2)
+    Nfiles = len(products_stage2['size'][ind])           
+    print(f"You are about to download {Nfiles} images composing of {TBD} GB of Data.")
+    input('Press any key to continue...')
+
 def cone_query(ref_dir, ra, dec, rad, telescope, camera, filter, stage, dl_products):
     print("Querying observation")
 
@@ -130,6 +137,8 @@ def cone_query(ref_dir, ra, dec, rad, telescope, camera, filter, stage, dl_produ
                                               download_dir=dl_dir,
                                               curl_flag=False,
                                               cache=True)
+            else:
+                check_dl_size(products_stage2)
             return obs_table
 
 def vid_query(ref_dir, visit_id, stage, dl_products=False):
@@ -168,6 +177,8 @@ def vid_query(ref_dir, visit_id, stage, dl_products=False):
                                    curl_flag=False,
                                    cache=True)
 
+    else:
+        check_dl_size(products_stage2)
     return obs_table
 
 def main(args_dict):

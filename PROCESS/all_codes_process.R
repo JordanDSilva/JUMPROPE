@@ -15,7 +15,7 @@ library(imager)
 library(celestial)
 library(matrixStats)
 
-pipe_version = "1.2.2" 
+pipe_version = "1.2." 
 
 load_files = function(input_args, which_module, sky_info = NULL){
   ## Load the correct files for what ever task
@@ -35,6 +35,13 @@ load_files = function(input_args, which_module, sky_info = NULL){
   if(which_module == "1oF"){
     files_1oF = input_args$filelist
     files_1oF = files_1oF[grepl(VID, files_1oF) & grepl(".fits$", files_1oF)]
+    if(do_NIRISS){
+      files_1oF = files_1oF[!grepl('_mirimage_',files_1oF) & grepl('_nis_',files_1oF) & grepl(".fits$", files_1oF)]
+    }else if (do_MIRI){
+      files_1oF = files_1oF[grepl('_mirimage_',files_1oF) & !grepl('_nis_',files_1oF) & grepl(".fits$", files_1oF)]
+    }else{
+      files_1oF = files_1oF[!grepl('_mirimage_',files_1oF) & !grepl('_nis_', files_1oF) & grepl(".fits$", files_1oF)]
+    }
     
     scan_1oF = Rfits_key_scan(filelist = files_1oF, keylist = c("FILTER", "PROGRAM", "VISIT_ID"))
     corr_pid = grep(VID, scan_1oF$VISIT_ID, fixed = T, value = T)
@@ -107,6 +114,8 @@ load_files = function(input_args, which_module, sky_info = NULL){
       sky_info = sky_info[grepl("NIS", sky_info$detector), ]
     }else if (do_MIRI){
       sky_info = sky_info[grepl("MIRIMAGE", sky_info$detector), ]
+    }else{
+      sky_info = sky_info[!grepl("MIRIMAGE", sky_info$detector) & !grepl("NIS", sky_info$detector), ]
     }
     
     return(list('sky_info' = sky_info, 'sky_filelist', sky_info$filesky))
@@ -157,9 +166,8 @@ do_1of = function(input_args){
   message("## Removing 1/f ##")
   cat("\n")
   Sys.sleep(time = 5)
-
+  
   additional_params = input_args$additional_params
-  filelist = input_args$filelist
   Pro1oF_dir = input_args$Pro1oF_dir
   VID = input_args$VID
   FILT = input_args$FILT
@@ -333,7 +341,7 @@ do_1of = function(input_args){
       }
       
       temp_zap = profoundSkyScan(image = temp_image$SCI$imDat,
-                                 mask = (temp_image$SCI$imDat==0) | JWST_cal_mask,
+                                 mask = (temp_image$SCI$imDat==0) | JWST_cal_mask | is.na(temp_image$SCI$imDat),
                                  clip = c(0.0,0.9),
                                  scan_block = scan_block,
                                  trend_block = trend_block,
