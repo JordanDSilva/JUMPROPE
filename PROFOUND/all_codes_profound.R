@@ -16,7 +16,7 @@ library(matrixStats)
 
 source("./ProFound_settings.R")
 
-jumprope_version = "1.2.3"
+jumprope_version = "1.2.4"
 
 frame_info = function(ref_dir){
   
@@ -54,7 +54,7 @@ frame_info = function(ref_dir){
   )
   VID_list = sapply(filenames, function(x){
     split_fname = str_split(x, "_")[[1]]
-    split_fname = split_fname[!(grepl("patch|stack|long|F.+W|F.+M", split_fname))]
+    split_fname = split_fname[!(grepl("patch|stack|long|F.+W|F.+M|F.+N", split_fname))]
     vid = split_fname[1]
     if(is.na(vid)){
       return("")
@@ -65,7 +65,7 @@ frame_info = function(ref_dir){
   
   MODULE_list = sapply(filenames, function(x){
     split_fname = str_split(x, "_")[[1]]
-    split_fname = split_fname[!(grepl("patch|stack|long|F.+W|F.+M", split_fname))]
+    split_fname = split_fname[!(grepl("patch|stack|long|F.+W|F.+M|F.+N", split_fname))]
     module = split_fname[2]
     if(is.na(module)){
       return(split_fname[1])
@@ -175,8 +175,8 @@ warp_short_to_long = function(input_args){
   fitsnames <- list.files(patch_stack_dir, pattern=".fits", full.names=FALSE) #list all the .fits files in a directory
   
   #native scales
-  short_idx = grepl(VID, filepaths) & grepl(MODULE, filepaths)  & grepl("short", filepaths) & grepl("F070W|F090W|F115W|F150W|F200W|F140M|F162M|F182M|F210M", filepaths) 
-  long_idx = grepl(VID, filepaths) & grepl(MODULE, filepaths)  & grepl("long", filepaths) & grepl("F277W|F356W|F444W|F250M|F300M|F335M|F360M|F410M|F430|F460M|F480M", filepaths)
+  short_idx = grepl(VID, filepaths) & grepl(MODULE, filepaths)  & grepl("short", filepaths) & grepl("F070W|F090W|F115W|F150W|F200W|F140M|F162M|F182M|F210M|F164N|F187N|F212N", filepaths) 
+  long_idx = grepl(VID, filepaths) & grepl(MODULE, filepaths)  & grepl("long", filepaths) & grepl("F277W|F356W|F444W|F250M|F300M|F335M|F360M|F410M|F430|F460M|F480M|F323N|F405N|F466N|F470N", filepaths)
   
   message(paste0(fitsnames[short_idx], collapse = "\n"))
   message(paste0(fitsnames[long_idx], collapse = "\n"))
@@ -1371,40 +1371,6 @@ hst_warp_stack = function(input_args){
                                                cores_warp = 1)
           
           output_stack$image$imDat[output_stack$image$imDat == 0 | is.infinite(output_stack$image$imDat)] = NA
-          
-          # message("Tweaking ProFound source shift")
-          # 
-          # pro_test = profoundProFound(
-          #   image = output_stack$image,
-          #   pixcut = 100,
-          #   skycut = 10.0,
-          #   cliptol = 100,
-          #   tolerance = Inf,
-          #   box = dim(output_stack$image)/10.0,
-          #   mask = is.infinite(output_stack$image$imDat) | is.na(output_stack$image$imDat),
-          #   magzero = 23.9,
-          #   rem_mask = T,
-          #   lowmemory = T
-          # )
-          
-          # match_coord = coordmatch(
-          #   coordref = pro_ref$segstats[, c("RAmax", "Decmax")],
-          #   coordcompare = pro_test$segstats[, c("RAmax", "Decmax")]
-          # )
-          # 
-          # propane_cat_tweak = propaneTweakCat(cat_ref = cbind(pro_ref$segstats$xmax[match_coord$bestmatch$refID],
-          #                                                     pro_ref$segstats$ymax[match_coord$bestmatch$refID]),
-          #                                     cat_pre_fix = cbind(pro_test$segstats$xmax[match_coord$bestmatch$compareID],
-          #                                                         pro_test$segstats$ymax[match_coord$bestmatch$compareID]),
-          #                                     delta_max = c(20.0,1.0), mode = "pix")
-          # 
-          # tweaked_output_imDat = propaneTran(output_stack[["image"]][,]$imDat,
-          #                                    delta_x = propane_cat_tweak$par[1],
-          #                                    delta_y = propane_cat_tweak$par[2],
-          #                                    delta_rot = propane_cat_tweak$par[3])
-          # 
-          # tweaked_output = Rfits_create_image(data = tweaked_output_imDat,
-          #                                     keyvalues = target$image$keyvalues)
           
           tweak_pars_df = transpose(data.frame(tweak_pars_df))
           names(tweak_pars_df) = c('dx', 'dy', 'dphi')

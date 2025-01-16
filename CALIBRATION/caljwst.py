@@ -124,6 +124,8 @@ def cal(ref_dir, ra, dec, rad, visitid):
                 print("Removing " + str(cal))
                 os.remove(cal)
         files_redo = files
+        rate_dir_redo = rate_dir
+        cal_dir_redo = cal_dir
     else:
         files_redo = []
         rate_dir_redo = []

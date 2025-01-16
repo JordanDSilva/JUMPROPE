@@ -15,7 +15,7 @@ library(imager)
 library(celestial)
 library(matrixStats)
 
-pipe_version = "1.2." 
+pipe_version = "1.2.4" 
 
 load_files = function(input_args, which_module, sky_info = NULL){
   ## Load the correct files for what ever task
@@ -117,7 +117,6 @@ load_files = function(input_args, which_module, sky_info = NULL){
     }else{
       sky_info = sky_info[!grepl("MIRIMAGE", sky_info$detector) & !grepl("NIS", sky_info$detector), ]
     }
-    
     return(list('sky_info' = sky_info, 'sky_filelist', sky_info$filesky))
   }
   
@@ -174,19 +173,7 @@ do_1of = function(input_args){
   cores = input_args$cores_pro
   
   do_MIRI = input_args$do_MIRI ## Because we need to alter the dimensions of the image for processing
-  
-  ### EXAMPLE BITS TO EDIT
-  
-  #very large sources
-  # 1176341001 A
-  # 1176341001 B
   trend_block_vlarge = 101 #good for larger sources
-  
-  #large sources
-  # 1176211001 B
-  # 1176241001 B
-  # 2282010001 B
-  # 2736001001 B
   trend_block_large = 501 # good for frames with fairly large sources
   
   ID_vlarge = additional_params$ID_vlarge
@@ -194,8 +181,6 @@ do_1of = function(input_args){
   
   ow_vlarge = additional_params$ow_vlarge
   ow_large = additional_params$ow_large
-  
-  ### BITS TO EDIT END ###
   
   registerDoParallel(cores=cores)
   
@@ -222,7 +207,6 @@ do_1of = function(input_args){
     if(do_MIRI){
       imdim = dim(temp_image$SCI)
       xpix = 360:imdim[1]
-      # xpix = 1:imdim[1]
       ypix = 1:imdim[2]
       
       new_centre = suppressMessages(Rwcs_p2s(
@@ -262,7 +246,6 @@ do_1of = function(input_args){
           trend_block = trend_block_large
           message("KT: TRUE", " TB ", trend_block_large)
         }
-        
       }
       
       temp_mask = temp_image$DQ$imDat
@@ -360,7 +343,6 @@ do_1of = function(input_args){
         Rfits_write_pix(temp_zap$row_map + temp_zap$col_map, paste0(fullbase,'_Pro1oF.fits'), ext=extloc)
       }
     }
-  
     return(NULL)
   }
 }
@@ -503,6 +485,7 @@ do_cal_process = function(input_args, filelist = NULL){
     }
     
     if(do_MIRI){
+      ## Do not do polynomial sky for MIRI - too hard
       sky_redo = list(sky = pro$sky)
       pro_redo = pro
     }else{
@@ -572,7 +555,6 @@ do_cal_process = function(input_args, filelist = NULL){
     
     Rfits_write_image(pro_redo$objects_redo, filename=file_sky, create_file=FALSE)
     Rfits_write_key(filename=file_sky, ext=5, keyname='EXTNAME', keyvalue='OBJECTMASK', keycomment='extension name')
-    
     return(NULL)
   }
 }
@@ -607,9 +589,7 @@ do_regen_sky_info = function(input_args){
     sky_info = data.frame((sky_info))
   }
   colnames(sky_info) = tolower(colnames(sky_info))
-  
   write.csv(sky_info, paste0(sky_pro_dir, '/sky_info.csv'), row.names=FALSE)
-  
 }
 do_super_sky = function(input_args){
   
@@ -630,7 +610,6 @@ do_super_sky = function(input_args){
   
   sky_frames_dir = paste0(sky_pro_dir, "/sky_frames/")
   sky_super_dir = paste0(sky_pro_dir, "/sky_super/")
-  # filelist = list.files(sky_frames_dir, full.names = TRUE, pattern = ".fits$")
   filelist = load_files(input_args, which_module = "super_sky")
   sky_info = fread(paste0(sky_pro_dir, '/sky_info.csv'))
   sky_info = sky_info[gsub("//", "/", paste0(sky_info$pathsky, "/", sky_info$filesky))%in%gsub("//", "/",filelist), ]
@@ -645,28 +624,13 @@ do_super_sky = function(input_args){
   nis_filt = sort(unique(sky_info[detector %in% niriss_det,filter]))
   miri_filt = sort(unique(sky_info[detector %in% miri_det,filter]))
   
-  #short_filt = c("F090W", "F115W", "F150W", "F182M", "F200W", "F210M")
-  #long_filt = c("F277W", "F300M", "F335M", "F356W", "F360M", "F410M", "F444W")
-  #miri_filt = c("F1000W", "F1500W", "F1800W", "F770W") #we don't care about MIRI for now
-  
   combine_grid_short = expand.grid(short_det, short_filt, stringsAsFactors=FALSE)
   combine_grid_long = expand.grid(long_det, long_filt, stringsAsFactors=FALSE)
   combine_grid_nis = expand.grid(niriss_det, nis_filt, stringsAsFactors=FALSE)
   combine_grid_miri = expand.grid(miri_det, miri_filt, stringsAsFactors=FALSE)
-  #combine_grid_miri = expand.grid(miri_det, miri_filt, stringsAsFactors=FALSE) #we don't care about MIRI for now
   combine_grid = rbind(combine_grid_short, combine_grid_long, combine_grid_nis, combine_grid_miri)
   
   sky_filelist = list.files(sky_info[1,pathsky], pattern = ".fits$")
-
-  # if(do_NIRISS){
-  #   filelist = filelist[grepl('.fits$', filelist) & grepl(VID, filelist) & grepl("nis", filelist)]
-  #   sky_info = sky_info[grepl(VID, sky_info$visit_id) & grepl("NIS", sky_info$detector), ]
-  #   niriss_det = c("NIS")
-  #   nis_filt = sort(unique(sky_info[detector %in% niriss_det,filter]))
-  #   combine_grid = expand.grid(niriss_det, nis_filt, stringsAsFactors=FALSE)
-  #   sky_filelist = list.files(sky_info[1,pathsky])
-  #   sky_filelist = sky_filelist[grepl('.fits$', sky_filelist) & grepl(VID, sky_filelist) & grepl("nis", sky_filelist)]
-  # }
   
   dummy = foreach(i = 1:dim(combine_grid)[1], .inorder=FALSE)%dopar%{
     if(combine_grid[i,1] %in% c('NRCA1','NRCA2','NRCA3','NRCA4','NRCB1','NRCB2','NRCB3','NRCB4', 'MIRIMAGE')){
@@ -750,8 +714,6 @@ do_apply_super_sky = function(input_args){
   }
   
   sky_filelist = list.files(sky_info[1,pathsky])
-
-    # sky_filelist = load_files(input_args, which_module = "apply_super", sky_info = sky_info)$sky_filelist
   sky_info = load_files(input_args, which_module = "apply_super", sky_info = sky_info)$sky_info
   sky_filelist = sky_info$filesky
 
@@ -825,19 +787,6 @@ do_apply_super_sky = function(input_args){
     #centre
     CC = median( magcutout(temp_cal_sky, box = c(100, 100))$image, na.rm=TRUE)
     
-    # #edges (here we ignore the first 10 pixels since these are often ratty):
-    # LHS = median(temp_cal_sky[11:15,], na.rm=TRUE)
-    # RHS = median(temp_cal_sky[2049-11:15,], na.rm=TRUE)
-    # BHS = median(temp_cal_sky[,11:15], na.rm=TRUE)
-    # THS = median(temp_cal_sky[,2049-11:15], na.rm=TRUE)
-    # #corners (with masking, this gives about as many pixels as the edge above):
-    # BL = median(temp_cal_sky[11:110,11:110], na.rm=TRUE)
-    # TL = median(temp_cal_sky[11:110,2049-11:110], na.rm=TRUE)
-    # TR = median(temp_cal_sky[2049-11:110,2049-11:110], na.rm=TRUE)
-    # BR = median(temp_cal_sky[2049-11:110,11:110], na.rm=TRUE)
-    # #centre
-    # CC = median(temp_cal_sky[974:1073,974:1073], na.rm=TRUE)
-    
     pedestals = c(BL, LHS, TL, THS, TR, RHS, BR, BHS, CC)
     
     final_pedestal = quantile(pedestals, 0.5, na.rm=TRUE) #logic being a real issue due to a large object
@@ -853,14 +802,6 @@ do_apply_super_sky = function(input_args){
     if(length(rezero) > 0){
       temp_cal$SCI$imDat[rezero] = 0
     }
-    #temp_cal$SCI$keyvalues$EXTNAME = 'SCI_SKY'
-    #temp_cal$SCI$keyvalues$SKY_M = temp_lm[2]
-    #temp_cal$SCI$keyvalues$SKY_B = temp_lm[1]
-    #temp_cal$SCI$keycomments$SKY_M = 'SKY M coef in SKY = M.SuperSky + B'
-    #temp_cal$SCI$keycomments$SKY_B = 'SKY B coef in SKY = M.SuperSky + B'
-    #temp_cal$SCI$keynames = names(temp_cal$SCI$keyvalues)
-    
-    #temp_cal$SKY = sky_map
     
     file_cal_sky = setcal_sky_remfile(file_image)
     
@@ -874,28 +815,6 @@ do_apply_super_sky = function(input_args){
     Rfits_write_key(file_cal_sky, keyname='SKY_M', keyvalue=temp_lm[2], keycomment='SKY M coef in SKY = M.SuperSky + B + P', ext=2)
     Rfits_write_key(file_cal_sky, keyname='SKY_B', keyvalue=temp_lm[1], keycomment='SKY B coef in SKY = M.SuperSky + B + P', ext=2)
     Rfits_write_key(file_cal_sky, keyname='SKY_P', keyvalue=final_pedestal, keycomment='SKY P coef in SKY = M.SuperSky + B + P', ext=2)
-    #Rfits_write(temp_cal, file_cal_sky)
-    
-    # if(check_Ndhu == 10){
-    #   Rfits_write_image(sky_map, file_cal_sky, create_file=FALSE, create_ext=TRUE)
-    #   Rfits_write_key(filename=file_cal_sky, ext=check_Ndhu+1, keyname='EXTNAME', keyvalue='SKY_Super', keycomment='extension name')
-    # }else if(check_Ndhu == 11){
-    #   if(check_info$headers[[11]]$keyvalues$EXTNAME == 'SKY_Wisp'){
-    #     #If we have made the SKY_Wisp extension.
-    #     Rfits_write_image(sky_map, file_cal_sky, create_file=FALSE, create_ext=TRUE)
-    #     Rfits_write_key(filename=file_cal_sky, ext=check_Ndhu+1, keyname='EXTNAME', keyvalue='SKY_Super', keycomment='extension name')
-    #   }
-    #   if(check_info$headers[[11]]$keyvalues$EXTNAME == 'SKY_Super'){
-    #     #If we have previously made the SKY_Super extension
-    #     Rfits_write_pix(sky_map, file_cal_sky, ext=check_Ndhu)
-    #   }
-    # }else if(check_Ndhu == 12){
-    #   if(check_info$headers[[12]]$keyvalues$EXTNAME == 'SKY_Super'){
-    #     #If we have previously made the SKY_Super extension. In this case we must have SKY_Pro1oF and SKY_Wisp extensions.
-    #     Rfits_write_pix(sky_map, file_cal_sky, ext=check_Ndhu)
-    #     Rfits_write_key(filename=file_cal_sky, ext=check_Nhdu, keyname='EXTNAME', keyvalue='SKY_Super', keycomment='extension name')
-    #   }
-    # }
     
     check_Ndhu = Rfits_nhdu(file_cal_sky)
     extloc = Rfits_extname_to_ext(file_cal_sky, 'SKY_Super')
@@ -979,7 +898,7 @@ do_modify_pedestal = function(input_args){
         message('Removing old cal_sky file: ',file_cal_sky_renorm)
         file.remove(file_cal_sky_renorm)
       }
-      file.copy(cal_sky_info[i,full], cal_sky_renorm_dir) #no pedestal adjustment for NIRISS
+      file.copy(cal_sky_info[i,full], cal_sky_renorm_dir) 
       return(NULL)
     }
   }else{
@@ -1026,7 +945,6 @@ do_modify_pedestal = function(input_args){
             Rfits_write_key(file_cal_sky_renorm, keyname='SKY_CHI', keyvalue=pro_current_sky$skyChiSq, keycomment='SKY Chi-Sq', ext=2)
           }
         }
-        #    }
       }
       return(NULL)
     }
@@ -1056,8 +974,6 @@ do_cal_sky_info = function(input_args){
   )
   cal_sky_info = cbind(cal_sky_info_WCS, cal_sky_info)
   cal_sky_info$MAGZERO = -2.5*log10(cal_sky_info$PIXAR_SR*1e6) + 8.9 #note the -ve
-  #cal_sky_info$magPHOTMJSR = -2.5*log10(cal_sky_info$PHOTMJSR) #note the -ve
-  #cal_sky_info$MAGZERO_test = -2.5*log10(cal_sky_info$PIXAR_SR*1e6)+8.9
   cal_sky_info = as.data.table(cal_sky_info)
   
   pmap = cal_sky_info[,list(PHOTMJSR=mean(PHOTMJSR)), keyby=list(CRDS_CTX,DETECTOR,FILTER)]
@@ -1066,6 +982,7 @@ do_cal_sky_info = function(input_args){
   
   for(i in 1:dim(cal_sky_info)[1]){
     #below is then Eqn [1] below
+    ## Tie to pmap 1179 for now
     temp_MAGZERO_FIX = cal_sky_info[i,MAGZERO] -2.5*log10(as.numeric(pmap[CRDS_CTX=='jwst_1179.pmap' & DETECTOR==cal_sky_info[i,'DETECTOR'] & FILTER==cal_sky_info[i,'FILTER'],PHOTMJSR]) / cal_sky_info[i,PHOTMJSR])
     if(length(temp_MAGZERO_FIX) == 1){
       cal_sky_info[i,MAGZERO_FIX := temp_MAGZERO_FIX] 
@@ -1073,17 +990,6 @@ do_cal_sky_info = function(input_args){
       cal_sky_info[i,MAGZERO_FIX := cal_sky_info[i,MAGZERO]]
     }
   }
-  
-  # for(i in 1:dim(cal_sky_info)[1]){
-  #   #below is then Eqn [1] below
-  #   temp_MAGZERO_FIX = cal_sky_info[i,MAGZERO] -2.5*log10(as.numeric(pmap[CRDS_CTX=='jwst_0984.pmap' & DETECTOR==cal_sky_info[i,'DETECTOR'] & FILTER==cal_sky_info[i,'FILTER'],PHOTMJSR]) / cal_sky_info[i,PHOTMJSR])
-  #   if(length(temp_MAGZERO_FIX) == 1){
-  #     cal_sky_info[i,MAGZERO_FIX := temp_MAGZERO_FIX] 
-  #   }else{
-  #     cal_sky_info[i,MAGZERO_FIX := cal_sky_info[i,MAGZERO]]
-  #   }
-  # }
-  
   write.csv(cal_sky_info, paste0(cal_sky_info_save_dir, '/cal_sky_info.csv'), row.names = FALSE)
 }
 do_gen_stack = function(input_args){
@@ -1137,7 +1043,6 @@ do_gen_stack = function(input_args){
   
   message("Now running stack!")
   
-  
   temp_vid = VID
   VID_list = grep(temp_vid, unique_visits, value = T)
   if(temp_vid == ""){
@@ -1147,7 +1052,6 @@ do_gen_stack = function(input_args){
   }
   
   for(VID in VID_list[not_pid_idx]){
-    
     if(do_NIRISS){
       cal_sky_info = orig_cal_sky_info[grepl(VID, orig_cal_sky_info$VISIT_ID) & grepl("NIS", orig_cal_sky_info$DETECTOR),]
     }else if(do_MIRI){
@@ -1372,7 +1276,6 @@ do_gen_stack = function(input_args){
         dir.create(dump_stub, recursive = T)
         
         output_stack = propaneStackWarpInVar(
-          # image_list = image_list,
           image_list = image_list_point,
           inVar_list = inVar_list,
           exp_list = input_info$EFFEXPTM,
@@ -1443,7 +1346,6 @@ do_gen_stack = function(input_args){
       }
     }
   }
-  
 }
 do_wisp_rem = function(input_args){
   
@@ -1509,9 +1411,18 @@ do_wisp_rem = function(input_args){
     }
     
     filter_long = c(
-      str_match(ref_files, "F\\s*(.*?)\\s*M")[,2],
       str_match(ref_files, "F\\s*(.*?)\\s*W")[,2]
+    )
+    if(length(filter_long) == 0){
+      filter_long = c(
+        str_match(ref_files, "F\\s*(.*?)\\s*M")[,2]
       )
+    }
+    if(length(filter_long) == 0){
+      filter_long = c(
+        str_match(ref_files, "F\\s*(.*?)\\s*N")[,2]
+      )
+    }
     filter_long[is.na(filter_long)] = -1
     long_num = max(filter_long, na.rm = T)
     
@@ -1676,9 +1587,9 @@ do_RGB = function(input_args){
   ref_dir = input_args$ref_dir
   patch_dir = input_args$patch_dir
   
-  blue_filters = "F070W|F090W|F115W|F150W|F140M|F162M"
-  green_filters = "F200W|F277W|F182M|F210M"
-  red_filters = "F356W|F444W|F250M|F300M|F335M|F360M|F410M|F430|F460M|F480M|F560W|F770W|F1000W|F1130W|F1280W|F1500W|F1800W|F2100W|F2550W"
+  blue_filters = "F070W|F090W|F115W|F150W|F140M|F162M|F164N"
+  green_filters = "F200W|F277W|F182M|F210M|F187N|F212N"
+  red_filters = "F356W|F444W|F250M|F300M|F335M|F360M|F410M|F430M|F460M|F480M|F323N|F405N|F466N|F470N|F560W|F770W|F1000W|F1130W|F1280W|F1500W|F1800W|F2100W|F2550W"
   locut = 1e-6
   hicut = 0.05
   

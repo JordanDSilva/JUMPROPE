@@ -198,7 +198,7 @@ main = function(){
       do_patch(input_args)
     }else{
       if(length(args) <= 1){
-        input_args$FILT = "F070W|F090W|F115W|F150W|F200W|F140M|F162M|F182M|F210M"
+        input_args$FILT = "F070W|F090W|F115W|F150W|F200W|F140M|F162M|F182M|F210M|F164N|F187N|F212N"
       }
       
       ## Test for any short frames to process 
