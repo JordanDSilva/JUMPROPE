@@ -32,55 +32,63 @@ frame_info = function(ref_dir){
   filelist = c(
     list.files(
       path = patch_stack_dir,
-      pattern = glob2rx("*long*.fits"),
+      pattern = glob2rx("*.fits"),
       full.names = T
     ),
     list.files(
       path = mosaic_patch_dir,
-      pattern = glob2rx("*long*.fits"), 
+      pattern = glob2rx("*.fits"), 
       full.names = T)
   )
   
   filenames = c(
     list.files(
       path = patch_stack_dir,
-      pattern = glob2rx("*long*.fits"),
+      pattern = glob2rx("*.fits"),
       full.names = F
     ),
     list.files(
       path = mosaic_patch_dir,
-      pattern = glob2rx("*long*.fits"), 
+      pattern = glob2rx("*.fits"), 
       full.names = F)
   )
-  VID_list = sapply(filenames, function(x){
+  
+  VID_list = unname(sapply(filenames, function(x){
     split_fname = str_split(x, "_")[[1]]
-    split_fname = split_fname[!(grepl("patch|stack|long|F.+W|F.+M|F.+N", split_fname))]
+    split_fname = split_fname[!(grepl("patch|stack|short|long|F.+W|F.+M|F.+N|MIRIMAGE|.fits", split_fname))]
     vid = split_fname[1]
     if(is.na(vid)){
-      return("")
+      return(split_fname[1])
     }else{
       return(vid)
     }
-  })
+  }))
   
-  MODULE_list = sapply(filenames, function(x){
+  MODULE_list = unname(sapply(filenames, function(x){
     split_fname = str_split(x, "_")[[1]]
-    split_fname = split_fname[!(grepl("patch|stack|long|F.+W|F.+M|F.+N", split_fname))]
-    module = split_fname[2]
-    if(is.na(module)){
-      return(split_fname[1])
+    split_fname = split_fname[!(grepl("patch|stack|short|long|F.+W|F.+M|F.+N|MIRIMAGE|.fits", split_fname))]
+    if(is.na(split_fname[2])){
+      module = split_fname[1]
     }else{
-      return(module)
+      module = split_fname[2]
     }
-  })
+    return(module)
+  }))
   
+  PIX_list = unname(sapply(filenames, function(x){
+    split_fname = tail(str_split(x, "_")[[1]], 1)
+    pixscale_ = str_split_1(split_fname, ".fits")[1]
+    return(pixscale_)
+  }))
+
   frame_info = data.frame(
-    filenames = filenames,
-    VISIT_ID = VID_list,
-    MODULE = MODULE_list
+    "filenames" = filenames,
+    "VISIT_ID" = VID_list,
+    "MODULE" = MODULE_list,
+    "PIXSCALE" = PIX_list
   )
   
-  stack_grid = unique(frame_info[,c("VISIT_ID", "MODULE")])
+  stack_grid = unique(frame_info[,c("VISIT_ID", "MODULE", "PIXSCALE")])
   
   stack_grid$PROPOSAL_ID = substr(stack_grid$VISIT_ID, 1, 4)
   stack_grid$PROPOSAL_ID[stack_grid$MODULE == stack_grid$VISIT_ID] = stack_grid$VISIT_ID[stack_grid$MODULE == stack_grid$VISIT_ID]
@@ -120,7 +128,7 @@ frame_info = function(ref_dir){
                              "RA_BR", "DEC_BR")
     
     ret = cbind(
-      stack_grid[i, c("PROPOSAL_ID","VISIT_ID", "MODULE")],
+      stack_grid[i, c("PROPOSAL_ID","VISIT_ID", "MODULE", "PIXSCALE")],
       
       mid_info,
       
@@ -132,12 +140,14 @@ frame_info = function(ref_dir){
   }
   
   foo[["jumprope_version"]] = rep(jumprope_version, dim(foo)[1])
-  csv_stub = paste0(ref_dir, "/ProFound/long_warp_info.csv")
+  csv_stub = paste0(ref_dir, "/ProFound/warp_info.csv")
   fwrite(foo, csv_stub)
 } ##<--Compute the long warp frame info needed for querying GAIA and HST via MAST
 
 ## Moving files for source detection codes
 warp_short_to_long = function(input_args){
+  
+  ## Safest to avoid covariance between pixels
   
   message("Running warp_short_to_long")
   
@@ -215,18 +225,19 @@ warp_short_to_long = function(input_args){
   }
   message("Done!")
   # return(c(frames_short_to_long, frames_long))
-} ##<-- Downwarp the short wavelength, short pixel scale to long [DEPRECATED
-copy_long = function(input_args){
+} ##<-- Downwarp the short wavelength, short pixel scale to long 
+copy_frames = function(input_args){
   
   ## Copy the long pixel scale from the PROCESS dirs to the DATA dir
   ## Keep separete DATA dir incase the user puts their own frames in there
   ## Will be data redundancy but I'm assuming you will have enough disk space if you're using this code!
   
-  message("Running copy_long")
+  message("Running copy")
   
   ref_dir = input_args$ref_dir
   VID = input_args$VID
   MODULE = input_args$MODULE
+  PIXSCALE = input_args$PIXSCALE
   
   if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID){
     MODULE = paste0("NRC", MODULE)
@@ -267,8 +278,8 @@ copy_long = function(input_args){
   fitsnames = fitsnames[!is.na(fitsnames)]
   
   #native scales
-  long_idx = grepl(VID, filepaths) & grepl(MODULE, filepaths)  & grepl("long", filepaths)
-
+  long_idx = grepl(VID, filepaths) & grepl(MODULE, filepaths)  & grepl(PIXSCALE, filepaths)
+  
   #frames_long = lapply(filepaths[long_idx], function(x) Rfits_read_all(filename = x, pointer = F))
   names_frames_long = fitsnames[long_idx]
   
@@ -288,6 +299,7 @@ star_mask = function(input_args){
   ref_dir = input_args$ref_dir
   VID = input_args$VID
   MODULE = input_args$MODULE
+  PIXSCALE = input_args$PIXSCALE
   
   if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID){
     MODULE = paste0("NRC", MODULE)
@@ -301,8 +313,8 @@ star_mask = function(input_args){
   dir.create(star_mask_dir, showWarnings = F, recursive = T)
   data_dir = paste0(ref_dir, "/Patch_Stacks/") #directory with the propanes
   gaia_dir = paste0(ref_dir, "/ProFound/GAIA_Cats/", VID, "/")
-  file_list = list.files(data_dir, pattern=glob2rx(paste0("*", VID, "*", MODULE, "*long.fits")), full.names=TRUE) #list all the .fits files in a directory
-  file_names = list.files(data_dir, pattern=glob2rx(paste0("*", VID, "*", MODULE, "*long.fits")), full.names=FALSE)
+  file_list = list.files(data_dir, pattern=glob2rx(paste0("*", VID, "*", MODULE, "*", PIXSCALE, "*.fits")), full.names=TRUE) #list all the .fits files in a directory
+  file_names = list.files(data_dir, pattern=glob2rx(paste0("*", VID, "*", MODULE, "*", PIXSCALE, "*.fits")), full.names=FALSE)
   
   #make star masks on the F277W filter, and if it's missing use the shortest filter
   file_idx = (
@@ -529,7 +541,7 @@ star_mask = function(input_args){
     star_mask_redo = list()
     star_mask_redo$mask = star_mask_save[["star_mask"]]
     
-    plot_stub = paste0(ref_dir, "/ProFound/Star_Masks/", VID, "/", MODULE, "/", VID, "_", MODULE, "_star_mask.pdf")
+    plot_stub = paste0(ref_dir, "/ProFound/Star_Masks/", VID, "/", MODULE, "/", VID, "_", MODULE, "_", PIXSCALE, "_star_mask.pdf")
     CairoPDF(plot_stub, width = 10, height = 10)
     par(mfrow = c(1,1), mar = rep(0,4), oma = rep(0,4))
     magimage(ref$image$imDat, flip = T, sparse = 1)
@@ -537,7 +549,7 @@ star_mask = function(input_args){
     legend(x = "topleft", paste0(VID, "_", MODULE))
     dev.off()
     
-    csv_stub = paste0(ref_dir, "/ProFound/Star_Masks/", VID, "/", MODULE, "/", VID, "_", MODULE, "_star_mask.csv")
+    csv_stub = paste0(ref_dir, "/ProFound/Star_Masks/", VID, "/", MODULE, "/", VID, "_", MODULE, "_", PIXSCALE, "_star_mask.csv")
     fwrite(data.frame(star_mask_save[["new_gaia"]]), file = csv_stub)
   }else{
     star_mask_redo = list(mask = matrix(0, nrow = dim(ref$image)[1], ncol = dim(ref$image)[2]))
@@ -545,7 +557,7 @@ star_mask = function(input_args){
 
   message("Saving star mask")
   
-  save_stub = paste0(ref_dir, "/ProFound/Star_Masks/", VID, "/", MODULE, "/", VID, "_", MODULE, "_star_mask.rds")
+  save_stub = paste0(ref_dir, "/ProFound/Star_Masks/", VID, "/", MODULE, "/", VID, "_", MODULE, "_", PIXSCALE, "_star_mask.rds")
   saveRDS(object = star_mask_redo, save_stub)
   message("Done!")
 } ##<-- Create an empirical star mask from GAIA sources 
@@ -558,6 +570,7 @@ star_mask_tile = function(input_args){
   ref_dir = input_args$ref_dir
   VID = input_args$VID
   MODULE = input_args$MODULE
+  PIXSCALE = input_args$PIXSCALE
   
   if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID){
     MODULE = paste0("NRC", MODULE)
@@ -569,8 +582,8 @@ star_mask_tile = function(input_args){
     
     data_dir = paste0(ref_dir, "/ProFound/Data/", VID, "/", MODULE, "/") #directory with the propanes
     
-    file_list = list.files(data_dir, pattern=".fits", full.names=TRUE) #list all the .fits files in a directory
-    file_names = list.files(data_dir, pattern=".fits", full.names=FALSE)
+    file_list = list.files(data_dir, pattern=paste0(PIXSCALE,".fits"), full.names=TRUE) #list all the .fits files in a directory
+    file_names = list.files(data_dir, pattern=paste0(PIXSCALE,".fits"), full.names=FALSE)
     
     file_idx = (
       grepl("F277W", file_list) & 
@@ -616,7 +629,7 @@ star_mask_tile = function(input_args){
     star_mask_files = foreach(i = 1:length(input_VID), .combine = "c")%do%{
       paste0(ref_dir, "/ProFound/Star_Masks/", input_VID[i], "/", 
                             input_MODULE[i], "/", 
-                            input_VID[i], "_", input_MODULE[i], "_star_mask.rds")}
+                            input_VID[i], "_", input_MODULE[i], "_", PIXSCALE, "_star_mask.rds")}
     check_star_masks_exist = file.exists(star_mask_files)
     check_files_idx = which(!check_star_masks_exist)
     check_grid = data.frame(input_VID[check_files_idx], input_MODULE[check_files_idx])
@@ -626,6 +639,7 @@ star_mask_tile = function(input_args){
       for(i in 1:dim(check_grid)[1]){
         temp_args$VID = check_grid[i,1]
         temp_args$MODULE = check_grid[i,2]
+        temp_args$PIXSCALE = PIXSCALE
         query_gaia(temp_args)
         star_mask(temp_args)
       }
@@ -634,7 +648,7 @@ star_mask_tile = function(input_args){
     read_star_masks = foreach(i = 1:length(input_VID))%do%{
       star_mask_file = paste0(ref_dir, "/ProFound/Star_Masks/", input_VID[i], "/", 
                               input_MODULE[i], "/", 
-                              input_VID[i], "_", input_MODULE[i], "_star_mask.rds")
+                              input_VID[i], "_", input_MODULE[i], "_", PIXSCALE, "_star_mask.rds")
       
       message("Using: ", star_mask_file)
       star_mask = readRDS(star_mask_file)
@@ -661,13 +675,18 @@ star_mask_tile = function(input_args){
     
     message("Star mask complete")
     
+    star_mask_dir = paste0(ref_dir, "/ProFound/Star_Masks/", VID, "/", MODULE, "/")
+
+    if(dir.exists(star_mask_dir)){
+      unlink(star_mask_dir, recursive = T)
+    }
     dir.create(
-      paste0(ref_dir, "/ProFound/Star_Masks/", VID, "/", MODULE, "/"),
+      star_mask_dir,
       recursive = T, showWarnings = F
     )
-    
+
     message("Saving star mask...")
-    plot_stub = paste0(ref_dir, "/ProFound/Star_Masks/", VID, "/", MODULE, "/", VID, "_", MODULE, "_star_mask.png")
+    plot_stub = paste0(ref_dir, "/ProFound/Star_Masks/", VID, "/", MODULE, "/", VID, "_", MODULE, "_", PIXSCALE, "_star_mask.png")
     png(plot_stub, width = dim(ref)[1], height = dim(ref)[2], res = 72)
     par(mfrow = c(1,1), mar = rep(0,4), oma = rep(0,4))
     magimage(ref$imDat, flip = T, sparse = 2)
@@ -675,7 +694,7 @@ star_mask_tile = function(input_args){
     legend(x = "topleft", paste0(VID, "_", MODULE))
     dev.off()
     
-    save_stub = paste0(ref_dir, "/ProFound/Star_Masks/", VID, "/", MODULE, "/", VID, "_", MODULE, "_star_mask.rds")
+    save_stub = paste0(ref_dir, "/ProFound/Star_Masks/", VID, "/", MODULE, "/", VID, "_", MODULE, "_", PIXSCALE, "_star_mask.rds")
     saveRDS(object = list(mask=big_star_mask), save_stub)
     message("Done!")
     
@@ -690,6 +709,7 @@ do_detect = function(input_args, detect_bands = detect_bands_load, profound_func
   ref_dir = input_args$ref_dir
   VID = input_args$VID
   MODULE = input_args$MODULE
+  PIXSCALE = input_args$PIXSCALE
   
   if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID){
     MODULE = paste0("NRC", MODULE)
@@ -708,8 +728,8 @@ do_detect = function(input_args, detect_bands = detect_bands_load, profound_func
   dir.create(detect_dir, recursive = T, showWarnings = F)
   
   message("Start detect!")
-  file_list <- list.files(data_dir, pattern=".fits", full.names=TRUE) #list all the .fits files in a directory
-  file_names <- list.files(data_dir, pattern=".fits", full.names=FALSE) #list all the .fits files in a directory
+  file_list <- list.files(data_dir, pattern=paste0(PIXSCALE, ".fits"), full.names=TRUE) #list all the .fits files in a directory
+  file_names <- list.files(data_dir, pattern=paste0(PIXSCALE, ".fits"), full.names=FALSE) #list all the .fits files in a directory
   
   message(paste0("Using detect_band=", detect_bands))
   if(detect_bands == "ALL"){
@@ -724,7 +744,7 @@ do_detect = function(input_args, detect_bands = detect_bands_load, profound_func
   N_frames = length(propanes)
   message(paste0("Running ", N_frames, " frames from ", "VISIT: ", VID, ", module: ", MODULE))
   
-  star_mask_file = list.files(star_mask_dir, pattern = "mask.rds", full.names = T)
+  star_mask_file = list.files(star_mask_dir, pattern = paste0(PIXSCALE,"_star_mask.rds"), full.names = T)
   
   if(length(star_mask_file>0)){
     message(paste0("Load in star mask from: ", star_mask_file))
@@ -761,7 +781,7 @@ do_detect = function(input_args, detect_bands = detect_bands_load, profound_func
   profound$segstats$MODULE = rep(MODULE, dim(profound$segstats)[1])
   profound$segstats$VID = rep(VID, dim(profound$segstats)[1])
   
-  stack_stub = paste0(detect_dir, "/", VID, "_", MODULE, "_profound_stack.fits")
+  stack_stub = paste0(detect_dir, "/", VID, "_", MODULE, "_", PIXSCALE, "_profound_stack.fits")
   profound_stack = list(
     stack = patch_stack_image$image[,],
     segim = profound$segim,
@@ -769,10 +789,10 @@ do_detect = function(input_args, detect_bands = detect_bands_load, profound_func
   )
   Rfits_write(data = profound_stack, filename = stack_stub)
   
-  catalogue_stub = paste0(detect_dir, "/", VID, "_", MODULE, "_segstats.csv")
+  catalogue_stub = paste0(detect_dir, "/", VID, "_", MODULE, "_", PIXSCALE, "_segstats.csv")
   fwrite(profound$segstats, file = catalogue_stub)
   
-  profound_stub = paste0(detect_dir, "/", VID, "_", MODULE, "_profound.rds")
+  profound_stub = paste0(detect_dir, "/", VID, "_", MODULE, "_", PIXSCALE, "_profound.rds")
   saveRDS(profound, file = profound_stub)
   
   ## I have no idea why plot.profound spits out and error 
@@ -798,7 +818,7 @@ do_detect = function(input_args, detect_bands = detect_bands_load, profound_func
     )
   }
   
-  plot_stub = paste0(detect_dir, "/", VID, "_", MODULE, "_profound_plot.pdf")
+  plot_stub = paste0(detect_dir, "/", VID, "_", MODULE, "_", PIXSCALE, "_profound_plot.pdf")
   CairoPDF(plot_stub, width = 10, height = 10)
   plot_profound(profound)
   par(mfrow = c(1,2), mar = rep(0,4), oma = c(1.5, 1.5, 0.5, 0.5), mai = rep(0,4))
@@ -902,6 +922,7 @@ do_measure = function(input_args){
   ref_dir = input_args$ref_dir
   VID = input_args$VID
   MODULE = input_args$MODULE
+  PIXSCALE = input_args$PIXSCALE
   sampling_cores = input_args$sampling_cores
   
   if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID){
@@ -919,7 +940,7 @@ do_measure = function(input_args){
   measurements_dir = paste0(ref_dir, "/ProFound/Measurements/", VID, "/", MODULE)
   
   ######## Load segim and mask ####################
-  pro_path = list.files(detect_dir, pattern = glob2rx(paste0("*", VID, "*", MODULE, "*rds")), full.names = T)
+  pro_path = list.files(detect_dir, pattern = glob2rx(paste0("*", VID, "*", MODULE, "*", PIXSCALE, "*rds")), full.names = T)
   assert(checkFileExists(pro_path))
   
   super_pro = readRDS(pro_path)
@@ -935,11 +956,11 @@ do_measure = function(input_args){
   
   # nirc.list = list.files(data_path, pattern = modl, full.names = T, recursive = T)
   data.list = list.files(data_dir, 
-                         pattern = ".fits$", 
+                         pattern = paste0(PIXSCALE, ".fits$"), 
                          full.names = T, 
                          recursive = T)
   data.names = list.files(data_dir, 
-                          pattern = ".fits$", 
+                          pattern = paste0(PIXSCALE, ".fits$"), 
                           full.names = F, 
                           recursive = T)
   
@@ -985,7 +1006,7 @@ do_measure = function(input_args){
     dir.create(sampling_dir, recursive = T)
   }                           # Create directory for the sampling stuff
   
-  error_file = file.path(sampling_dir,paste(VID,MODULE,'error_fit.txt', sep='_'))
+  error_file = file.path(sampling_dir,paste(VID,MODULE,PIXSCALE,'error_fit.txt', sep='_'))
   # error_file = paste0(sampling_dir, "/", VID, "_", MODULE, "_error_fit.txt")
   # error_file = "/Volumes/RAIDY/JWST/ProFound/Sampling/2738001001/NRCA/2738001001_NRCA_error_fit.txt"
   cat('Filters','Slopes','Intercepts','\n', file = error_file, sep='\t')          # Create file for the fitted relation of error sampling
@@ -1049,7 +1070,7 @@ do_measure = function(input_args){
     csvout[paste0(ff,'_scaled_fluxc_err')] = error_scaling(dum_pro_col$segstats$flux_err, dum_pro_col$segstats$N100, slope, intercept)
     rm(dum_pro_col)
     gc()
-    saveRDS(dum_pro, file.path(measurements_dir,paste(VID,MODULE,ff,"results.rds",sep='_')))
+    saveRDS(dum_pro, file.path(measurements_dir,paste(VID,MODULE,PIXSCALE,ff,"results.rds",sep='_')))
     
     CairoPDF(file.path(inspect_dir,paste0("profound_",ff,"_inspect.pdf")), width = 10, height = 10 )
     plot_profound(dum_pro)
@@ -1075,7 +1096,7 @@ do_measure = function(input_args){
     
     gc()
   }
-  write.csv(csvout, file = file.path(measurements_dir,paste(VID,MODULE,"photometry.csv",sep='_')))
+  write.csv(csvout, file = file.path(measurements_dir,paste(VID,MODULE,PIXSCALE,"photometry.csv",sep='_')))
 }
 
 ## HST codes
@@ -1491,6 +1512,7 @@ query_hst = function(input_args){
   
   VID = input_args$VID
   MODULE = input_args$MODULE
+  PIXSCALE = input_args$PIXSCALE
   ref_dir = input_args$ref_dir
   
   if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID){
@@ -1505,7 +1527,7 @@ query_hst = function(input_args){
     mosaic_files = list.files(
       paste0(ref_dir, "/Mosaic_Stacks/Patch/"),
       full.names = T,
-      pattern = glob2rx(paste0("*", VID, "*long.fits"))
+      pattern = glob2rx(paste0("*", VID, "*", PIXSCALE, "*.fits"))
     )
     input_info = foreach(i = 1:length(mosaic_files), .combine = "bind_rows")%do%{
       info = Rfits_read_table(filename = mosaic_files[i], ext = 7)
@@ -1542,3 +1564,68 @@ query_hst = function(input_args){
   return(NULL)
 }
 
+
+
+copy_long = function(input_args){
+  
+  ## Copy the long pixel scale from the PROCESS dirs to the DATA dir
+  ## Keep separete DATA dir incase the user puts their own frames in there
+  ## Will be data redundancy but I'm assuming you will have enough disk space if you're using this code!
+  
+  message("Running copy_long")
+  
+  ref_dir = input_args$ref_dir
+  VID = input_args$VID
+  MODULE = input_args$MODULE
+  
+  if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID){
+    MODULE = paste0("NRC", MODULE)
+  }
+  
+  message("Start copy!")
+  
+  patch_stack_dir = paste0(ref_dir, "/Patch_Stacks/")
+  mosaic_patch_dir = paste0(ref_dir, "/Mosaic_Stacks/Patch/")
+  warp_dir = paste0(ref_dir, "/ProFound/Data/", VID, "/", MODULE, "/")
+  
+  if(dir.exists(warp_dir)){
+    warp_propane_files = list.files(
+      path = warp_dir,
+      pattern = ".fits$",
+      full.names = T
+    )
+    warp_propane_files = warp_propane_files[
+      !grepl("hst", warp_propane_files, ignore.case = T)
+    ]
+    file.remove(
+      warp_propane_files
+    )
+  }else{
+    dir.create(warp_dir, recursive = T)
+  }
+  
+  ## here we read in the Patched_Stacks
+  filepaths <- c(
+    list.files(patch_stack_dir, pattern=".fits", full.names=TRUE), #list all the .fits files in a directory
+    list.files(mosaic_patch_dir, pattern=".fits", full.names = TRUE)
+  )
+  filepaths = filepaths[!is.na(filepaths)]
+  fitsnames <- c(
+    list.files(patch_stack_dir, pattern=".fits", full.names=FALSE), #list all the .fits files in a directory
+    list.files(mosaic_patch_dir, pattern=".fits", full.names = FALSE)
+  )
+  fitsnames = fitsnames[!is.na(fitsnames)]
+  
+  #native scales
+  long_idx = grepl(VID, filepaths) & grepl(MODULE, filepaths)  & grepl("long", filepaths)
+  
+  #frames_long = lapply(filepaths[long_idx], function(x) Rfits_read_all(filename = x, pointer = F))
+  names_frames_long = fitsnames[long_idx]
+  
+  for(i in 1:length(names_frames_long)){
+    message(paste0("Copying ", names_frames_long[i], " to ", warp_dir))
+    file.copy(from = filepaths[long_idx][i], to = paste0(warp_dir, "warp_", names_frames_long[i]), overwrite = T)
+  }
+  message("Done!")
+  # return(c(frames_short_to_long, frames_long))
+} ##<-- Copy the long pixelscale to Data dir. File redundancy but safer option for detects.

@@ -156,7 +156,7 @@ deep_stacker = function(input_args){
   }
   for(grid_size in c(input_args$grid_size)){
     
-    file_info = find_frames[grepl(grid_size, find_frames$file), ]
+    file_info = find_frames[grepl(paste0(grid_size, "|MIRI"), find_frames$file), ] ## Force find MIRI
     
     if(input_args$calstack){
       wcs = propaneGenWCS(

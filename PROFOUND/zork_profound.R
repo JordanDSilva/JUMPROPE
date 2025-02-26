@@ -50,7 +50,7 @@ select_code_func = function(){
           ## Thank you for choosing ZORK for your JWST processing!  ##
           ## Press:                                                 ##
           ## 1 = Warp short to long                                 ##
-          ## 2 = Copy long                                          ##
+          ## 2 = Copy frames                                        ##
           ## 3 = Query GAIA                                         ## 
           ## 4 = Star masks                                         ##
           ## 5 = Star masks for big mosaic                          ##
@@ -92,12 +92,19 @@ main = function(){
     message("Specify VID")
     VID = ""
     MODULE = ""
+    PIXSCALE = "long"
   } else if (length(args)==1) {
     VID = toString(args[1])
     MODULE = ""
+    PIXSCALE = "long"
   } else if (length(args)==2) {
     VID = toString(args[1])
     MODULE = toupper(toString(args[2]))
+    PIXSCALE = "long"
+  } else if (length(args)==3) {
+    VID = toString(args[1])
+    MODULE = toupper(toString(args[2]))
+    PIXSCALE = toString(args[3])
   } else {
     message(paste0("Error Nargs wrong: ", length(args)))
     q()
@@ -128,13 +135,14 @@ main = function(){
   
   frame_info_file = data.frame(
     fread(
-      paste0(ref_dir, "/ProFound/long_warp_info.csv")
+      paste0(ref_dir, "/ProFound/warp_info.csv")
     ) 
   )
   
-  frame_grid = unique(frame_info_file[, c("VISIT_ID", "MODULE")])
+  frame_grid = unique(frame_info_file[, c("VISIT_ID", "MODULE", "PIXSCALE")])
+  
   frame_grid = frame_grid[
-    grepl(VID, frame_grid$VISIT_ID) & grepl(MODULE, frame_grid$MODULE),
+    grepl(VID, frame_grid$VISIT_ID) & grepl(MODULE, frame_grid$MODULE, ignore.case = TRUE) & grepl(PIXSCALE, frame_grid$PIXSCALE),
   ]
   
   message("Using this frame grid:")
@@ -146,7 +154,7 @@ main = function(){
   
   code_organiser = list(
     'warp_short_to_long'=warp_short_to_long,
-    'copy_long'=copy_long,
+    'copy_frames'=copy_frames,
     'query_gaia'=query_gaia,
     'star_mask'=star_mask,
     'star_mask_tile'=star_mask_tile,
@@ -161,6 +169,8 @@ main = function(){
     input_args = list(
       VID = frame_grid$VISIT_ID[i],
       MODULE = frame_grid$MODULE[i],
+      PIXSCALE = frame_grid$PIXSCALE[i],
+      
       ref_dir = ref_dir,
       
       sampling_cores = as.numeric(env_var[["JUMPROPE_cores_stack"]]),
