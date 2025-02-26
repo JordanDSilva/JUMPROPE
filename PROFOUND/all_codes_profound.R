@@ -16,7 +16,7 @@ library(matrixStats)
 
 source("./ProFound_settings.R")
 
-jumprope_version = "1.2.4"
+jumprope_version = "1.2.5"
 
 frame_info = function(ref_dir){
   
@@ -388,7 +388,9 @@ star_mask = function(input_args){
     return(-1*loglike)
   }
   star_masker = function(ref, gaia, pro, psf){
-    box = 5
+    box = ceiling(
+      0.30 / pixscale(ref, unit = "asec")
+    ) ## Use 0.3 arcsec aperture to calculate ray 
     quan_cut = c(0.0, 0.95)
     
     gama_func = function(x)(10^(2.6 - 0.17*x)/pixscale(ref, unit = "amin")) ## GAMA-esque star mask 
@@ -580,6 +582,15 @@ star_mask_tile = function(input_args){
     message("VID [", VID, "] is the same as MODULE [", MODULE, "]")
     message("Detected big mosaic!")
     
+    star_mask_dir = paste0(ref_dir, "/ProFound/Star_Masks/", VID, "/", MODULE, "/")
+    if(dir.exists(star_mask_dir)){
+      unlink(star_mask_dir, recursive = T)
+    }
+    dir.create(
+      star_mask_dir,
+      recursive = T, showWarnings = F
+    )
+    
     data_dir = paste0(ref_dir, "/ProFound/Data/", VID, "/", MODULE, "/") #directory with the propanes
     
     file_list = list.files(data_dir, pattern=paste0(PIXSCALE,".fits"), full.names=TRUE) #list all the .fits files in a directory
@@ -607,7 +618,21 @@ star_mask_tile = function(input_args){
     ref = Rfits_read_image(filename = file_list, ext = 1)
     keyvalues =ref$keyvalues
     input_info = Rfits_read_table(filename = file_list, ext = 7)
-    
+    ## Check if the frames are on the disk
+    new_star_dirs = c()
+    unique_star_dirs = unique(input_info$path)
+    print(head(input_info$full))
+    for(i in 1:length(unique_star_dirs)){
+      if(!dir.exists(unique_star_dirs[i])){
+        message('Patch stack directory that I am reading is missing. Please enter a new one (no quotes):')
+        new_star_dir = toString(readLines("stdin", n=1))
+      }else{
+        new_star_dir = unique_star_dirs[i]
+      }
+      input_info$path[input_info$path == unique_star_dirs[i]] = new_star_dir
+    }
+    input_info$full = paste0(input_info$path, "/", input_info$file)
+
     input_VID = na.exclude(
       str_extract(
         sapply(
@@ -629,7 +654,8 @@ star_mask_tile = function(input_args){
     star_mask_files = foreach(i = 1:length(input_VID), .combine = "c")%do%{
       paste0(ref_dir, "/ProFound/Star_Masks/", input_VID[i], "/", 
                             input_MODULE[i], "/", 
-                            input_VID[i], "_", input_MODULE[i], "_", PIXSCALE, "_star_mask.rds")}
+                            input_VID[i], "_", input_MODULE[i], "_", PIXSCALE, "_star_mask.rds")
+      }
     check_star_masks_exist = file.exists(star_mask_files)
     check_files_idx = which(!check_star_masks_exist)
     check_grid = data.frame(input_VID[check_files_idx], input_MODULE[check_files_idx])
@@ -645,47 +671,74 @@ star_mask_tile = function(input_args){
       }
     }
     
-    read_star_masks = foreach(i = 1:length(input_VID))%do%{
-      star_mask_file = paste0(ref_dir, "/ProFound/Star_Masks/", input_VID[i], "/", 
-                              input_MODULE[i], "/", 
-                              input_VID[i], "_", input_MODULE[i], "_", PIXSCALE, "_star_mask.rds")
-      
-      message("Using: ", star_mask_file)
-      star_mask = readRDS(star_mask_file)
-      
-      input_file_keyvalues = Rfits_read_image(
-        filename = input_info$full[i],
-        ext = 1
-      )$keyvalues
-      
-      temp_warp = propaneWarp(
-        image_in = Rfits_create_image(star_mask$mask, keyvalues = input_file_keyvalues),
-        keyvalues_out = keyvalues,
-        doscale = F,
-        cores = 1
-      )
-      star_mask_warp = temp_warp$imDat
-      # star_mask_warp[star_mask_warp != 0 | !is.na(star_mask_warp)] = 1
-      star_mask_warp[is.na(star_mask_warp)] = 0
-      return(star_mask_warp)
+    read_star_masks = foreach(i = 1:length(input_VID))%do%{ 
+        star_mask_file = paste0(ref_dir, "/ProFound/Star_Masks/", input_VID[i], "/", 
+                                input_MODULE[i], "/", 
+                                input_VID[i], "_", input_MODULE[i], "_", PIXSCALE, "_star_mask.rds")
+        
+        message("Using: ", star_mask_file)
+        star_mask = readRDS(star_mask_file)
+        
+        input_file_keyvalues = Rfits_read_image(
+          filename = input_info$full[i],
+          ext = 1
+        )$keyvalues
+        
+        image_in = Rfits_create_image(star_mask$mask, keyvalues = input_file_keyvalues)
     }
+    class(read_star_masks) = "Rfits_list"
     
-    big_star_mask = Reduce("+", read_star_masks)
+    temp_fits_fname = paste0(star_mask_dir, "/star_mask_temp.fits")
+    Rfits_write(
+      read_star_masks,
+      filename = temp_fits_fname
+    ) ## Write to disk 
+    rm(read_star_masks)
+    read_star_masks = Rfits_read(temp_fits_fname, pointer = TRUE)
+    big_star_mask = propaneStackWarpInVar(
+      image_list = read_star_masks, 
+      keyvalues_out = keyvalues, 
+      cores = 1, 
+      cores_warp = 1, 
+      direction = "backward", 
+      magzero_in = 23.9,
+      magzero_out = 23.9
+    )$image$imDat
     big_star_mask[big_star_mask != 0] = 1
+    unlink(temp_fits_fname, recursive = TRUE) 
+    
+    ## Storing large matrices in a list, wtf? Try something new^
+    # read_star_masks = foreach(i = 1:length(input_VID))%do%{ 
+    #   star_mask_file = paste0(ref_dir, "/ProFound/Star_Masks/", input_VID[i], "/", 
+    #                           input_MODULE[i], "/", 
+    #                           input_VID[i], "_", input_MODULE[i], "_", PIXSCALE, "_star_mask.rds")
+    #   
+    #   message("Using: ", star_mask_file)
+    #   star_mask = readRDS(star_mask_file)
+    #   
+    #   input_file_keyvalues = Rfits_read_image(
+    #     filename = input_info$full[i],
+    #     ext = 1
+    #   )$keyvalues
+    #   
+    #   temp_warp = propaneWarp(
+    #     image_in = Rfits_create_image(star_mask$mask, keyvalues = input_file_keyvalues),
+    #     keyvalues_out = keyvalues,
+    #     doscale = F,
+    #     cores = 1
+    #   )
+    #   star_mask_warp = temp_warp$imDat
+    #   # star_mask_warp[star_mask_warp != 0 | !is.na(star_mask_warp)] = 1
+    #   star_mask_warp[is.na(star_mask_warp)] = 0
+    #   return(star_mask_warp)
+    # }
+    # 
+    # big_star_mask = Reduce("+", read_star_masks)
+    # big_star_mask[big_star_mask != 0] = 1
     
     message("Star mask complete")
-    
-    star_mask_dir = paste0(ref_dir, "/ProFound/Star_Masks/", VID, "/", MODULE, "/")
-
-    if(dir.exists(star_mask_dir)){
-      unlink(star_mask_dir, recursive = T)
-    }
-    dir.create(
-      star_mask_dir,
-      recursive = T, showWarnings = F
-    )
-
     message("Saving star mask...")
+    
     plot_stub = paste0(ref_dir, "/ProFound/Star_Masks/", VID, "/", MODULE, "/", VID, "_", MODULE, "_", PIXSCALE, "_star_mask.png")
     png(plot_stub, width = dim(ref)[1], height = dim(ref)[2], res = 72)
     par(mfrow = c(1,1), mar = rep(0,4), oma = rep(0,4))
@@ -716,9 +769,7 @@ do_detect = function(input_args, detect_bands = detect_bands_load, profound_func
   }
   
   star_mask_dir = paste0(ref_dir, "/ProFound/Star_Masks/", VID, "/", MODULE, "/")
-  
   data_dir = paste0(ref_dir, "/ProFound/Data/", VID, "/", MODULE, "/") 
-  
   detect_dir = paste0(ref_dir, "/ProFound/Detects/", VID, "/", MODULE, "/") 
   
   if(dir.exists(detect_dir)){
@@ -954,7 +1005,6 @@ do_measure = function(input_args){
   ####### Load data images ########################
   assert(checkDirectoryExists(data_dir))
   
-  # nirc.list = list.files(data_path, pattern = modl, full.names = T, recursive = T)
   data.list = list.files(data_dir, 
                          pattern = paste0(PIXSCALE, ".fits$"), 
                          full.names = T, 
@@ -963,9 +1013,6 @@ do_measure = function(input_args){
                           pattern = paste0(PIXSCALE, ".fits$"), 
                           full.names = F, 
                           recursive = T)
-  
-  # data.list = data.list[-grep('jwst_nirc', data.list)]                            # (should) still work even with only NIRCam data
-  # data.list = c(data.list, nirc.list)
   
   filter.names = toupper(str_extract(data.list, "F\\d{3,}[A-Z]{1,}|f\\d{3,}[a-z]{1,}"))
   filter.names[is.na(filter.names)] = sapply(data.list[is.na(filter.names)], function(x)str_split_1(x, "_")[6]) ## Filter name should hopefully always be in position 6
@@ -1007,8 +1054,6 @@ do_measure = function(input_args){
   }                           # Create directory for the sampling stuff
   
   error_file = file.path(sampling_dir,paste(VID,MODULE,PIXSCALE,'error_fit.txt', sep='_'))
-  # error_file = paste0(sampling_dir, "/", VID, "_", MODULE, "_error_fit.txt")
-  # error_file = "/Volumes/RAIDY/JWST/ProFound/Sampling/2738001001/NRCA/2738001001_NRCA_error_fit.txt"
   cat('Filters','Slopes','Intercepts','\n', file = error_file, sep='\t')          # Create file for the fitted relation of error sampling
   
   ####### Initiate csv for saving output ##########
@@ -1074,12 +1119,9 @@ do_measure = function(input_args){
     
     CairoPDF(file.path(inspect_dir,paste0("profound_",ff,"_inspect.pdf")), width = 10, height = 10 )
     plot_profound(dum_pro)
-    # plot_profound(dum_pro_col)
     par(mfrow = c(1,2), mar = rep(0,4), oma = rep(0,4))
     profoundSegimPlot(dum_pro, sparse=1, sky = dum_pro$sky, qdiff = T)
     legend(x="topleft", legend="Total photometry")
-    # profoundSegimPlot(dum_pro_col, sparse=1, sky = dum_pro$sky, qdiff = T)
-    # legend(x="topleft", legend="Colour photometry")
     dev.off()
 
     CairoPDF(file.path(sampling_dir,paste0(ff,"_sample_error.pdf")))                            # Plot the sampled relation
