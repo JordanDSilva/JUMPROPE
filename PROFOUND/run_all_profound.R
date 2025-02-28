@@ -75,7 +75,7 @@ main = function(){
           'JUMPROPE_cores_stack',
           'JUMPROPE_tasks_stack')
   )
-  
+
   if(any(env_var == "")){
     message("Please set the env variables.")
     q()
@@ -127,7 +127,9 @@ main = function(){
       
       sampling_cores = as.numeric(env_var[["JUMPROPE_cores_stack"]]),
       
-      cores_stack = as.numeric(env_var[["JUMPROPE_cores_stack"]])
+      cores_stack = as.numeric(env_var[["JUMPROPE_cores_stack"]]),
+      
+      profound_chunk = profound_chunk
     )
     
     lapply(1:length(code_organiser),
