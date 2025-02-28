@@ -396,11 +396,12 @@ star_mask = function(input_args){
     gama_func = function(x)(10^(2.6 - 0.17*x)/pixscale(ref, unit = "amin")) ## GAMA-esque star mask 
     
     approx_depth = sd(pro$sky, na.rm = TRUE)
+    # approx_depth = 10e-3 / sqrt( max(unique(c(ref$weight$imDat))) )
     segim_map = Rfits_create_image(data = pro$segim, keyvalues = ref$keyvalues)
     sky_map = Rfits_create_image(data = pro$sky, keyvalues = ref$keyvalues)
     skyRMS_map = Rfits_create_image(data = pro$skyRMS, keyvalues = ref$keyvalues)
     
-    star_rad_list = foreach(kk = 1:dim(gaia)[1], .combine = "c") %dopar% {
+    star_rad_list = foreach(kk = 1:dim(gaia)[1], .combine = "c") %do% {
       
       test_coords = c(gaia$xpix[kk], gaia$ypix[kk])
       
@@ -427,8 +428,11 @@ star_mask = function(input_args){
       flux_nonNA_sums = rowSums(!is.na(flux_mat))/200
       
       max_flux_idx = which(flux_row_sums == max(flux_row_sums[flux_nonNA_sums >= median(flux_nonNA_sums)]))
-      flux_vec = flux_mat[max_flux_idx, ]
-      flux_err_vec = flux_err_mat[max_flux_idx, ]
+      # flux_vec = flux_mat[max_flux_idx, ]
+      # flux_err_vec = flux_err_mat[max_flux_idx, ]
+      
+      flux_vec = colMaxs(flux_mat, na.rm = TRUE)
+      flux_err_vec = sqrt(colSums(flux_mat^2, na.rm = TRUE))
       sn_vec = abs( flux_vec / flux_err_vec )
       
       rr = dr_vec[!is.na(flux_vec)]
@@ -461,11 +465,23 @@ star_mask = function(input_args){
         likefunctype = "CMA", liketype = "min",
         lower = c(0, 0.5), upper = c(5, 4),
         Niters = c(10000,10000),
-        NfinalMCMC = 10000, seed = 666
+        NfinalMCMC = 10000,
+        seed = 666
       ))
+      # optout = suppressMessages(
+      #   optim(
+      #     par = c(1,1),
+      #     fn = LL,
+      #     Data = Data,
+      #     method = "L-BFGS-B",
+      #     lower = c(0, 0.5), upper = c(5, 4)
+      #   )
+      # )
       
       fitparm = colQuantiles(highout$LD_last$Posterior1, probs = c(0.5, 0.16, 0.84))
       sersic_fun = function(R){sersic(R, p = fitparm[,1], Io = Io, Ro = Ro)}
+      # sersic_fun = function(R){sersic(R, p = optout$par, Io = Io, Ro = Ro)}
+      
       rtest = Ro + seq(1, dim(ref)[1], 0.1)
       ftest = sersic_fun(rtest)
       
@@ -473,7 +489,9 @@ star_mask = function(input_args){
       local_RMS = skyRMS_map[test_coords[1], test_coords[2], box = Ro + 100]$imDat
       local_sky = sky_map[test_coords[1], test_coords[2], box = Ro + 100]$imDat
       
-      depth = pmax( median(local_RMS, na.rm = TRUE), 3*sd(local_sky, na.rm = TRUE))
+      depth = pmin( mean(local_RMS, na.rm = TRUE), 2*sd(local_sky, na.rm = TRUE))
+      # depth = 2*sd(local_sky, na.rm = TRUE)
+      
       if(is.na(depth)){
         depth = approx_depth
       }
@@ -526,7 +544,9 @@ star_mask = function(input_args){
     image = ref$image, 
     magzero = 23.9, 
     rem_mask = TRUE, 
-    cliptol = 50)
+    cliptol = 50,
+    boundstats = TRUE
+    )
   
   match_gaia = coordmatch(
     coordref = gaia_trim[, c("ra_fix", "dec_fix")],
