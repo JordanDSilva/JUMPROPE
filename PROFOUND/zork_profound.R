@@ -59,6 +59,7 @@ select_code_func = function(){
           ## 8 = Warp stack HST                                     ##
           ## 9 = Copy HST for big mosaic                            ##
           ## 10 = ProMeasure                                        ##
+          ## 11 = Chop up frames                                    ##
           ##                                                        ##
           ## CONTROL + /\ to EXIT                                    ##
           ############################################################
@@ -73,7 +74,7 @@ select_code_func = function(){
     )[[1]]
   )
   
-  if( sum(select_vector %in% 1:10) == 0){
+  if( sum(select_vector %in% 1:11) == 0){
     message("Oops, I think you made a mistake. Trying again.")
     select_code_func()
   }
@@ -117,7 +118,7 @@ main = function(){
           'JUMPROPE_cores_stack',
           'JUMPROPE_tasks_stack')
   )
-
+  
   if(any(env_var == "")){
     message("Please set the env variables.")
     q()
@@ -126,7 +127,7 @@ main = function(){
   ref_dir = Sys.getenv(
     x = "JUMPROPE_REF_DIR"
   )
-  
+
   if(ref_dir == ""){
     ref_dir = make_directory_structure()
   }
@@ -162,7 +163,8 @@ main = function(){
     'query_hst'=query_hst,
     'warp_stack_hst'=hst_warp_stack,
     'copy_hst_for_tile'=copy_hst_for_tile,
-    'do_measure'=do_measure
+    'do_measure'=do_measure,
+    'frame_chunker'=frame_chunker
   )
   
   for(i in 1:dim(frame_grid)[1]){

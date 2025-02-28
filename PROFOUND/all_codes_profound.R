@@ -389,7 +389,7 @@ star_mask = function(input_args){
   }
   star_masker = function(ref, gaia, pro, psf){
     box = ceiling(
-      0.30 / pixscale(ref, unit = "asec")
+      0.3 / pixscale(ref, unit = "asec")
     ) ## Use 0.3 arcsec aperture to calculate ray 
     quan_cut = c(0.0, 0.95)
     
@@ -428,11 +428,19 @@ star_mask = function(input_args){
       flux_nonNA_sums = rowSums(!is.na(flux_mat))/200
       
       max_flux_idx = which(flux_row_sums == max(flux_row_sums[flux_nonNA_sums >= median(flux_nonNA_sums)]))
+<<<<<<< Updated upstream
       # flux_vec = flux_mat[max_flux_idx, ]
       # flux_err_vec = flux_err_mat[max_flux_idx, ]
       
       flux_vec = colMaxs(flux_mat, na.rm = TRUE)
       flux_err_vec = sqrt(colSums(flux_mat^2, na.rm = TRUE))
+=======
+      flux_vec = flux_mat[max_flux_idx, ]
+      flux_err_vec = flux_err_mat[max_flux_idx, ]
+      # flux_vec = colMaxs(flux_mat, na.rm = TRUE)
+      # flux_err_vec = sqrt(colSums(flux_err_mat^2, na.rm = TRUE))
+      
+>>>>>>> Stashed changes
       sn_vec = abs( flux_vec / flux_err_vec )
       
       rr = dr_vec[!is.na(flux_vec)]
@@ -468,6 +476,7 @@ star_mask = function(input_args){
         NfinalMCMC = 10000,
         seed = 666
       ))
+<<<<<<< Updated upstream
       # optout = suppressMessages(
       #   optim(
       #     par = c(1,1),
@@ -476,6 +485,14 @@ star_mask = function(input_args){
       #     method = "L-BFGS-B",
       #     lower = c(0, 0.5), upper = c(5, 4)
       #   )
+=======
+      # optout = optim(
+      #   par = c(1,1),
+      #   fn = LL, 
+      #   Data = Data, 
+      #   method = "L-BFGS-B",
+      #   lower = c(0, 0.5), upper = c(5, 4),
+>>>>>>> Stashed changes
       # )
       
       fitparm = colQuantiles(highout$LD_last$Posterior1, probs = c(0.5, 0.16, 0.84))
@@ -637,7 +654,7 @@ star_mask_tile = function(input_args){
     
     ref = Rfits_read_image(filename = file_list, ext = 1)
     keyvalues =ref$keyvalues
-    input_info = Rfits_read_table(filename = file_list, ext = 7)
+    input_info = Rfits_read_table(filename = file_list, ext = 'info')
     ## Check if the frames are on the disk
     new_star_dirs = c()
     unique_star_dirs = unique(input_info$path)
@@ -1558,6 +1575,178 @@ copy_hst_for_tile = function(input_args){
     do_sky_rem = F
   }
 }
+
+
+## Chop up the large mosaic
+frame_chunker = function(input_args){
+  
+  ## For a given big mosaic, chop it up and save in Data and star mask
+  
+  ## For scripting use
+  area_block = ifelse(is.null(input_args$chunk_size), 10, input_args$chunk_size) ## amin^2
+  buffer_size = ifelse(is.null(input_args$buffer_size), 200, input_args$chunk_size) ## pixels
+  
+  message("Processing ~", area_block, "amin^2 chunks...")
+  
+  ref_dir = input_args$ref_dir
+  VID = input_args$VID
+  MODULE = input_args$MODULE
+  PIXSCALE = input_args$PIXSCALE
+  
+  if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID){
+    MODULE = paste0("NRC", MODULE)
+  }
+  
+  star_mask_dir = paste0(ref_dir, "/ProFound/Star_Masks/", VID, "/", MODULE, "/")
+  data_dir = paste0(ref_dir, "/ProFound/Data/", VID, "/", MODULE, "/") 
+
+  file_list <- list.files(data_dir, pattern=paste0(PIXSCALE, ".fits"), full.names=TRUE) #list all the .fits files in a directory
+  file_names <- list.files(data_dir, pattern=paste0(PIXSCALE, ".fits"), full.names=FALSE) #list all the .fits files in a directory
+
+  get_middle <- function(vec) {
+    n = length(vec)
+    if (n < 2) {
+      stop("Vector must have at least two elements")
+    }
+    mid_index = ceiling(n / 2)  # Find middle index (round up)
+    return(c(vec[mid_index], vec[mid_index + (n %% 2 == 0)]))
+  }
+  
+  N_blocks_save = 0
+  
+  for(ii in 1:length(file_list)){
+
+    message("Chopping up ", file_list[ii])
+    frame = Rfits_read(
+      file_list[ii],
+      pointer = TRUE
+    )
+
+    tot_area = pixarea(frame$image, unit = "amin2") * prod(dim(frame$image))
+    imdim = dim(frame$image)
+
+    ## How many 10 arcmin^2 blocks will I need?
+    N_blocks = ceiling( tot_area/area_block )
+    if(ii == 1){
+      N_blocks_save = N_blocks
+    }
+    div = seq_len(N_blocks)
+    div_multiples = div[N_blocks %% div == 0]
+    N_grid = get_middle(div_multiples) + 1
+
+    xpos = seq(0, nrow(frame$image), length.out = ifelse(imdim[1] >= imdim[2], N_grid[2], N_grid[1])) ## Use the bigger number for width if width > height
+    ypos = seq(0, ncol(frame$image), length.out = ifelse(imdim[2] >= imdim[1], N_grid[2], N_grid[1])) ## Use the bigger number for height if height > width
+    xpos_cen = xpos[1:(length(xpos)-1)] + diff(xpos)/2.0
+    ypos_cen = ypos[1:(length(ypos)-1)] + diff(ypos)/2.0
+
+    coord_grid = expand.grid(
+      xpos_cen, ypos_cen
+    )
+
+    grid_s2p = Rwcs_p2s(
+      x = coord_grid[,1],
+      y = coord_grid[,2],
+      keyvalues = frame$image$keyvalues
+    )
+
+    boxsize = 2*ceiling(
+      c(median(diff(xpos)/2.0),
+        median(diff(ypos)/2.0))
+    ) + buffer_size
+
+    boxsize_no_buffer = 2*ceiling(
+      c(median(diff(xpos)/2.0),
+        median(diff(ypos)/2.0))
+    )
+
+    chunk_info = data.frame(
+      'tile_xcen' = coord_grid[,1],
+      'tile_ycen' = coord_grid[,2],
+      'tile_racen' = grid_s2p[,1],
+      'tile_deccen' = grid_s2p[,2],
+
+      'buffer_size' =  rep(buffer_size, dim(grid_s2p)[1]),
+
+      'boxsize_x' = rep(boxsize[1], dim(grid_s2p)[1]),
+      'boxsize_y' = rep(boxsize[2], dim(grid_s2p)[1]),
+
+      'boxsize_no_buffer_x' = rep(boxsize_no_buffer[1], dim(grid_s2p)[1]),
+      'boxsize_no_buffer_y' = rep(boxsize_no_buffer[2], dim(grid_s2p)[1]),
+
+      'tile_indices' = 1:dim(grid_s2p)[1]
+    )
+
+    for(jj in 1:dim(grid_s2p)[1]){
+      message('Working on chunk ', jj)
+      trim_frame_image = frame$image[grid_s2p[jj,1], grid_s2p[jj,2], box = boxsize, type = "coord"]
+      trim_frame_inVar = frame$inVar[grid_s2p[jj,1], grid_s2p[jj,2], box = boxsize, type = "coord"]
+      trim_frame_weight = frame$weight[grid_s2p[jj,1], grid_s2p[jj,2], box = boxsize, type = "coord"]
+
+      chunk_info$tile_index = rep(jj, dim(grid_s2p)[1])
+
+      chunk_Rfits = list(
+        "image" = trim_frame_image,
+        "inVar" = trim_frame_inVar,
+        "weight" = trim_frame_weight,
+        'chunk_info' = chunk_info,
+        'info' = frame$info
+      )
+      class(chunk_Rfits) = "Rfits_list"
+
+      fstub = file_names[ii]
+      split_VID_name = str_split_1(fstub, VID)
+      fstub_chunk = paste0(split_VID_name[1], VID, "chunk", jj, split_VID_name[2])
+
+      if(VID == MODULE){
+        data_dir = paste0(ref_dir, "/ProFound/Data/", VID, "chunk", jj, "/", MODULE, "chunk", jj, "/")
+      }else{
+        data_dir = paste0(ref_dir, "/ProFound/Data/", VID, "chunk", jj, "/", MODULE, jj, "/")
+      }
+
+      fname_chunk = paste0(data_dir, fstub_chunk)
+
+      dir.create(data_dir, recursive = TRUE)
+      Rfits_write(
+        data = chunk_Rfits,
+        filename = fname_chunk
+      )
+    }
+  }
+  
+  for(ii in 1:N_blocks_save){
+    temp_args = list(ref_dir = ref_dir)
+    
+    if(VID == MODULE){
+      temp_args$VID = paste0(VID, "chunk", ii)
+      temp_args$MODULE = paste0(MODULE, "chunk", ii)
+      temp_args$PIXSCALE = PIXSCALE
+      star_mask_tile(
+        temp_args
+      )
+      do_detect(
+        temp_args
+      )
+      do_measure(
+        temp_args
+      )
+    }else{
+      temp_args$VID = paste0(VID, "chunk", ii)
+      temp_args$MODULE = MODULE
+      temp_args$PIXSCALE = PIXSCALE
+      star_mask(
+        temp_args
+      )
+      do_detect(
+        temp_args
+      )
+      do_measure(
+        temp_args
+      )
+    }
+  }
+  return(NULL)
+}
+
 
 ## python codes. Super sketchy :P
 query_gaia = function(input_args){
