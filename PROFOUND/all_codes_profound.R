@@ -428,19 +428,8 @@ star_mask = function(input_args){
       flux_nonNA_sums = rowSums(!is.na(flux_mat))/200
       
       max_flux_idx = which(flux_row_sums == max(flux_row_sums[flux_nonNA_sums >= median(flux_nonNA_sums)]))
-<<<<<<< Updated upstream
-      # flux_vec = flux_mat[max_flux_idx, ]
-      # flux_err_vec = flux_err_mat[max_flux_idx, ]
-      
-      flux_vec = colMaxs(flux_mat, na.rm = TRUE)
-      flux_err_vec = sqrt(colSums(flux_mat^2, na.rm = TRUE))
-=======
       flux_vec = flux_mat[max_flux_idx, ]
       flux_err_vec = flux_err_mat[max_flux_idx, ]
-      # flux_vec = colMaxs(flux_mat, na.rm = TRUE)
-      # flux_err_vec = sqrt(colSums(flux_err_mat^2, na.rm = TRUE))
-      
->>>>>>> Stashed changes
       sn_vec = abs( flux_vec / flux_err_vec )
       
       rr = dr_vec[!is.na(flux_vec)]
@@ -476,29 +465,10 @@ star_mask = function(input_args){
         NfinalMCMC = 10000,
         seed = 666
       ))
-<<<<<<< Updated upstream
-      # optout = suppressMessages(
-      #   optim(
-      #     par = c(1,1),
-      #     fn = LL,
-      #     Data = Data,
-      #     method = "L-BFGS-B",
-      #     lower = c(0, 0.5), upper = c(5, 4)
-      #   )
-=======
-      # optout = optim(
-      #   par = c(1,1),
-      #   fn = LL, 
-      #   Data = Data, 
-      #   method = "L-BFGS-B",
-      #   lower = c(0, 0.5), upper = c(5, 4),
->>>>>>> Stashed changes
-      # )
       
       fitparm = colQuantiles(highout$LD_last$Posterior1, probs = c(0.5, 0.16, 0.84))
       sersic_fun = function(R){sersic(R, p = fitparm[,1], Io = Io, Ro = Ro)}
-      # sersic_fun = function(R){sersic(R, p = optout$par, Io = Io, Ro = Ro)}
-      
+
       rtest = Ro + seq(1, dim(ref)[1], 0.1)
       ftest = sersic_fun(rtest)
       
@@ -507,8 +477,7 @@ star_mask = function(input_args){
       local_sky = sky_map[test_coords[1], test_coords[2], box = Ro + 100]$imDat
       
       depth = pmin( mean(local_RMS, na.rm = TRUE), 2*sd(local_sky, na.rm = TRUE))
-      # depth = 2*sd(local_sky, na.rm = TRUE)
-      
+
       if(is.na(depth)){
         depth = approx_depth
       }
