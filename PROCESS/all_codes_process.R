@@ -14,6 +14,7 @@ library(dplyr)
 library(imager)
 library(celestial)
 library(matrixStats)
+library(checkmate)
 
 pipe_version = "1.2.5" 
 
@@ -205,29 +206,29 @@ do_1of = function(input_args){
     temp_image = Rfits_read(filelist[i], pointer=FALSE)
     
     if(do_MIRI){
-      imdim = dim(temp_image$SCI)
-      xpix = 360:imdim[1]
-      ypix = 1:imdim[2]
+      # imdim = dim(temp_image$SCI)
+      # xpix = 360:imdim[1]
+      # ypix = 1:imdim[2]
       
-      new_centre = suppressMessages(Rwcs_p2s(
-        x = floor(median(xpix)),
-        y = floor(median(ypix)),
-        keyvalues = temp_image$SCI$keyvalues
-      ))
-      
-      dq = temp_image$DQ$imDat
-      
-      temp_image$SCI = temp_image$SCI[xpix, ypix]
-      temp_image$ERR$imDat = temp_image$ERR[xpix, ypix]$imDat
-      temp_image$DQ$imDat = dq[xpix, ypix]
-      temp_image$AREA$imDat = temp_image$AREA[xpix, ypix]$imDat
-      temp_image$VAR_POISSON$imDat = temp_image$VAR_POISSON[xpix, ypix]$imDat
-      temp_image$VAR_RNOISE$imDat = temp_image$VAR_RNOISE[xpix, ypix]$imDat
-      temp_image$VAR_FLAT$imDat = temp_image$VAR_FLAT[xpix, ypix]$imDat
-      
-      for(ext in c("ERR", "DQ", "AREA", "AREA", "VAR_POISSON", "VAR_RNOISE", "VAR_FLAT")){
-        temp_image[[ext]]$keyvalues$NAXIS1 = imdim[1] - 360
-      }
+      # new_centre = suppressMessages(Rwcs_p2s(
+      #   x = floor(median(xpix)),
+      #   y = floor(median(ypix)),
+      #   keyvalues = temp_image$SCI$keyvalues
+      # ))
+      # 
+      # dq = temp_image$DQ$imDat
+      # 
+      # temp_image$SCI = temp_image$SCI[xpix, ypix]
+      # temp_image$ERR$imDat = temp_image$ERR[xpix, ypix]$imDat
+      # temp_image$DQ$imDat = dq[xpix, ypix]
+      # temp_image$AREA$imDat = temp_image$AREA[xpix, ypix]$imDat
+      # temp_image$VAR_POISSON$imDat = temp_image$VAR_POISSON[xpix, ypix]$imDat
+      # temp_image$VAR_RNOISE$imDat = temp_image$VAR_RNOISE[xpix, ypix]$imDat
+      # temp_image$VAR_FLAT$imDat = temp_image$VAR_FLAT[xpix, ypix]$imDat
+      # 
+      # for(ext in c("ERR", "DQ", "AREA", "AREA", "VAR_POISSON", "VAR_RNOISE", "VAR_FLAT")){
+      #   temp_image[[ext]]$keyvalues$NAXIS1 = imdim[1] - 360
+      # }
       
       keep_trend = FALSE
       if(ow_large & ow_vlarge){
@@ -261,18 +262,18 @@ do_1of = function(input_args){
       
       Rfits_write(
         data = temp_image,
-        filename = paste0(fullbase,'_MIRI_trim.fits')
+        filename = paste0(fullbase,'_MIRI.fits')
       )
-      Rfits_write_pix(temp_zap$image_fix, paste0(fullbase,'_MIRI_trim.fits'), ext=2)
+      Rfits_write_pix(temp_zap$image_fix, paste0(fullbase,'_MIRI.fits'), ext=2)
       
-      check_Nhdu = Rfits_nhdu(paste0(fullbase,'_MIRI_trim.fits'))
-      extloc = Rfits_extname_to_ext(paste0(fullbase,'_MIRI_trim.fits'), 'SKY_Pro1oF')
+      check_Nhdu = Rfits_nhdu(paste0(fullbase,'_MIRI.fits'))
+      extloc = Rfits_extname_to_ext(paste0(fullbase,'_MIRI.fits'), 'SKY_Pro1oF')
       
       if(is.na(extloc)){
-        Rfits_write_image(temp_zap$row_map + temp_zap$col_map, filename=paste0(fullbase,'_MIRI_trim.fits'), create_file=FALSE)
-        Rfits_write_key(filename=paste0(fullbase,'_MIRI_trim.fits'), ext=check_Nhdu+1, keyname='EXTNAME', keyvalue='SKY_Pro1oF', keycomment='extension name')
+        Rfits_write_image(temp_zap$row_map + temp_zap$col_map, filename=paste0(fullbase,'_MIRI.fits'), create_file=FALSE)
+        Rfits_write_key(filename=paste0(fullbase,'_MIRI.fits'), ext=check_Nhdu+1, keyname='EXTNAME', keyvalue='SKY_Pro1oF', keycomment='extension name')
       }else{
-        Rfits_write_pix(temp_zap$row_map + temp_zap$col_map, paste0(fullbase,'_MIRI_trim.fits'), ext=extloc)
+        Rfits_write_pix(temp_zap$row_map + temp_zap$col_map, paste0(fullbase,'_MIRI.fits'), ext=extloc)
       }
     }else{
       if(!(any(c(ow_vlarge, ow_large)))){
@@ -436,7 +437,8 @@ do_cal_process = function(input_args, filelist = NULL){
                                  box=x$box, 
                                  redoskysize = x$redoskysize, 
                                  roughpedestal = TRUE, 
-                                 tolerance=Inf)
+                                 tolerance=Inf 
+                                 )
           return(list(pro = pro, redoskysize=101))
         },
         error = function(cond){
@@ -633,10 +635,12 @@ do_super_sky = function(input_args){
   sky_filelist = list.files(sky_info[1,pathsky], pattern = ".fits$")
   
   dummy = foreach(i = 1:dim(combine_grid)[1], .inorder=FALSE)%dopar%{
-    if(combine_grid[i,1] %in% c('NRCA1','NRCA2','NRCA3','NRCA4','NRCB1','NRCB2','NRCB3','NRCB4', 'MIRIMAGE')){
-      temp_info = sky_info[detector == combine_grid[i,1] & filter == combine_grid[i,2] & skychi < sky_ChiSq_cut & goodpix >= good_pix_cut,]
+    if(combine_grid[i,1] %in% c('NRCA1','NRCA2','NRCA3','NRCA4','NRCB1','NRCB2','NRCB3','NRCB4')){
+      temp_info = sky_info[detector == combine_grid[i,1] & filter == combine_grid[i,2] & skychi < sky_ChiSq_cut & goodpix >= good_pix_cut, ]
+    }else if (combine_grid[i,1] %in% c('MIRIMAGE')){
+      temp_info = sky_info[detector == combine_grid[i,1] & filter == combine_grid[i,2] & skychi < 1.5 , ]
     }else{
-      temp_info = sky_info[detector == combine_grid[i,1] & filter == combine_grid[i,2] & skychi < sky_ChiSq_cut,]
+      temp_info = sky_info[detector == combine_grid[i,1] & filter == combine_grid[i,2] & skychi < sky_ChiSq_cut, ]
     }
     
     Nsky = dim(temp_info)[1]
@@ -1072,36 +1076,36 @@ do_gen_stack = function(input_args){
     
     module_A_WCS_short = cal_sky_info[grepl('NRCA[1-4]', DETECTOR),list(CRVAL1=mean(CRVAL1), CRVAL2=mean(CRVAL2), CD1_1=mean(CD1_1), CD1_2=mean(CD1_2)), keyby=VISIT_ID]
     module_B_WCS_short = cal_sky_info[grepl('NRCB[1-4]', DETECTOR),list(CRVAL1=mean(CRVAL1), CRVAL2=mean(CRVAL2), CD1_1=mean(CD1_1), CD1_2=mean(CD1_2)), keyby=VISIT_ID]
-    
+
     module_A_WCS_long = cal_sky_info[grepl('NRCALONG', DETECTOR),list(CRVAL1=mean(CRVAL1), CRVAL2=mean(CRVAL2), CD1_1=mean(CD1_1), CD1_2=mean(CD1_2)), keyby=VISIT_ID]
     module_B_WCS_long = cal_sky_info[grepl('NRCBLONG', DETECTOR),list(CRVAL1=mean(CRVAL1), CRVAL2=mean(CRVAL2), CD1_1=mean(CD1_1), CD1_2=mean(CD1_2)), keyby=VISIT_ID]
-    
+
     if(dim(module_A_WCS_long)[1] == 0){
       module_A_WCS_long = module_A_WCS_short
       module_A_WCS_long$CD1_1 = module_A_WCS_long$CD1_1*2.0
       module_A_WCS_long$CD1_2 = module_A_WCS_long$CD1_2*2.0
     }
-    
+
     if(dim(module_B_WCS_long)[1] == 0){
       module_B_WCS_long = module_B_WCS_short
       module_B_WCS_long$CD1_1 = module_B_WCS_long$CD1_1*2.0
       module_B_WCS_long$CD1_2 = module_B_WCS_long$CD1_2*2.0
     }
-    
+
     if(dim(module_A_WCS_short)[1] == 0){
       module_A_WCS_short = module_A_WCS_long
       module_A_WCS_short$CD1_1 = module_A_WCS_short$CD1_1/2.0
       module_A_WCS_short$CD1_2 = module_A_WCS_short$CD1_2/2.0
     }
-    
+
     if(dim(module_B_WCS_short)[1] == 0){
       module_B_WCS_short = module_B_WCS_long
       module_B_WCS_short$CD1_1 = module_B_WCS_short$CD1_1/2.0
       module_B_WCS_short$CD1_2 = module_B_WCS_short$CD1_2/2.0
     }
-    
+
     module_NIS = cal_sky_info[grepl('NIS', DETECTOR),list(CRVAL1=mean(CRVAL1), CRVAL2=mean(CRVAL2), CD1_1=mean(CD1_1), CD1_2=mean(CD1_2)), keyby=VISIT_ID]
-    
+
     module_MIRIMAGE = cal_sky_info[grepl('MIRIMAGE', DETECTOR),list(CRVAL1=median(CRVAL1), CRVAL2=median(CRVAL2), CD1_1=mean(CD1_1), CD1_2=mean(CD1_2)), keyby=VISIT_ID]
     
     module_idx = sapply(list(module_A_WCS_long, module_A_WCS_short, 
@@ -1130,16 +1134,18 @@ do_gen_stack = function(input_args){
         
         if(j == 'MIRIMAGE'){
           input_info = cal_sky_info[VISIT_ID==stack_grid[i,VISIT_ID] & FILTER==stack_grid[i,FILTER] & grepl('MIRIMAGE', DETECTOR),]
+
           CRVAL1 = module_MIRIMAGE[VISIT_ID == stack_grid[i,VISIT_ID], CRVAL1]
           CRVAL2 = module_MIRIMAGE[VISIT_ID == stack_grid[i,VISIT_ID], CRVAL2]
           CD1_1 = module_MIRIMAGE[VISIT_ID == stack_grid[i,VISIT_ID], CD1_1]
           CD1_2 = module_MIRIMAGE[VISIT_ID == stack_grid[i,VISIT_ID], CD1_2]
-          NAXIS = 1200
-          CRPIX = 600
+          NAXIS = NAXIS_long
+          CRPIX = NAXIS_long/2.0
         }
         
         if(j == 'NIS'){
           input_info = cal_sky_info[VISIT_ID==stack_grid[i,VISIT_ID] & FILTER==stack_grid[i,FILTER] & grepl('NIS', DETECTOR),]
+
           CRVAL1 = module_NIS[VISIT_ID == stack_grid[i,VISIT_ID], CRVAL1]
           CRVAL2 = module_NIS[VISIT_ID == stack_grid[i,VISIT_ID], CRVAL2]
           CD1_1 = module_NIS[VISIT_ID == stack_grid[i,VISIT_ID], CD1_1]
@@ -1150,6 +1156,7 @@ do_gen_stack = function(input_args){
         
         if(j == 'NRCA_short'){
           input_info = cal_sky_info[VISIT_ID==stack_grid[i,VISIT_ID] & FILTER==stack_grid[i,FILTER] & grepl('NRCA', DETECTOR),]
+          
           CRVAL1 = module_A_WCS_short[VISIT_ID == stack_grid[i,VISIT_ID], CRVAL1]
           CRVAL2 = module_A_WCS_short[VISIT_ID == stack_grid[i,VISIT_ID], CRVAL2]
           CD1_1 = module_A_WCS_short[VISIT_ID == stack_grid[i,VISIT_ID], CD1_1]
@@ -1160,6 +1167,7 @@ do_gen_stack = function(input_args){
         
         if(j == 'NRCB_short'){
           input_info = cal_sky_info[VISIT_ID==stack_grid[i,VISIT_ID] & FILTER==stack_grid[i,FILTER] & grepl('NRCB', DETECTOR),]
+          
           CRVAL1 = module_B_WCS_short[VISIT_ID == stack_grid[i,VISIT_ID], CRVAL1]
           CRVAL2 = module_B_WCS_short[VISIT_ID == stack_grid[i,VISIT_ID], CRVAL2]
           CD1_1 = module_B_WCS_short[VISIT_ID == stack_grid[i,VISIT_ID], CD1_1]
@@ -1170,6 +1178,7 @@ do_gen_stack = function(input_args){
         
         if(j == 'NRCA_long'){
           input_info = cal_sky_info[VISIT_ID==stack_grid[i,VISIT_ID] & FILTER==stack_grid[i,FILTER] & grepl('NRCA', DETECTOR),]
+          
           CRVAL1 = module_A_WCS_long[VISIT_ID == stack_grid[i,VISIT_ID], CRVAL1]
           CRVAL2 = module_A_WCS_long[VISIT_ID == stack_grid[i,VISIT_ID], CRVAL2]
           CD1_1 = module_A_WCS_long[VISIT_ID == stack_grid[i,VISIT_ID], CD1_1]
@@ -1180,6 +1189,7 @@ do_gen_stack = function(input_args){
         
         if(j == 'NRCB_long'){
           input_info = cal_sky_info[VISIT_ID==stack_grid[i,VISIT_ID] & FILTER==stack_grid[i,FILTER] & grepl('NRCB', DETECTOR),]
+          
           CRVAL1 = module_B_WCS_long[VISIT_ID == stack_grid[i,VISIT_ID], CRVAL1]
           CRVAL2 = module_B_WCS_long[VISIT_ID == stack_grid[i,VISIT_ID], CRVAL2]
           CD1_1 = module_B_WCS_long[VISIT_ID == stack_grid[i,VISIT_ID], CD1_1]
@@ -1197,6 +1207,8 @@ do_gen_stack = function(input_args){
                                  CD2_1 = CD1_2,
                                  CD2_2 = -CD1_1
         )
+        
+        temp_proj$NAXIS = 2
         temp_proj$NAXIS1 = NAXIS
         temp_proj$NAXIS2 = NAXIS
         temp_proj[is.na(temp_proj)] = NULL
@@ -1288,12 +1300,12 @@ do_gen_stack = function(input_args){
           clip_tol = clip_tol,
           clip_dilate = clip_dilate,
           clip_sigma = clip_sigma,
-          keep_extreme_pix = TRUE,
+          keep_extreme_pix = FALSE,
           dump_frames = T,
           dump_dir = dump_stub,
           multitype="cluster"
         )
-        
+
         output_stack$image$keyvalues$CLIP_MIN = clip_tol[1]
         output_stack$image$keyvalues$CLIP_MAX = clip_tol[2]
         output_stack$image$keyvalues$CLIP_DIL = clip_dilate
