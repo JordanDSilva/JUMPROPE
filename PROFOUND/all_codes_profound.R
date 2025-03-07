@@ -834,63 +834,64 @@ do_detect = function(input_args, detect_bands = detect_bands_load, profound_func
   profound = profound_function(frame = patch_stack_image$image, 
                                skyRMS = stack_image$skyRMS, 
                                star_mask = star_mask$mask)
-
-  profound$segstats$MODULE = rep(MODULE, dim(profound$segstats)[1])
-  profound$segstats$VID = rep(VID, dim(profound$segstats)[1])
-  
-  stack_stub = paste0(detect_dir, "/", VID, "_", MODULE, "_", PIXSCALE, "_profound_stack.fits")
-  profound_stack = list(
-    stack = patch_stack_image$image[,],
-    segim = profound$segim,
-    segim_orig = profound$segim_orig
-  )
-  Rfits_write(data = profound_stack, filename = stack_stub)
-  
-  catalogue_stub = paste0(detect_dir, "/", VID, "_", MODULE, "_", PIXSCALE, "_segstats.csv")
-  fwrite(profound$segstats, file = catalogue_stub)
-  
-  profound_stub = paste0(detect_dir, "/", VID, "_", MODULE, "_", PIXSCALE, "_profound.rds")
-  saveRDS(profound, file = profound_stub)
-  
-  ## I have no idea why plot.profound spits out and error 
-  ## Error in Rwcs_p2s(rep(xlo, leny), ylo:yhi, keyvalues = keyvalues, pixcen = "R",  : 
-  ## Assertion on 'y' failed: Must have length 6432, but has length 6433
-  ## So I just put plot profound into a tryCatch
-  plot_profound = function(x){
-    tryCatch(
-      {plot(x, coord.type = "deg")
-        },
-      error = function(cond){
-        magplot(
-          NA, xlim = c(-1,1), ylim = c(-1,1)
-        )
-        text(0,0,labels="NA", cex = 3.0)
-        legend(x = "topright", legend =  conditionMessage(cond))
-      },
-      warning = function(cond){
-        NULL
-      },
-      finally = {
-      }
+  if(dim(profound$segstats)[1] == 0){
+    message("No objects found!")
+  }else{
+    profound$segstats$MODULE = rep(MODULE, dim(profound$segstats)[1])
+    profound$segstats$VID = rep(VID, dim(profound$segstats)[1])
+    
+    stack_stub = paste0(detect_dir, "/", VID, "_", MODULE, "_", PIXSCALE, "_profound_stack.fits")
+    profound_stack = list(
+      stack = patch_stack_image$image[,],
+      segim = profound$segim,
+      segim_orig = profound$segim_orig
     )
+    Rfits_write(data = profound_stack, filename = stack_stub)
+    
+    catalogue_stub = paste0(detect_dir, "/", VID, "_", MODULE, "_", PIXSCALE, "_segstats.csv")
+    fwrite(profound$segstats, file = catalogue_stub)
+    
+    profound_stub = paste0(detect_dir, "/", VID, "_", MODULE, "_", PIXSCALE, "_profound.rds")
+    saveRDS(profound, file = profound_stub)
+    
+    ## I have no idea why plot.profound spits out and error 
+    ## Error in Rwcs_p2s(rep(xlo, leny), ylo:yhi, keyvalues = keyvalues, pixcen = "R",  : 
+    ## Assertion on 'y' failed: Must have length 6432, but has length 6433
+    ## So I just put plot profound into a tryCatch
+    plot_profound = function(x){
+      tryCatch(
+        {plot(x, coord.type = "deg")
+        },
+        error = function(cond){
+          magplot(
+            NA, xlim = c(-1,1), ylim = c(-1,1)
+          )
+          text(0,0,labels="NA", cex = 3.0)
+          legend(x = "topright", legend =  conditionMessage(cond))
+        },
+        warning = function(cond){
+          NULL
+        },
+        finally = {
+        }
+      )
+    }
+    
+    plot_stub = paste0(detect_dir, "/", VID, "_", MODULE, "_", PIXSCALE, "_profound_plot.pdf")
+    CairoPDF(plot_stub, width = 10, height = 10)
+    plot_profound(profound)
+    par(mfrow = c(1,2), mar = rep(0,4), oma = c(1.5, 1.5, 0.5, 0.5), mai = rep(0,4))
+    profoundSegimPlot(image = profound$image, segim = profound$segim, header = profound$header, mask = profound$mask, sparse=1)
+    legend(x = "bottomleft", legend = "segim")
+    profoundSegimPlot(image = profound$image, segim = profound$segim_orig, header = profound$header, mask = profound$mask, sparse=1)
+    legend(x = "bottomleft", legend = "segim_orig")
+    par(mfrow = c(1,2), mar = rep(0,4), oma = c(1.5, 1.5, 0.5, 0.5), mai = rep(0,4))
+    magimage(profound$objects)
+    legend(x = "bottomleft", legend = "Objects")
+    magimage(profound$objects_redo)
+    legend(x = "bottomleft", legend = "Objects_redo")
+    dev.off()
   }
-  
-  plot_stub = paste0(detect_dir, "/", VID, "_", MODULE, "_", PIXSCALE, "_profound_plot.pdf")
-  CairoPDF(plot_stub, width = 10, height = 10)
-  plot_profound(profound)
-  par(mfrow = c(1,2), mar = rep(0,4), oma = c(1.5, 1.5, 0.5, 0.5), mai = rep(0,4))
-  profoundSegimPlot(image = profound$image, segim = profound$segim, header = profound$header, mask = profound$mask, sparse=1)
-  legend(x = "bottomleft", legend = "segim")
-  profoundSegimPlot(image = profound$image, segim = profound$segim_orig, header = profound$header, mask = profound$mask, sparse=1)
-  legend(x = "bottomleft", legend = "segim_orig")
-  par(mfrow = c(1,2), mar = rep(0,4), oma = c(1.5, 1.5, 0.5, 0.5), mai = rep(0,4))
-  magimage(profound$objects)
-  legend(x = "bottomleft", legend = "Objects")
-  magimage(profound$objects_redo)
-  legend(x = "bottomleft", legend = "Objects_redo")
-  dev.off()
-  
-
   return(NULL)
 }
 
@@ -1008,143 +1009,146 @@ do_measure = function(input_args){
   rm(super_pro)
   gc()
   
-  ####### Load data images ########################
-  assert(checkDirectoryExists(data_dir))
-  
-  data.list = list.files(data_dir, 
-                         pattern = paste0(PIXSCALE, ".fits$"), 
-                         full.names = T, 
-                         recursive = T)
-  data.names = list.files(data_dir, 
-                          pattern = paste0(PIXSCALE, ".fits$"), 
-                          full.names = F, 
-                          recursive = T)
-  
-  filter.names = toupper(str_extract(data.list, "F\\d{3,}[A-Z]{1,}|f\\d{3,}[a-z]{1,}"))
-  filter.names[is.na(filter.names)] = sapply(data.list[is.na(filter.names)], function(x)str_split_1(x, "_")[6]) ## Filter name should hopefully always be in position 6
-  
-  bad_name = data.list[is.na(filter.names)]
-
-  ext = sapply(data.list, function(x)Rfits_extname_to_ext(x, extname = "image"))
-  images = Rfits_make_list(
-    filelist = data.list,
-    extlist = ext,
-    pointer = T
-  )
-  names(images) = filter.names      
-  
-  
-  inVar = lapply(data.list, function(x){
+  if(dim(super_segstats)[1] == 0){
+    message("No objects to measure!")
+  }else{
+    ####### Load data images ########################
+    assert(checkDirectoryExists(data_dir))
     
-    ext = Rfits_extname_to_ext(filename = x, extname = "inVar")
+    data.list = list.files(data_dir, 
+                           pattern = paste0(PIXSCALE, ".fits$"), 
+                           full.names = T, 
+                           recursive = T)
+    data.names = list.files(data_dir, 
+                            pattern = paste0(PIXSCALE, ".fits$"), 
+                            full.names = F, 
+                            recursive = T)
     
-    if(is.na(ext)){
-      return(NULL)
-    }else{
-      inVar = Rfits_point(x, ext = ext)
-      return(inVar)
+    filter.names = toupper(str_extract(data.list, "F\\d{3,}[A-Z]{1,}|f\\d{3,}[a-z]{1,}"))
+    filter.names[is.na(filter.names)] = sapply(data.list[is.na(filter.names)], function(x)str_split_1(x, "_")[6]) ## Filter name should hopefully always be in position 6
+    
+    bad_name = data.list[is.na(filter.names)]
+    
+    ext = sapply(data.list, function(x)Rfits_extname_to_ext(x, extname = "image"))
+    images = Rfits_make_list(
+      filelist = data.list,
+      extlist = ext,
+      pointer = T
+    )
+    names(images) = filter.names      
+    
+    inVar = lapply(data.list, function(x){
+      
+      ext = Rfits_extname_to_ext(filename = x, extname = "inVar")
+      
+      if(is.na(ext)){
+        return(NULL)
+      }else{
+        inVar = Rfits_point(x, ext = ext)
+        return(inVar)
+      }
+      
+    })
+    names(inVar) = filter.names
+    # filter ordering is not important
+    
+    ####### Initiate for sampling error #############
+    r = seq(2,10)
+    master = data.frame(r=r, a=unlist(lapply(r, function(x) length(getCircle(x)))))
+    
+    if(!dir.exists(sampling_dir)){dir.create(sampling_dir, recursive = T)}else{
+      message("Unlinking sample dir")
+      unlink(sampling_dir, recursive = T)
+      dir.create(sampling_dir, recursive = T)
+    }                           # Create directory for the sampling stuff
+    
+    error_file = file.path(sampling_dir,paste(VID,MODULE,PIXSCALE,'error_fit.txt', sep='_'))
+    cat('Filters','Slopes','Intercepts','\n', file = error_file, sep='\t')          # Create file for the fitted relation of error sampling
+    
+    ####### Initiate csv for saving output ##########
+    csvout = data.frame(segID=super_segstats$segID)
+    
+    if(!dir.exists(measurements_dir)){dir.create(measurements_dir, recursive = T)}else{
+      message("Unlinking measurement dir")
+      unlink(measurements_dir, recursive = T)
+      dir.create(measurements_dir, recursive = T)
+    }                                                    # Create directory for the output stuff
+    
+    if(!dir.exists(inspect_dir)){dir.create(inspect_dir, recursive = T)}else{
+      message("Unlinking inspect dir")
+      unlink(inspect_dir, recursive = T)
+      dir.create(inspect_dir, recursive = T)
+    }                                                    # Create directory for inspection plots
+    ###### Main #############
+    for(ff in names(images)){
+      message(paste0("Running ProMeasure on: ", ff, "\n"))
+      filt = images[[ff]][,]
+      filt_invar = inVar[[ff]][,]
+      # filt[[ff]]$imDat[filt[[ff]]$imDat==0L] = NA
+      
+      dum_pro = measure_profound(filt, inVar = filt_invar, segim, mask)
+      csvout[paste0(ff,'_fluxt')] = dum_pro$segstats$flux
+      csvout[paste0(ff,'_fluxt_err')] = dum_pro$segstats$flux_err
+      gc()
+      
+      csvout[paste0(ff,'_maskfrac')] = dum_pro$segstats$Nmask/dum_pro$segstats$Nedge
+      
+      img = filt$imDat - dum_pro$sky
+      img[img == 0L] = NA
+      img[mask] = NA
+      sample_mask = (dum_pro$objects_redo | mask)
+      
+      message("\n ...Error sampling... \n")
+      row=foreach(rr = r, .combine="c")%do%{
+        dum = err_sampler(rr, img, ff, mask = sample_mask, root=sampling_dir)
+        q = unname(quantile(dum$sum, probs=c(0.5, 0.16), na.rm=F))
+        sig = q[1]-q[2]
+        std = sd(dum$sum)
+        # print(c(sig,std))
+        sig
+      }
+      
+      master[ff] = row
+      Nsam = sample(length(dum_pro$segstats$segID), 200)
+      fit_samp = lm(log10(master[[ff]]) ~ poly(log10(master$a), 1, raw = T))
+      slope = unname(fit_samp$coefficients)[2]
+      intercept = unname(fit_samp$coefficients)[1]
+      cat(ff, slope, intercept, '\n', file = error_file, sep = '\t', append = T)      # Save the fitted relation
+      
+      csvout[paste0(ff,'_scaled_fluxt_err')] = error_scaling(dum_pro$segstats$flux_err, dum_pro$segstats$N100, slope, intercept)
+      
+      message(("\n ...Running colour photometry... \n"))
+      dum_pro_col = measure_profound(filt, inVar = filt_invar, segim_col, mask, redosegim = F) #don't redilate segments e.g., colour photometry mode
+      csvout[paste0(ff,'_fluxc')] = dum_pro_col$segstats$flux
+      csvout[paste0(ff,'_fluxc_err')] = dum_pro_col$segstats$flux_err
+      csvout[paste0(ff,'_scaled_fluxc_err')] = error_scaling(dum_pro_col$segstats$flux_err, dum_pro_col$segstats$N100, slope, intercept)
+      rm(dum_pro_col)
+      gc()
+      saveRDS(dum_pro, file.path(measurements_dir,paste(VID,MODULE,PIXSCALE,ff,"results.rds",sep='_')))
+      
+      CairoPDF(file.path(inspect_dir,paste0("profound_",ff,"_inspect.pdf")), width = 10, height = 10 )
+      plot_profound(dum_pro)
+      par(mfrow = c(1,2), mar = rep(0,4), oma = rep(0,4))
+      profoundSegimPlot(dum_pro, sparse=1, sky = dum_pro$sky, qdiff = T)
+      legend(x="topleft", legend="Total photometry")
+      dev.off()
+      
+      CairoPDF(file.path(sampling_dir,paste0(ff,"_sample_error.pdf")))                            # Plot the sampled relation
+      magplot(master$a, master[[ff]], col='white', pch=1,
+              log='xy', xlim = c(5,5000), ylim = c(0.0001,1.0),
+              main = paste(ff,VID,MODULE,sep='_'), ylab = 'Error/micro Jy', xlab = 'Area/pix')
+      points(dum_pro$segstats[Nsam, 'N100'], dum_pro$segstats[Nsam, 'flux_err'], col='darkgrey', cex=0.3, pch=3)
+      scaled_error = error_scaling(dum_pro$segstats[Nsam, 'flux_err'], dum_pro$segstats[Nsam, 'N100'], slope, intercept)
+      points(dum_pro$segstats[Nsam, 'N100'], scaled_error, col='black', cex=0.5, pch=1)
+      points(master$a, master[[ff]], col='red')
+      abline(intercept, slope, col='red', lty=2)
+      legend('bottomright', legend = c('sample', 'profound', 'corrected'), col = c('red','darkgrey','black'), pch = c(1,3,1), cex=1.2)
+      dev.off()
+      
+      gc()
     }
-    
-  })
-  names(inVar) = filter.names
-  # filter ordering is not important
-  
-  ####### Initiate for sampling error #############
-  r = seq(2,10)
-  master = data.frame(r=r, a=unlist(lapply(r, function(x) length(getCircle(x)))))
-  
-  if(!dir.exists(sampling_dir)){dir.create(sampling_dir, recursive = T)}else{
-    message("Unlinking sample dir")
-    unlink(sampling_dir, recursive = T)
-    dir.create(sampling_dir, recursive = T)
-  }                           # Create directory for the sampling stuff
-  
-  error_file = file.path(sampling_dir,paste(VID,MODULE,PIXSCALE,'error_fit.txt', sep='_'))
-  cat('Filters','Slopes','Intercepts','\n', file = error_file, sep='\t')          # Create file for the fitted relation of error sampling
-  
-  ####### Initiate csv for saving output ##########
-  csvout = data.frame(segID=super_segstats$segID)
-  
-  if(!dir.exists(measurements_dir)){dir.create(measurements_dir, recursive = T)}else{
-    message("Unlinking measurement dir")
-    unlink(measurements_dir, recursive = T)
-    dir.create(measurements_dir, recursive = T)
-  }                                                    # Create directory for the output stuff
-  
-  if(!dir.exists(inspect_dir)){dir.create(inspect_dir, recursive = T)}else{
-    message("Unlinking inspect dir")
-    unlink(inspect_dir, recursive = T)
-    dir.create(inspect_dir, recursive = T)
-  }                                                    # Create directory for inspection plots
-  ###### Main #############
-  for(ff in names(images)){
-    message(paste0("Running ProMeasure on: ", ff, "\n"))
-    filt = images[[ff]][,]
-    filt_invar = inVar[[ff]][,]
-    # filt[[ff]]$imDat[filt[[ff]]$imDat==0L] = NA
-
-    dum_pro = measure_profound(filt, inVar = filt_invar, segim, mask)
-    csvout[paste0(ff,'_fluxt')] = dum_pro$segstats$flux
-    csvout[paste0(ff,'_fluxt_err')] = dum_pro$segstats$flux_err
-    gc()
-    
-    csvout[paste0(ff,'_maskfrac')] = dum_pro$segstats$Nmask/dum_pro$segstats$Nedge
-  
-    img = filt$imDat - dum_pro$sky
-    img[img == 0L] = NA
-    img[mask] = NA
-    sample_mask = (dum_pro$objects_redo | mask)
-
-    message("\n ...Error sampling... \n")
-    row=foreach(rr = r, .combine="c")%do%{
-      dum = err_sampler(rr, img, ff, mask = sample_mask, root=sampling_dir)
-      q = unname(quantile(dum$sum, probs=c(0.5, 0.16), na.rm=F))
-      sig = q[1]-q[2]
-      std = sd(dum$sum)
-      # print(c(sig,std))
-      sig
-    }
-
-    master[ff] = row
-    Nsam = sample(length(dum_pro$segstats$segID), 200)
-    fit_samp = lm(log10(master[[ff]]) ~ poly(log10(master$a), 1, raw = T))
-    slope = unname(fit_samp$coefficients)[2]
-    intercept = unname(fit_samp$coefficients)[1]
-    cat(ff, slope, intercept, '\n', file = error_file, sep = '\t', append = T)      # Save the fitted relation
-
-    csvout[paste0(ff,'_scaled_fluxt_err')] = error_scaling(dum_pro$segstats$flux_err, dum_pro$segstats$N100, slope, intercept)
-    
-    message(("\n ...Running colour photometry... \n"))
-    dum_pro_col = measure_profound(filt, inVar = filt_invar, segim_col, mask, redosegim = F) #don't redilate segments e.g., colour photometry mode
-    csvout[paste0(ff,'_fluxc')] = dum_pro_col$segstats$flux
-    csvout[paste0(ff,'_fluxc_err')] = dum_pro_col$segstats$flux_err
-    csvout[paste0(ff,'_scaled_fluxc_err')] = error_scaling(dum_pro_col$segstats$flux_err, dum_pro_col$segstats$N100, slope, intercept)
-    rm(dum_pro_col)
-    gc()
-    saveRDS(dum_pro, file.path(measurements_dir,paste(VID,MODULE,PIXSCALE,ff,"results.rds",sep='_')))
-    
-    CairoPDF(file.path(inspect_dir,paste0("profound_",ff,"_inspect.pdf")), width = 10, height = 10 )
-    plot_profound(dum_pro)
-    par(mfrow = c(1,2), mar = rep(0,4), oma = rep(0,4))
-    profoundSegimPlot(dum_pro, sparse=1, sky = dum_pro$sky, qdiff = T)
-    legend(x="topleft", legend="Total photometry")
-    dev.off()
-
-    CairoPDF(file.path(sampling_dir,paste0(ff,"_sample_error.pdf")))                            # Plot the sampled relation
-    magplot(master$a, master[[ff]], col='white', pch=1,
-            log='xy', xlim = c(5,5000), ylim = c(0.0001,1.0),
-            main = paste(ff,VID,MODULE,sep='_'), ylab = 'Error/micro Jy', xlab = 'Area/pix')
-    points(dum_pro$segstats[Nsam, 'N100'], dum_pro$segstats[Nsam, 'flux_err'], col='darkgrey', cex=0.3, pch=3)
-    scaled_error = error_scaling(dum_pro$segstats[Nsam, 'flux_err'], dum_pro$segstats[Nsam, 'N100'], slope, intercept)
-    points(dum_pro$segstats[Nsam, 'N100'], scaled_error, col='black', cex=0.5, pch=1)
-    points(master$a, master[[ff]], col='red')
-    abline(intercept, slope, col='red', lty=2)
-    legend('bottomright', legend = c('sample', 'profound', 'corrected'), col = c('red','darkgrey','black'), pch = c(1,3,1), cex=1.2)
-    dev.off()
-    
-    gc()
+    write.csv(csvout, file = file.path(measurements_dir,paste(VID,MODULE,PIXSCALE,"photometry.csv",sep='_')))
   }
-  write.csv(csvout, file = file.path(measurements_dir,paste(VID,MODULE,PIXSCALE,"photometry.csv",sep='_')))
 }
 
 ## HST codes
@@ -1568,10 +1572,10 @@ frame_chunker = function(input_args){
   
   star_mask_dir = paste0(ref_dir, "/ProFound/Star_Masks/", VID, "/", MODULE, "/")
   data_dir = paste0(ref_dir, "/ProFound/Data/", VID, "/", MODULE, "/") 
-
+  
   file_list <- list.files(data_dir, pattern=paste0(PIXSCALE, ".fits"), full.names=TRUE) #list all the .fits files in a directory
   file_names <- list.files(data_dir, pattern=paste0(PIXSCALE, ".fits"), full.names=FALSE) #list all the .fits files in a directory
-
+  
   get_middle <- function(vec) {
     n = length(vec)
     if (n < 2) {
@@ -1582,18 +1586,31 @@ frame_chunker = function(input_args){
   }
   
   N_blocks_save = 0
+  chunk_cache = c()
+  
+  filter_list = unname(sapply(
+    file_list, 
+    function(x){
+      load_info = Rfits_read_table(
+        x, ext = 'info'
+      )
+      unique(load_info$FILT)
+    }
+  ))
+  
+  det_bands_idx = which( grepl(detect_bands_load, filter_list) )
   
   for(ii in 1:length(file_list)){
-
+    
     message("Chopping up ", file_list[ii])
     frame = Rfits_read(
       file_list[ii],
       pointer = TRUE
     )
-
+    
     tot_area = pixarea(frame$image, unit = "amin2") * prod(dim(frame$image))
     imdim = dim(frame$image)
-
+    
     ## How many 10 arcmin^2 blocks will I need?
     N_blocks = ceiling( tot_area/area_block )
     if(ii == 1){
@@ -1602,87 +1619,131 @@ frame_chunker = function(input_args){
     div = seq_len(N_blocks)
     div_multiples = div[N_blocks %% div == 0]
     N_grid = get_middle(div_multiples) + 1
-
+    
     xpos = seq(0, nrow(frame$image), length.out = ifelse(imdim[1] >= imdim[2], N_grid[2], N_grid[1])) ## Use the bigger number for width if width > height
     ypos = seq(0, ncol(frame$image), length.out = ifelse(imdim[2] >= imdim[1], N_grid[2], N_grid[1])) ## Use the bigger number for height if height > width
     xpos_cen = xpos[1:(length(xpos)-1)] + diff(xpos)/2.0
     ypos_cen = ypos[1:(length(ypos)-1)] + diff(ypos)/2.0
-
+    
     coord_grid = expand.grid(
       xpos_cen, ypos_cen
     )
-
+    
     grid_s2p = Rwcs_p2s(
       x = coord_grid[,1],
       y = coord_grid[,2],
       keyvalues = frame$image$keyvalues
     )
-
+    
     boxsize = 2*ceiling(
       c(median(diff(xpos)/2.0),
         median(diff(ypos)/2.0))
     ) + buffer_size
-
+    
     boxsize_no_buffer = 2*ceiling(
       c(median(diff(xpos)/2.0),
         median(diff(ypos)/2.0))
     )
-
+    
     chunk_info = data.frame(
       'tile_xcen' = coord_grid[,1],
       'tile_ycen' = coord_grid[,2],
       'tile_racen' = grid_s2p[,1],
       'tile_deccen' = grid_s2p[,2],
-
+      
       'buffer_size' =  rep(buffer_size, dim(grid_s2p)[1]),
-
+      
       'boxsize_x' = rep(boxsize[1], dim(grid_s2p)[1]),
       'boxsize_y' = rep(boxsize[2], dim(grid_s2p)[1]),
-
+      
       'boxsize_no_buffer_x' = rep(boxsize_no_buffer[1], dim(grid_s2p)[1]),
       'boxsize_no_buffer_y' = rep(boxsize_no_buffer[2], dim(grid_s2p)[1]),
-
+      
       'tile_indices' = 1:dim(grid_s2p)[1]
     )
-
+    
+    plot(frame$image, sparse = 1)
     for(jj in 1:dim(grid_s2p)[1]){
-      message('Working on chunk ', jj)
-      trim_frame_image = frame$image[grid_s2p[jj,1], grid_s2p[jj,2], box = boxsize, type = "coord"]
-      trim_frame_inVar = frame$inVar[grid_s2p[jj,1], grid_s2p[jj,2], box = boxsize, type = "coord"]
-      trim_frame_weight = frame$weight[grid_s2p[jj,1], grid_s2p[jj,2], box = boxsize, type = "coord"]
-
-      chunk_info$tile_index = rep(jj, dim(grid_s2p)[1])
-
-      chunk_Rfits = list(
-        "image" = trim_frame_image,
-        "inVar" = trim_frame_inVar,
-        "weight" = trim_frame_weight,
-        'chunk_info' = chunk_info,
-        'info' = frame$info
-      )
-      class(chunk_Rfits) = "Rfits_list"
-
+      
       fstub = file_names[ii]
       split_VID_name = str_split_1(fstub, VID)
       fstub_chunk = paste0(split_VID_name[1], VID, "chunk", jj, split_VID_name[2])
-
+      
       if(VID == MODULE){
         data_dir = paste0(ref_dir, "/ProFound/Data/", VID, "chunk", jj, "/", MODULE, "chunk", jj, "/")
       }else{
         data_dir = paste0(ref_dir, "/ProFound/Data/", VID, "chunk", jj, "/", MODULE, jj, "/")
       }
-
+      
       fname_chunk = paste0(data_dir, fstub_chunk)
+      
+      message('Working on chunk ', jj)
+      trim_frame_image = frame$image[grid_s2p[jj,1], grid_s2p[jj,2], box = boxsize, type = "coord"]
+  
+      dim_chunk = prod(dim(trim_frame_image))
+      non_na = !is.na(trim_frame_image$imDat)
+      dim_usable = sum(non_na)
+    
+      ## At least 10% of area must have data? 1 square arcminute by default, assuming mosaic is mostly connected
+      if(dim_usable > 0){
 
-      dir.create(data_dir, recursive = TRUE)
-      Rfits_write(
-        data = chunk_Rfits,
-        filename = fname_chunk
-      )
+        if(dim_usable/dim_chunk < 0.1){ ## Shuffle point to mid point of data points
+          
+          non_na_idx = colMedians(which(
+            non_na, arr.ind = TRUE
+          ))
+          non_na_idx_coord=Rwcs_p2s(
+            x = non_na_idx[1], y = non_na_idx[2],
+            keyvalues = trim_frame_image$keyvalues
+          )
+          non_na_idx_orig_grid = Rwcs_s2p(
+            RA = non_na_idx_coord[1], Dec = non_na_idx_coord[2],
+            keyvalues = frame$image$keyvalues
+          )
+          chunk_info$tile_xcen[jj] = non_na_idx_orig_grid[1]
+          chunk_info$tile_ycen[jj] = non_na_idx_orig_grid[2]
+          chunk_info$tile_racen[jj] = non_na_idx_coord[1]
+          chunk_info$tile_deccen[jj] = non_na_idx_coord[2]
+          
+          grid_s2p[jj, 1] = non_na_idx_coord[1]
+          grid_s2p[jj, 2] = non_na_idx_coord[2]
+          
+          trim_frame_image = frame$image[grid_s2p[jj,1], grid_s2p[jj,2], box = boxsize, type = "coord"]
+          
+        }
+        Rwcs_overlap(keyvalues_test = trim_frame_image$keyvalues, keyvalues_ref = frame$image$keyvalues, plot = TRUE, add = TRUE)
+        
+        dir.create(data_dir, recursive = TRUE)
+
+        trim_frame_inVar = frame$inVar[grid_s2p[jj,1], grid_s2p[jj,2], box = boxsize, type = "coord"]
+        trim_frame_weight = frame$weight[grid_s2p[jj,1], grid_s2p[jj,2], box = boxsize, type = "coord"]
+
+        chunk_info$tile_index = rep(jj, dim(grid_s2p)[1])
+
+        chunk_Rfits = list(
+          "image" = trim_frame_image,
+          "inVar" = trim_frame_inVar,
+          "weight" = trim_frame_weight,
+          'chunk_info' = chunk_info,
+          'info' = frame$info
+        )
+        class(chunk_Rfits) = "Rfits_list"
+
+        Rfits_write(
+          data = chunk_Rfits,
+          filename = fname_chunk
+        )
+        
+        if(ii %in% det_bands_idx){
+          chunk_cache = c(chunk_cache, jj)
+        }
+      }else{
+        message("Not enough data in chunk. Skipped...")
+      }
     }
   }
   
-  for(ii in 1:N_blocks_save){
+  for(ii in unique(chunk_cache)){
     temp_args = list(ref_dir = ref_dir)
     
     if(VID == MODULE){
