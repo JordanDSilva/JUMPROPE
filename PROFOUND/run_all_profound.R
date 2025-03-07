@@ -99,7 +99,7 @@ main = function(){
   
   frame_grid = unique(frame_info_file[, c("VISIT_ID", "MODULE", "PIXSCALE")])
   frame_grid = frame_grid[
-    grepl(VID, frame_grid$VISIT_ID) & grepl(MODULE, frame_grid$MODULE, ignore.case = TRUE) & grepl(PIXSCALE, frame_grid$PIXSCALE),
+    grepl(paste0("^",VID,"$"), frame_grid$VISIT_ID) & grepl(paste0("^",MODULE,"$"), frame_grid$MODULE, ignore.case = TRUE) & grepl(PIXSCALE, frame_grid$PIXSCALE),
   ]
   
   message("Using this frame grid:")
