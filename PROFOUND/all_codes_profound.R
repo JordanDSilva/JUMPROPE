@@ -16,7 +16,7 @@ library(matrixStats)
 
 source("./ProFound_settings.R")
 
-jumprope_version = "1.3.0"
+jumprope_version = "1.3.1"
 
 frame_info = function(ref_dir){
   
@@ -1675,6 +1675,12 @@ frame_chunker = function(input_args){
       }
       
       fname_chunk = paste0(data_dir, fstub_chunk)
+      
+      if(ii == 1){
+        if(dir.exists(data_dir)){
+          unlink(data_dir)
+        }
+      }
       
       message('Working on chunk ', jj)
       trim_frame_image = frame$image[grid_s2p[jj,1], grid_s2p[jj,2], box = boxsize, type = "coord"]
