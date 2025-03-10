@@ -1686,7 +1686,7 @@ frame_chunker = function(input_args){
       ## Some area must be usable
       if(dim_usable > 0){
 
-        if(dim_usable/dim_chunk < 0.1){ ## If less than 10%, Shuffle point to mid point of data points
+        if(dim_usable/dim_chunk < 0.1){ ## Shuffle point to mid point of data points
           
           non_na_idx = colMedians(which(
             non_na, arr.ind = TRUE
@@ -1709,7 +1709,6 @@ frame_chunker = function(input_args){
           
           trim_frame_image = frame$image[grid_s2p[jj,1], grid_s2p[jj,2], box = boxsize, type = "coord"]
         }
-
         dir.create(data_dir, recursive = TRUE)
 
         trim_frame_inVar = frame$inVar[grid_s2p[jj,1], grid_s2p[jj,2], box = boxsize, type = "coord"]
@@ -1745,6 +1744,8 @@ frame_chunker = function(input_args){
     temp_args = list(ref_dir = ref_dir)
     
     ## By default, just run through all of the relevant steps
+    temp_args = list(ref_dir = ref_dir)
+    
     if(VID == MODULE){
       temp_args$VID = paste0(VID, "chunk", ii)
       temp_args$MODULE = paste0(MODULE, "chunk", ii)
