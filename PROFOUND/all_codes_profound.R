@@ -16,7 +16,7 @@ library(matrixStats)
 
 source("./ProFound_settings.R")
 
-jumprope_version = "1.2.5"
+jumprope_version = "1.3.0"
 
 frame_info = function(ref_dir){
   
@@ -1662,7 +1662,6 @@ frame_chunker = function(input_args){
       'tile_indices' = 1:dim(grid_s2p)[1]
     )
     
-    plot(frame$image, sparse = 1)
     for(jj in 1:dim(grid_s2p)[1]){
       
       fstub = file_names[ii]
@@ -1684,10 +1683,10 @@ frame_chunker = function(input_args){
       non_na = !is.na(trim_frame_image$imDat)
       dim_usable = sum(non_na)
     
-      ## At least 10% of area must have data? 1 square arcminute by default, assuming mosaic is mostly connected
+      ## Some area must be usable
       if(dim_usable > 0){
 
-        if(dim_usable/dim_chunk < 0.1){ ## Shuffle point to mid point of data points
+        if(dim_usable/dim_chunk < 0.1){ ## If less than 10%, Shuffle point to mid point of data points
           
           non_na_idx = colMedians(which(
             non_na, arr.ind = TRUE
@@ -1709,10 +1708,8 @@ frame_chunker = function(input_args){
           grid_s2p[jj, 2] = non_na_idx_coord[2]
           
           trim_frame_image = frame$image[grid_s2p[jj,1], grid_s2p[jj,2], box = boxsize, type = "coord"]
-          
         }
-        Rwcs_overlap(keyvalues_test = trim_frame_image$keyvalues, keyvalues_ref = frame$image$keyvalues, plot = TRUE, add = TRUE)
-        
+
         dir.create(data_dir, recursive = TRUE)
 
         trim_frame_inVar = frame$inVar[grid_s2p[jj,1], grid_s2p[jj,2], box = boxsize, type = "coord"]
@@ -1744,8 +1741,10 @@ frame_chunker = function(input_args){
   }
   
   for(ii in unique(chunk_cache)){
+    
     temp_args = list(ref_dir = ref_dir)
     
+    ## By default, just run through all of the relevant steps
     if(VID == MODULE){
       temp_args$VID = paste0(VID, "chunk", ii)
       temp_args$MODULE = paste0(MODULE, "chunk", ii)
@@ -1850,7 +1849,7 @@ query_hst = function(input_args){
 copy_long = function(input_args){
   
   ## Copy the long pixel scale from the PROCESS dirs to the DATA dir
-  ## Keep separete DATA dir incase the user puts their own frames in there
+  ## Keep separate DATA dir incase the user puts their own frames in there
   ## Will be data redundancy but I'm assuming you will have enough disk space if you're using this code!
   
   message("Running copy_long")
