@@ -140,7 +140,7 @@ deep_stacker = function(input_args){
       plot=F
     )
     filters_w2 = str_extract(find_frames$file, pattern = regex("F(\\d+).W2")) ## string match F and W with only digits in between 
-    filters_all = str_extract(find_frames$file, pattern = regex("F(\\d+).W|F(\\d+).M"))
+    filters_all = str_extract(find_frames$file, pattern = regex("F(\\d+).W|F(\\d+).M|CLEAR|MIRI"))
     filters_all[which(filters_w2 == "F150W2")] = "F150W2"
     filters_all = na.omit(filters_all)
     
