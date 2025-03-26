@@ -16,7 +16,7 @@ library(matrixStats)
 
 source("./ProFound_settings.R")
 
-jumprope_version = "1.3.1"
+jumprope_version = "1.3.2"
 
 frame_info = function(ref_dir){
   
@@ -1780,9 +1780,147 @@ frame_chunker = function(input_args){
       )
     }
   }
+  
+  combine_chunks(input_args) ## combine for a final catalogue at the end
   return(NULL)
 }
+## Combine chunk catalogue
+combine_chunks = function(input_args){
+  
+  message("Combining chunks...")
+  
+  ref_dir = input_args$ref_dir
+  VID = input_args$VID
+  MODULE = input_args$MODULE
+  PIXSCALE = input_args$PIXSCALE
+  
+  if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID){
+    MODULE = paste0("NRC", MODULE)
+  }
+  
+  data_dir = paste0(ref_dir, "/ProFound/Data/", VID, "/", MODULE, "/") 
+  detect_dir = paste0(ref_dir, "/ProFound/Detects/", VID, "/", MODULE, "/") 
+  measure_dir = paste0(ref_dir, "/ProFound/Measurements/", VID, "/", MODULE, "/") 
+  
+  dir.create(
+    detect_dir, recursive = TRUE, showWarnings = FALSE
+  )
+  dir.create(
+    measure_dir, recursive = TRUE, showWarnings = FALSE
+  )
+  
+  ## Combine detects
+  list_detect_chunks = list.files(
+    paste0(ref_dir, "/ProFound/Detects/"), 
+    pattern = "chunk", recursive = TRUE, full.names = TRUE
+  )
+  list_detect_chunk_cats = grep(pattern = glob2rx(paste0("*", VID, "*", PIXSCALE, "*.csv")), list_detect_chunks, value = TRUE)
+  list_detect_chunk_fits = grep(pattern = glob2rx(paste0("*", VID, "*", PIXSCALE, "*.fits")), list_detect_chunks, value = TRUE)
 
+  ## Load in the big mosaic for WCS info
+  file_list <- list.files(data_dir, pattern=paste0(PIXSCALE, ".fits"), full.names=TRUE) #list all the .fits files in a directory
+  big_mosaicWCS = Rfits_point(
+    file_list[1], ext = 'image'
+  )$keyvalues
+  
+  ## Load in chunk info, should hopefully be the same table across all chunk frames
+  chunk_list =  list.files(paste0(ref_dir, "/ProFound/Data/"), pattern = '.fits', full.names = TRUE, recursive = TRUE)
+  chunk_list = grep(pattern = glob2rx(paste0("*", VID, "*chunk*", PIXSCALE, "*fits")), chunk_list, value = TRUE)
+  chunk_info = Rfits_read_table(
+    chunk_list[1], ext = 'chunk_info'
+  )
+  
+  ## Load and combine the chunk catalogues
+  combine_det_cat = rbindlist(
+    lapply(list_detect_chunk_cats, fread)
+  )
+  ## Make coordinates consistent with the large mosaic
+  combine_det_cat$xmax_tile = combine_det_cat$xmax
+  combine_det_cat$ymax_tile = combine_det_cat$ymax
+  combine_det_cat$xcen_tile = combine_det_cat$xcen
+  combine_det_cat$ycen_tile = combine_det_cat$ycen
+  
+  new_max = Rwcs_s2p(
+    RA = combine_det_cat$RAmax,
+    Dec = combine_det_cat$Decmax,
+    keyvalues = big_mosaicWCS
+  )
+  combine_det_cat$xmax = new_max[,1]
+  combine_det_cat$ymax = new_max[,2]
+  
+  new_cen = Rwcs_s2p(
+    RA = combine_det_cat$RAcen,
+    Dec = combine_det_cat$Deccen,
+    keyvalues = big_mosaicWCS
+  )
+  combine_det_cat$xcen = new_cen[,1]
+  combine_det_cat$ycen = new_cen[,2]
+
+  ## Get the boundary objects since only those will be duplicated across tiles
+  buffer_region_idx = unique(foreach(i = 1:dim(chunk_info)[1], .combine = "c") %do% {
+    
+    idx_outer=which(
+      combine_det_cat$xmax >= (chunk_info$tile_xcen[i] - chunk_info$boxsize_x[i]/2.0) &
+        combine_det_cat$xmax <= (chunk_info$tile_xcen[i] + chunk_info$boxsize_x[i]/2.0) &
+        combine_det_cat$ymax >= (chunk_info$tile_ycen[i] - chunk_info$boxsize_y[i]/2.0) &
+        combine_det_cat$ymax <= (chunk_info$tile_ycen[i] + chunk_info$boxsize_y[i]/2.0)
+    )
+    
+    idx_inner=which(
+      combine_det_cat$xmax >= (chunk_info$tile_xcen[i] - chunk_info$boxsize_no_buffer_x[i]/2.0) &
+        combine_det_cat$xmax <= (chunk_info$tile_xcen[i] + chunk_info$boxsize_no_buffer_x[i]/2.0) &
+        combine_det_cat$ymax >= (chunk_info$tile_ycen[i] - chunk_info$boxsize_no_buffer_y[i]/2.0) &
+        combine_det_cat$ymax <= (chunk_info$tile_ycen[i] + chunk_info$boxsize_no_buffer_y[i]/2.0)
+    )
+    
+    idx_edge = idx_outer[!(idx_outer %in% idx_inner)]
+    return(
+      idx_edge
+    )
+  })
+  
+  clean_cat_idx = internalclean(
+    RA = combine_det_cat$RAmax[buffer_region_idx],
+    Dec = combine_det_cat$Decmax[buffer_region_idx], 
+    tiebreak = combine_det_cat$mag[buffer_region_idx], 
+    rad = 0.01
+  )
+  clean_det_cat = data.frame(
+    combine_det_cat[!(1:dim(combine_det_cat)[1] %in% buffer_region_idx[!(1:length(buffer_region_idx) %in% clean_cat_idx)]), ]
+  )
+  #duplicate_det_cat = combine_det_cat[(1:dim(combine_det_cat)[1] %in% buffer_region_idx[clean_cat_idx]), ]
+
+  ## Now load the measure chunks
+  list_measure_chunks = list.files(
+    paste0(ref_dir, "/ProFound/Measurements/"), 
+    pattern = "chunk", recursive = TRUE, full.names = TRUE
+  )
+  list_measure_chunk_cats = grep(pattern = glob2rx(paste0("*", VID, "*", PIXSCALE, "*.csv")), list_measure_chunks, value = TRUE)
+
+  combine_measure_cat = rbindlist(
+    lapply(list_measure_chunk_cats, fread), fill = TRUE
+  )
+  clean_measure_cat = data.frame(
+    combine_measure_cat[!(1:dim(combine_measure_cat)[1] %in% buffer_region_idx[!(1:length(buffer_region_idx) %in% clean_cat_idx)]), ]
+  )
+  
+  clean_det_stub = paste0(
+    detect_dir, VID, "_", MODULE, "_", PIXSCALE, "_chunked_segstats.csv"
+  )
+  clean_measure_stub = paste0(
+    measure_dir, VID, "_", MODULE, "_", PIXSCALE, "_chunked_photometry.csv"
+  )
+  
+  fwrite(
+    clean_det_cat,
+    clean_det_stub
+  )
+  fwrite(
+    clean_measure_cat,
+    clean_measure_stub
+  )
+  
+}
 
 ## python codes. Super sketchy :P
 query_gaia = function(input_args){

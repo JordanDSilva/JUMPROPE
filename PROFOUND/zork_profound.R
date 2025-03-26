@@ -60,6 +60,7 @@ select_code_func = function(){
           ## 9 = Copy HST for big mosaic                            ##
           ## 10 = ProMeasure                                        ##
           ## 11 = Chop up frames                                    ##
+          ## 12 = Combine chunks                                    ##
           ##                                                        ##
           ## CONTROL + /\ to EXIT                                    ##
           ############################################################
@@ -74,7 +75,7 @@ select_code_func = function(){
     )[[1]]
   )
   
-  if( sum(select_vector %in% 1:11) == 0){
+  if( sum(select_vector %in% 1:12) == 0){
     message("Oops, I think you made a mistake. Trying again.")
     select_code_func()
   }
@@ -164,7 +165,8 @@ main = function(){
     'warp_stack_hst'=hst_warp_stack,
     'copy_hst_for_tile'=copy_hst_for_tile,
     'do_measure'=do_measure,
-    'frame_chunker'=frame_chunker
+    'frame_chunker'=frame_chunker,
+    'combine_chunks'=combine_chunks
   )
   
   for(i in 1:dim(frame_grid)[1]){
