@@ -373,41 +373,42 @@ star_mask = function(input_args){
     return(mask > 0)
   } ## Define the PSF mask
   psf_mask = psf_mask_function(image = ref$image$imDat)
-  sersic = function(R, p, Io, Ro){
-    ## Sersic function for profile fitting
-    Io * exp(-1*p[1] * (R-Ro)^(1/p[2]))
-  }
+
+  ## Empirical star 1D PSF obtained from WEBB (st) PSF python tool
+  ## Made the star mask and extended 6 radial rays, calculated combined median of 6 rays, fitted with spline
+  surf_fun = readRDS("./F277W_1D_PSF.rds")
+  
   LL = function(p, Data){ 
     ## Sersic LogLikelihood
     loglike = sum(
       dnorm(
-        x =  Data$ff,
-        mean = sersic(Data$rr, p, Data$Io, Data$Ro),
-        sd = Data$ff_err, log = T
-      ), na.rm = T)
-    return(-1*loglike)
+        x = log10( surf_fun(Data$rr) ) + p[1],
+        mean = log10( Data$ff ),
+        sd = Data$ff_err / (log(10) * Data$ff), 
+        log = T
+      ), 
+      na.rm = T)
+    return(loglike)
   }
+  
   star_masker = function(ref, gaia, pro, psf){
     box = ceiling(
       0.3 / pixscale(ref, unit = "asec")
     ) ## Use 0.3 arcsec aperture to calculate ray 
-    quan_cut = c(0.0, 0.95)
-    
-    gama_func = function(x)(10^(2.6 - 0.17*x)/pixscale(ref, unit = "amin")) ## GAMA-esque star mask 
-    
-    approx_depth = sd(pro$sky, na.rm = TRUE)
-    # approx_depth = 10e-3 / sqrt( max(unique(c(ref$weight$imDat))) )
+
     segim_map = Rfits_create_image(data = pro$segim, keyvalues = ref$keyvalues)
     sky_map = Rfits_create_image(data = pro$sky, keyvalues = ref$keyvalues)
     skyRMS_map = Rfits_create_image(data = pro$skyRMS, keyvalues = ref$keyvalues)
     
+    ## Find local background levels to truncate diffraction spike
+    depth = 1.5 * abs( diff(quantile( ref$imDat[pro$objects_redo == 0], probs = c(0.50,0.16), na.rm = TRUE)) * 2 )
+    
     star_rad_list = foreach(kk = 1:dim(gaia)[1], .combine = "c") %do% {
-      
+    # star_rad_list = foreach(kk = 1, .combine = "c") %do% {
       test_coords = c(gaia$xpix[kk], gaia$ypix[kk])
       
       dr_vec = 10^seq(0, log10(dim(ref)[1]), length.out = 200)
       flux_mat = matrix(0L, nrow = 6, ncol = length(dr_vec))
-      flux_err_mat = matrix(0L, nrow = 6, ncol = length(dr_vec))
       ## Calculate flux profiles along 6 radial rays
       for(dr in 1:length(dr_vec)){
         count = 1
@@ -415,87 +416,101 @@ star_mask = function(input_args){
           for(sgn in c(1,-1)){
             new_coords = test_coords + (sgn * c(dr_vec[dr] * cos(theta), dr_vec[dr] * sin(theta)) )
             flux = median(ref[new_coords[1], new_coords[2], box = box]$imDat, na.rm = FALSE)
-            flux_err = sd(ref[new_coords[1], new_coords[2], box = box]$imDat, na.rm = FALSE)
             flux_mat[count, dr] = flux
-            flux_err_mat[count, dr] = flux_err
             count = count + 1
           }
         }
       }
       
-      ## Find ray with most flux, use this as the test diffraction spike
-      flux_row_sums = rowSums(flux_mat, na.rm = TRUE)
-      flux_nonNA_sums = rowSums(!is.na(flux_mat))/200
+      combined_flux = colSums(flux_mat, na.rm = TRUE) / 6.0
+      combined_flux_var = foreach(i = 1:6, .combine = rbind) %do% {
+        (flux_mat[i, ] - combined_flux)^2
+      }
+      combined_flux_err = sqrt( colSums(combined_flux_var, na.rm = TRUE) )
       
-      max_flux_idx = which(flux_row_sums == max(flux_row_sums[flux_nonNA_sums >= median(flux_nonNA_sums)]))
-      flux_vec = flux_mat[max_flux_idx, ]
-      flux_err_vec = flux_err_mat[max_flux_idx, ]
-      sn_vec = abs( flux_vec / flux_err_vec )
+      magplot(
+        dr_vec, 
+        combined_flux, 
+        log = "xy",
+        lwd = 3, 
+        xlim = c(1, 6000),
+        ylim = 10^c(log10(0.01*depth), 1), 
+        xlab = "Radius [pixels]",
+        ylab = "Flux [microJy]"
+      )
+      legend(
+        x = "topright",
+        paste0(kk), 
+        col = "darkorange"
+      )
+      magerr(
+        dr_vec, 
+        combined_flux, 
+        ylo = combined_flux_err,
+        col = alpha("black", 0.2)
+      )
+      for(ii in 1:6){
+        lines(
+          dr_vec,
+          flux_mat[ii, ],
+          col = "darkgrey"
+        )
+      }
       
-      rr = dr_vec[!is.na(flux_vec)]
-      ff = flux_vec[!is.na(flux_vec)]
-      ff[ff<=0] = 0
-      ff_err = flux_err_vec[!is.na(flux_vec)]
+      rr = dr_vec[combined_flux > 0]
+      ff = combined_flux[combined_flux > 0]
+      ff_err = combined_flux_err[combined_flux > 0]
       sn = ff / ff_err
       
-      if(all(flux_row_sums == 0) | length(rr) < 30){
-        return(100)
-      }
-      ## Set some sensible limits for initial values for fitting
-      sm_ff = stats::filter(ff[rr > 10], rep(1/10,10), sides = 2)
-      Io = quantile(sm_ff, probs = 0.8, na.rm = T)
-      Ro = rr[which(ff<Io)[1]]
-      MaxR = max(rr)
-      
-      ## Fit sersic with Highlander
+      ## Fit average profile with Highlander
       Data = list(
-        "rr" = c(rr, 2*dim(ref)[1]),
-        "ff" = c(ff, 0),
-        "ff_err" = c(ff_err+1e-4, 1e-8),
-        "Ro" = Ro,
-        "Io" = Io
+        "rr" = rr,
+        "ff" = ff,
+        "ff_err" = ff_err
       )
+      
       highout = suppressMessages(Highlander(
-        parm = c(1, 1),
+        parm = c(0),
         Data = Data,
         likefunc = LL,
-        likefunctype = "CMA", liketype = "min",
-        lower = c(0, 0.5), upper = c(5, 4),
-        Niters = c(10000,10000),
-        NfinalMCMC = 10000,
+        likefunctype = "CMA", liketype = "max",
+        lower = c(-5), upper = c(5),
+        Niters = c(1000,1000),
+        NfinalMCMC = 0,
         seed = 666
       ))
       
-      fitparm = colQuantiles(highout$LD_last$Posterior1, probs = c(0.5, 0.16, 0.84))
-      sersic_fun = function(R){sersic(R, p = fitparm[,1], Io = Io, Ro = Ro)}
+      fitparm = highout$parm[1]
+      rtest = 1:imdim[1]
+      
+      sfbFun = approxfun(
+        x = rtest, 
+        y = 10^( fitparm[1] + log10( surf_fun(rtest) ) ), 
+        yleft = max(ff, na.rm = TRUE), yright = min(ff, na.rm = TRUE)
+      )
+      
+      curve(
+        sfbFun, 1, 5000, add = TRUE, lwd = 3, col = "red"
+      )
+      
+      opt_rad = optimise(
+        f = function(x){
+          abs(
+            sfbFun(x) - depth
+          )
+        }, 
+        interval = c(1, imdim[1])
+      )$minimum
+      
+      star_rad = opt_rad * 2 ## Because the PSF mask spurs are rad/2.0
+      
+      abline(
+        v = star_rad, lty = 2, lwd = 2
+      )
+      abline(
+        h = depth, lty = 2, lwd = 2
+      )
 
-      rtest = Ro + seq(1, dim(ref)[1], 0.1)
-      ftest = sersic_fun(rtest)
-      
-      ## Find local background levels to truncate diffraction spike
-      local_RMS = skyRMS_map[test_coords[1], test_coords[2], box = Ro + 100]$imDat
-      local_sky = sky_map[test_coords[1], test_coords[2], box = Ro + 100]$imDat
-      
-      depth = pmin( mean(local_RMS, na.rm = TRUE), 2*sd(local_sky, na.rm = TRUE))
-
-      if(is.na(depth)){
-        depth = approx_depth
-      }
-      star_rad = rtest[ftest < depth][1]
-      
-      ## If radius is much bigger than we would expect from the GAMA function
-      if(2*star_rad > 1.5*gama_func(gaia$phot_g_mean_mag[kk]) & gaia$phot_g_mean_mag[kk] >= 19){
-        star_rad = gama_func(gaia$phot_g_mean_mag[kk])/2.0
-      }
-      
-      avg_SN1 = quantile(sn_vec[dr_vec <= (Ro+MaxR)*0.5], 0.50, na.rm = TRUE)
-      avg_SN2 = quantile(sn_vec[dr_vec >= (Ro+MaxR)*0.5], 0.50, na.rm = TRUE)
-      init_coords = ref[test_coords[1], test_coords[2], box = Ro+2]$imDat
-      if( (sum(is.na(init_coords))/(Ro+2)^2 > 0.5) & avg_SN1 < 1.0 ){
-        ## If the center coords are mostly NA and the total S/N is pretty poor
-        message("Likely star out of bounds")
-        return(100)
-      }
       return(star_rad)
     }
     
@@ -504,8 +519,8 @@ star_mask = function(input_args){
     all_mask = profoundApplyMask(
       image = ref$imDat, mask = psf>0, 
       xcen = gaia$xpix, ycen = gaia$ypix,
-      xsize = star_rad_list*2,
-      ysize = star_rad_list*2
+      xsize = star_rad_list,
+      ysize = star_rad_list
     )
     ## Extra dilation step to capture more flux if needed
     pro_new = profoundProFound(
@@ -541,19 +556,28 @@ star_mask = function(input_args){
   
   if(length(match_gaia$bestmatch)>1){ ## Make sure that there are GAIA stars in frame
     ## calculate radius of stars/diffraction spikes
-    cores_stars = input_args$cores_stack
-    registerDoParallel(cores = cores_stars)
+    
+    plot_stub = paste0(ref_dir, "/ProFound/Star_Masks/", VID, "/", MODULE, "/", VID, "_", MODULE, "_", PIXSCALE, "_star_mask.pdf")
+    CairoPDF(plot_stub, width = 10, height = 10)
+    
     star_mask_save = star_masker(ref$image, gaia_trim, pro_stars, psf_mask)
     
     message("Star mask complete")
     star_mask_redo = list()
     star_mask_redo$mask = star_mask_save[["star_mask"]]
-    
-    plot_stub = paste0(ref_dir, "/ProFound/Star_Masks/", VID, "/", MODULE, "/", VID, "_", MODULE, "_", PIXSCALE, "_star_mask.pdf")
-    CairoPDF(plot_stub, width = 10, height = 10)
+  
     par(mfrow = c(1,1), mar = rep(0,4), oma = rep(0,4))
     magimage(ref$image$imDat, flip = T, sparse = 1)
     magimage(star_mask_save[["star_mask"]], col = c(NA, rgb(1,0,0,0.4)), add = T)
+    for(ii in 1:dim(star_mask_save$new_gaia)[1]){
+      points(
+        star_mask_save$new_gaia$xpix[ii],
+        star_mask_save$new_gaia$ypix[ii],
+        pch = paste0(ii), 
+        cex = 2.0, 
+        col = alpha("darkorange", 0.4)
+      )
+    }
     legend(x = "topleft", paste0(VID, "_", MODULE))
     dev.off()
     
