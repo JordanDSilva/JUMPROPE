@@ -365,24 +365,50 @@ star_mask = function(input_args){
   message(paste0("Building star mask for VID: ", VID, ", MODULE: ", MODULE))
   psf_mask_function = function(image, xcen=dim(image)[1]/2, ycen=dim(image)[2]/2, rad=dim(image)[2]/2){
     mask =
-      profoundEllipseSeg(image=image, xcen=xcen, ycen=ycen, rad=rad/8.0, axrat=1) +
-      profoundEllipseSeg(image=image, xcen=xcen, ycen=ycen, rad=rad/2, axrat=0.01, ang=90) +
-      profoundEllipseSeg(image=image, xcen=xcen, ycen=ycen, rad=rad, axrat=0.01, ang=60) +
-      profoundEllipseSeg(image=image, xcen=xcen, ycen=ycen, rad=rad, axrat=0.01, ang=-60) +
-      profoundEllipseSeg(image=image, xcen=xcen, ycen=ycen, rad=rad, axrat=0.01, ang=0)
+      profoundEllipseSeg(image=image, xcen=xcen, ycen=ycen, rad=rad/6.0, axrat=1) +
+      profoundEllipseSeg(image=image, xcen=xcen, ycen=ycen, rad=rad/2, axrat=0.03, ang=90) +
+      profoundEllipseSeg(image=image, xcen=xcen, ycen=ycen, rad=rad, axrat=0.03, ang=60) +
+      profoundEllipseSeg(image=image, xcen=xcen, ycen=ycen, rad=rad, axrat=0.03, ang=-60) +
+      profoundEllipseSeg(image=image, xcen=xcen, ycen=ycen, rad=rad, axrat=0.03, ang=0)
     return(mask > 0)
   } ## Define the PSF mask
   psf_mask = psf_mask_function(image = ref$image$imDat)
 
   ## Empirical star 1D PSF obtained from WEBB (st) PSF python tool
   ## Made the star mask and extended 6 radial rays, calculated combined median of 6 rays, fitted with spline
-  surf_fun = readRDS("./F277W_1D_PSF.rds")
+  # empirical_PSF = readRDS("./F277W_1D_PSF.rds")
+  
+  core_sersic <- function(R, p) {
+    
+    ## Pretty much a two component Sersic profile to capture breaks in the 1D PSF
+    
+    # I_b <- -3    # Intensity at break radius
+    # R_b <- 100     # Break radius
+    # gamma <- 2.0  # Inner power-law slope
+    # b <- 2        # Sérsic scaling parameter
+    # alpha <- 3    # Transition sharpness
+    # n <- 4  # Sersic index
+     
+    I_b = p[1]
+    R_b = p[2]
+    gamma = p[3]
+    b = p[4]
+    alpha = p[5]
+    n = p[6]
+    
+    tot = I_b + ((gamma - b) / alpha) * log10(1 + (R_b / R)^alpha) - b * ((R / R_b)^(1/n) - 1)
+  }
+  
+  surf_fun = function(x, p){
+    # Logistic = 1 - 1/(1 + exp(p[2] * (x - p[3])))
+    core_sersic(x, p)
+  }
   
   LL = function(p, Data){ 
     ## Sersic LogLikelihood
     loglike = sum(
       dnorm(
-        x = log10( surf_fun(Data$rr) ) + p[1],
+        x = surf_fun(Data$rr, p),
         mean = log10( Data$ff ),
         sd = Data$ff_err / (log(10) * Data$ff), 
         log = T
@@ -393,8 +419,8 @@ star_mask = function(input_args){
   
   star_masker = function(ref, gaia, pro, psf){
     box = ceiling(
-      0.3 / pixscale(ref, unit = "asec")
-    ) ## Use 0.3 arcsec aperture to calculate ray 
+      0.5 / pixscale(ref, unit = "asec")
+    ) ## Use 0.5 arcsec aperture to calculate ray 
 
     segim_map = Rfits_create_image(data = pro$segim, keyvalues = ref$keyvalues)
     sky_map = Rfits_create_image(data = pro$sky, keyvalues = ref$keyvalues)
@@ -404,10 +430,9 @@ star_mask = function(input_args){
     depth = 1.0 * abs( diff(quantile( ref$imDat[pro$objects_redo == 0], probs = c(0.50,0.16), na.rm = TRUE)) * 2 )
     
     star_rad_list = foreach(kk = 1:dim(gaia)[1], .combine = "c") %do% {
-    # star_rad_list = foreach(kk = 1, .combine = "c") %do% {
       test_coords = c(gaia$xpix[kk], gaia$ypix[kk])
       
-      dr_vec = 10^seq(0, log10(dim(ref)[1]), length.out = 200)
+      dr_vec = 10^seq(0, log10(dim(ref)[1]), length.out = 100)
       flux_mat = matrix(0L, nrow = 6, ncol = length(dr_vec))
       ## Calculate flux profiles along 6 radial rays
       for(dr in 1:length(dr_vec)){
@@ -426,16 +451,17 @@ star_mask = function(input_args){
         flux_mat, na.rm = TRUE
       )
       combined_flux_err = rowDiffs(colQuantiles(
-        flux_mat, 
+        flux_mat,
         probs = c(0.16, 0.84),
         na.rm = TRUE
       ))/2.0
+      sn_tot = combined_flux/combined_flux_err
+      sn_tot[is.na(sn_tot)] = 0
       
       magplot(
         dr_vec, 
         combined_flux, 
         log = "xy",
-        lwd = 3, 
         xlim = c(1, 6000),
         ylim = 10^c(log10(0.01*depth), 1), 
         xlab = "Radius [pixels]",
@@ -459,57 +485,68 @@ star_mask = function(input_args){
           col = "darkgrey"
         )
       }
-      
-      rr = dr_vec[combined_flux > 0]
-      ff = combined_flux[combined_flux > 0]
-      ff_err = combined_flux_err[combined_flux > 0]
+
+      rr = c(dr_vec[combined_flux > 0 & !is.na(combined_flux) & sn_tot > 1.5])
+      ff = c(combined_flux[combined_flux > 0 & !is.na(combined_flux) & sn_tot > 1.5])
+      ff_err = c(combined_flux_err[combined_flux > 0 & !is.na(combined_flux) & sn_tot > 1.5])
+      ff_err[ff_err == 0] = ff[ff_err == 0]
       sn = ff / ff_err
       
       ## Fit average profile with Highlander
       Data = list(
-        "rr" = rr,
-        "ff" = ff,
-        "ff_err" = ff_err
+        "rr" = c(rr,10000),
+        "ff" = c(ff,1e-10),
+        "ff_err" = c(ff_err, 1e-10)
       )
       
       highout = suppressMessages(Highlander(
-        parm = c(0),
+        parm = c(0, 10, 1, 2, 1, 1),
         Data = Data,
         likefunc = LL,
         likefunctype = "CMA", liketype = "max",
-        lower = c(-5), upper = c(5),
+        lower = c(-5, 1, -2, 0, 0.01, 0.5), upper = c(5, 1000, 3, 4, 5, 4),
         Niters = c(1000,1000),
         NfinalMCMC = 0,
         seed = 666
       ))
-      
-      fitparm = highout$parm[1]
+
+      fitparm = highout$parm
+      sfbFun = function(x){
+        10^surf_fun(x = x, fitparm)
+      }
       rtest = 1:imdim[1]
       
-      sfbFun = approxfun(
-        x = rtest, 
-        y = 10^( fitparm[1] + log10( surf_fun(rtest) ) ), 
-        yleft = max(ff, na.rm = TRUE), yright = min(ff, na.rm = TRUE)
-      )
-      
+      # smooth_spline = smooth.spline(
+      #   x = log10(Data$rr),
+      #   y = log10(Data$ff),
+      #   w = (Data$ff_err / (log(10) * Data$ff))^2,
+      #   df = 7
+      # )
+      # sfbFun = function(x){
+      #   10^predict(smooth_spline, log10(x))$y
+      # }
+
       curve(
         sfbFun, 1, 5000, add = TRUE, lwd = 3, col = "red"
       )
       
-      opt_rad = optimise(
-        f = function(x){
-          abs(
-            sfbFun(x) - depth
-          )
-        }, 
-        interval = c(1, imdim[1])
-      )$minimum
+      opt_rad = mean(rtest[
+        (abs(sfbFun(rtest) - depth) / depth) < 0.05
+      ], na.rm = TRUE)
       
-      star_rad = opt_rad * 2 ## Because the PSF mask spurs are rad/2.0
+      star_rad = opt_rad * 2.2 ## Because the PSF mask spurs are rad/2.0 and increase by 20%
       
+      checkNA = sum(is.na(ref[new_coords[1], new_coords[2], box = opt_rad]$imDat)) / opt_rad^2
+      checkMissingFlux = sum( combined_flux[dr_vec <= opt_rad] == 0 ) / sum(dr_vec <= opt_rad)
+      if(checkNA > 0.3 & checkMissingFlux > 0.8){
+        message("Star likely out of bounds")
+        star_rad = 100
+      }
+
       abline(
-        v = star_rad, lty = 2, lwd = 2
+        v = star_rad / 2.0, lty = 2, lwd = 2
       )
+      
       abline(
         h = depth, lty = 2, lwd = 2
       )
