@@ -447,7 +447,7 @@ star_mask = function(input_args){
         dr_vec, 
         combined_flux, 
         ylo = combined_flux_err,
-        col = alpha("black", 0.2)
+        col = rgb(0,0,0,0.2)
       )
       for(ii in 1:6){
         lines(
@@ -571,11 +571,11 @@ star_mask = function(input_args){
     magimage(star_mask_save[["star_mask"]], col = c(NA, rgb(1,0,0,0.4)), add = T)
     for(ii in 1:dim(star_mask_save$new_gaia)[1]){
       points(
-        star_mask_save$new_gaia$xpix[ii],
-        star_mask_save$new_gaia$ypix[ii],
+        star_mask_save$new_gaia$xpix[ii]+2,
+        star_mask_save$new_gaia$ypix[ii]+2,
         pch = paste0(ii), 
         cex = 2.0, 
-        col = alpha("darkorange", 0.4)
+        col = "darkorange"
       )
     }
     legend(x = "topleft", paste0(VID, "_", MODULE))
