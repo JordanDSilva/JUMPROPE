@@ -401,7 +401,7 @@ star_mask = function(input_args){
     skyRMS_map = Rfits_create_image(data = pro$skyRMS, keyvalues = ref$keyvalues)
     
     ## Find local background levels to truncate diffraction spike
-    depth = 1.5 * abs( diff(quantile( ref$imDat[pro$objects_redo == 0], probs = c(0.50,0.16), na.rm = TRUE)) * 2 )
+    depth = 1.0 * abs( diff(quantile( ref$imDat[pro$objects_redo == 0], probs = c(0.50,0.16), na.rm = TRUE)) * 2 )
     
     star_rad_list = foreach(kk = 1:dim(gaia)[1], .combine = "c") %do% {
     # star_rad_list = foreach(kk = 1, .combine = "c") %do% {
@@ -422,11 +422,14 @@ star_mask = function(input_args){
         }
       }
       
-      combined_flux = colSums(flux_mat, na.rm = TRUE) / 6.0
-      combined_flux_var = foreach(i = 1:6, .combine = rbind) %do% {
-        (flux_mat[i, ] - combined_flux)^2
-      }
-      combined_flux_err = sqrt( colSums(combined_flux_var, na.rm = TRUE) )
+      combined_flux = colMedians(
+        flux_mat, na.rm = TRUE
+      )
+      combined_flux_err = rowDiffs(colQuantiles(
+        flux_mat, 
+        probs = c(0.16, 0.84),
+        na.rm = TRUE
+      ))/2.0
       
       magplot(
         dr_vec, 
