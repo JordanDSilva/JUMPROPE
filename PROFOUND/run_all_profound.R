@@ -97,10 +97,16 @@ main = function(){
     ) 
   )
   
-  frame_grid = unique(frame_info_file[, c("VISIT_ID", "MODULE", "PIXSCALE")])
-  frame_grid = frame_grid[
-    grepl(paste0("^",VID,"$"), frame_grid$VISIT_ID) & grepl(paste0("^",MODULE,"$"), frame_grid$MODULE, ignore.case = TRUE) & grepl(PIXSCALE, frame_grid$PIXSCALE),
+  frame_grid_unique = unique(frame_info_file[, c("PROPOSAL_ID", "VISIT_ID", "MODULE", "PIXSCALE")])
+  
+  frame_grid = frame_grid_unique[
+    grepl(paste0("^",VID,"$"), frame_grid_unique$VISIT_ID) & grepl(paste0("^",MODULE,"$"), frame_grid_unique$MODULE, ignore.case = TRUE) & grepl(PIXSCALE, frame_grid_unique$PIXSCALE),
   ]
+  if(dim(frame_grid)[1]==0){
+    frame_grid = frame_grid_unique[
+      grepl(paste0("^",VID,"$"), frame_grid_unique$PROPOSAL_ID) & grepl(paste0("^",MODULE,"$"), frame_grid_unique$MODULE, ignore.case = TRUE) & grepl(PIXSCALE, frame_grid_unique$PIXSCALE),
+    ]
+  }
   
   message("Using this frame grid:")
   print(
