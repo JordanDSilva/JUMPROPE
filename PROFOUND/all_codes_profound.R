@@ -294,6 +294,16 @@ copy_frames = function(input_args){
 ## Star mask codes
 star_mask = function(input_args){
   
+  ## Why did they have to make the PSF so darn complicated :(
+  
+  ## Testing purposes - FML
+  # input_args = list(
+  #   ref_dir = "/Volumes/BRAIDY/JWST/JP",
+  #   VID = 1180018001,
+  #   MODULE = "NRCB",
+  #   PIXSCALE = "short"
+  # )
+
   message("Running star mask")
   
   ref_dir = input_args$ref_dir
@@ -374,37 +384,12 @@ star_mask = function(input_args){
   } ## Define the PSF mask
   psf_mask = psf_mask_function(image = ref$image$imDat)
 
-  ## Empirical star 1D PSF obtained from WEBB (st) PSF python tool
-  ## Made the star mask and extended 6 radial rays, calculated combined median of 6 rays, fitted with spline
-  # empirical_PSF = readRDS("./F277W_1D_PSF.rds")
-  # sersic = function(R, p){
-  #   ## Sersic function for profile fitting
-  #   # Io * exp(-1*p[1] * (R-Ro)^(1/p[2]))
-  #   Io = p[1]
-  #   Ro = 10^p[2] ## logged
-  #   n = p[3]
-  #   k = p[4]
-  #   
-  #   tot_ = Io - k*((R/Ro)^(1/n) - 1)*log10(exp(1))
-  #   return(tot_)
-  # }
-  # sersic_hlr = function(R, p){
-  #   ## Sersic function for profile fitting
-  #   # Io * exp(-1*p[1] * (R-Ro)^(1/p[2]))
-  #   Ie = p[1]
-  #   Re = 10^p[2] ## logged
-  #   n = p[3]
-  # 
-  #   bn = 2*n - 1/3 + 4/(n*405) + 46/(25515*n^2) + 131/(1148175*n^3) - 2194697/(30690717750*n^4)
-  #   
-  #   tot_ = Ie - bn*((R/Re)^(1/n) - 1)*log10(exp(1))
-  #   return(tot_)
-  # }
-  
   core_sersic <- function(R, p) {
     ## Pretty much a two component Sersic profile to capture breaks in the 1D PSF
     ## https://arxiv.org/abs/astro-ph/0306023
     ## https://arxiv.org/abs/astro-ph/0403659
+    
+    # p = c(0.0, 1.0, 1.0, 4.0, 0.0) ## For testing purposes
     
     Ib = 10^p[1]
     Rb = 10^p[2]
@@ -413,16 +398,25 @@ star_mask = function(input_args){
     gamma_ = p[5]
     alpha = 4.0
     
-    # bn = 2*n - 1/3 + 4/(n*405) + 46/(25515*n^2) + 131/(1148175*n^3) - 2194697/(30690717750*n^4)
     bn = 1.9992*n - 0.3271
-    Iprime = Ib * 2^(-1*gamma_/alpha) * exp(bn * (2^(1/alpha) * Rb/Re)^(1/n))
     
-    term1 = (1 + (Rb/R)^(alpha))^(gamma_/alpha)
-    term2 = exp(-1*bn * ( (R^alpha + Rb^alpha)/Re^alpha )^(1/(alpha*n)))
+    # Iprime = Ib * 2^(-1*gamma_/alpha) * exp(bn * (2^(1/alpha) * Rb/Re)^(1/n))
+    # term1 = (1 + (Rb/R)^(alpha))^(gamma_/alpha)
+    # term2 = exp(-1*bn * ( (R^alpha + Rb^alpha)/Re^alpha )^(1/(alpha*n)))
+    # 
+    # tot_ = log10( Iprime * term1 * term2 )
     
-    tot_ = log10( Iprime * term1 * term2 )
+    ## Compute log directly to avoid infinities in exponents later on
+    Iprime_log = log10(Ib) + log10(2)*(-1*gamma_/alpha) + log10(exp(1))*(bn * (2^(1/alpha) * Rb/Re)^(1/n))
+    term1_log = log10(1 + (Rb/R)^(alpha))*(gamma_/alpha)
+    term2_log = log10(exp(1))*(-1*bn * ( (R^alpha + Rb^alpha)/Re^alpha )^(1/(alpha*n)))
+    
+    tot_log = ( Iprime_log + term1_log + term2_log ) ## Confirmed that this is equal to log calculation above
+    return(
+      tot_log
+    )
   }
-  
+
   surf_fun = function(x, p){
     core_sersic(x, p)
   }
@@ -435,7 +429,7 @@ star_mask = function(input_args){
         mean = log10( Data$ff ),
         sd = Data$ff_err / (log(10) * Data$ff), 
         log = T
-      ), 
+      ) * (1/(Data$rr)), 
       na.rm = T)
     return(loglike)
   }
@@ -443,8 +437,8 @@ star_mask = function(input_args){
   ## meat of the function
   star_masker = function(ref, gaia, pro, psf){
     box = ceiling(
-      0.5 / pixscale(ref, unit = "asec")
-    ) ## Use 0.5 arcsec aperture to calculate ray 
+      0.3 / pixscale(ref, unit = "asec")
+    ) ## Use 0.3 arcsec aperture to calculate ray 
 
     segim_map = Rfits_create_image(data = pro$segim, keyvalues = ref$keyvalues)
     sky_map = Rfits_create_image(data = pro$sky, keyvalues = ref$keyvalues)
@@ -466,7 +460,7 @@ star_mask = function(input_args){
         for(theta in c(pi/6.0, pi/2.0, 5*pi/6)){
           for(sgn in c(1,-1)){
             new_coords = test_coords + (sgn * c(dr_vec[dr] * cos(theta), dr_vec[dr] * sin(theta)) )
-            flux = median(ref[new_coords[1], new_coords[2], box = box]$imDat, na.rm = FALSE)
+            flux = mean(ref[new_coords[1], new_coords[2], box = box]$imDat, na.rm = FALSE)
             flux_mat[count, dr] = flux
             count = count + 1
           }
@@ -484,12 +478,16 @@ star_mask = function(input_args){
       sn_tot = combined_flux/combined_flux_err
       sn_tot[is.na(sn_tot)] = 0
       
+      N_nonna_rays = colSums(
+        1-is.na(flux_mat)
+      )
+      
       suppressWarnings(magplot(
         dr_vec, 
         combined_flux, 
         log = "xy",
         xlim = c(1, 6000),
-        ylim = 10^c(log10(0.01*depth), 1), 
+        ylim = 10^c(log10(0.01*depth), 6), 
         xlab = "Radius [pixels]",
         ylab = "Flux [microJy]"
       ))
@@ -501,7 +499,7 @@ star_mask = function(input_args){
       suppressWarnings(magerr(
         dr_vec, 
         combined_flux, 
-        ylo = combined_flux_err,
+        ylo = sqrt( depth^2 + combined_flux_err^2 ),
         col = rgb(0,0,0,0.2)
       ))
       for(ii in 1:6){
@@ -512,9 +510,9 @@ star_mask = function(input_args){
         )
       }
 
-      rr = c(dr_vec[combined_flux > 0.6*depth & !is.na(combined_flux) & sn_tot > 1.0])
-      ff = c(combined_flux[combined_flux > 0.6*depth & !is.na(combined_flux) & sn_tot > 1.0])
-      ff_err = c(combined_flux_err[combined_flux > 0.6*depth & !is.na(combined_flux) & sn_tot > 1.0])
+      rr = c(dr_vec[combined_flux > 0.5*depth & !is.na(combined_flux)])
+      ff = c(combined_flux[combined_flux > 0.5*depth & !is.na(combined_flux)])
+      ff_err = c(combined_flux_err[combined_flux > 0.5*depth & !is.na(combined_flux)])
       ff_err[ff_err == 0] = ff[ff_err == 0]
       sn = ff / ff_err
       
@@ -526,62 +524,70 @@ star_mask = function(input_args){
       
       ## Fit average profile with Highlander
       Data = list(
-        "rr" = c(rr,10000),
-        "ff" = c(ff,1e-10),
-        "ff_err" = c(ff_err, 1e-10)
+        "rr" = c(rr),
+        "ff" = c(ff),
+        "ff_err" = sqrt( rep(depth, length(ff))^2 + ff_err^2 )
       )
       
-      highout = suppressMessages(Highlander(
-        parm = c(0.0, 1.0, 1.0, 4.0, 0.0),
-        Data = Data,
-        likefunc = LL,
-        likefunctype = "CMA", liketype = "max",
-        lower = c(
-          log10(depth)-1.0, ## log10(Ib)
-          log10(1), ## log10(Rb)
-          log10(1), ## log10(Re)
-          1.0, ## n (sersic index)
-          -0.1 ## gamma (power law slope)
-        ), 
-        upper = c(
-          log10(depth)+5.0,
-          log10(dim(ref)[1]),
-          log10(dim(ref)[1]),
-          10.0,
-          3.5
-        ),
-        Niters = c(1000,1000),
-        NfinalMCMC = 0,
-        seed = 666
-      ))
-
-      fitparm = highout$parm
-      sfbFun = function(x){
-        10^surf_fun(x = x, fitparm)
-      }
-      rtest = 1:imdim[1]
-      
-      curve(
-        sfbFun, 1, 5000, add = TRUE, lwd = 3, col = "red"
-      )
-      
-      ridx = (abs(sfbFun(rtest) - depth) / depth) < 0.01
-      
-      if(sum(ridx)==0){
-        opt_rad = 50
+      if(length(Data$rr) > 6){
+        highout = suppressMessages(Highlander(
+          parm = c(0.0, 1.0, 1.0, 4.0, 0.0),
+          Data = Data,
+          likefunc = LL,
+          likefunctype = "CMA", liketype = "max",
+          lower = c(
+            log10(depth)-1.0, ## log10(Ib)
+            log10(1), ## log10(Rb)
+            log10(1), ## log10(Re)
+            1.0, ## n (sersic index)
+            -0.1 ## gamma (power law slope)
+          ), 
+          upper = c(
+            log10(depth)+5.0,
+            log10(dim(ref)[1]),
+            log10(dim(ref)[1]),
+            20.0,
+            3.5
+          ),
+          Niters = c(1000,1000),
+          NfinalMCMC = 0,
+          seed = 666, 
+          parm.names = c("Ib", "Rb", "Re", "n", "gamma")
+        ))
+        
+        fitparm = highout$parm
+        sfbFun = function(x){
+          10^surf_fun(x = x, fitparm)
+        }
+        rtest = 1:imdim[1]
+        
+        curve(
+          sfbFun, 1, 5000, add = TRUE, lwd = 3, col = "red"
+        )
+        
+        ridx = (abs(sfbFun(rtest) - depth) / depth) < 0.01
+        ridx[is.na(ridx)] = FALSE
+        
+        if(sum(ridx)==0){
+          opt_rad = 50
+        }else{
+          opt_rad = mean(rtest[ridx], na.rm = TRUE)
+        }
+        
+        box_check = 5 / pixscale(ref, unit = "asec")
+        check_flux = combined_flux
+        check_flux[is.na(check_flux)] = 0
+        check_NA_centre = sum(is.na(ref[test_coords[1], test_coords[2], box = box_check]$imDat)) / box_check^2
+        check_rays_noise = median(check_flux[check_flux>0])/depth
+        check_NA_rays = sum(N_nonna_rays == 0) / length(N_nonna_rays)
+        
+        if(check_NA_centre >= 0.5 & check_rays_noise <= 0.8){
+          opt_rad = 50
+        }
       }else{
-        opt_rad = mean(rtest[ridx], na.rm = TRUE)
-      }
-      
-      box_check = 2 / pixscale(ref, unit = "asec")
-      check_NA_centre = sum(is.na(ref[test_coords[1], test_coords[2], box = box_check]$imDat)) / box_check^2
-      check_rays_noise = sum(Data$ff <= depth) / length(Data$ff)
-
-      if(check_NA_centre > 0.5 & check_rays_noise > 0.5){
-        message("Star likely out of bounds")
         opt_rad = 50
       }
-                                                        
+
       star_rad = opt_rad * 2.5 ## Because the PSF mask spurs are rad/2.0 and increase by 50%
 
       abline(
@@ -590,6 +596,14 @@ star_mask = function(input_args){
       
       abline(
         h = depth, lty = 2, lwd = 2
+      )
+      legend(
+        x = "topleft", 
+        pch = c(1, 16, NA, NA, NA, NA),
+        lty = c(NA, NA, 1, 1, 2, 2),
+        col = c("black", "black", "grey", "red", "black", "black"),
+        legend = c("Median profile", "Fit data", "6 rays", "Fit", "Depth", "Star radius"), 
+        ncol = 2
       )
 
       return(star_rad)
@@ -635,7 +649,7 @@ star_mask = function(input_args){
     coordcompare = pro_stars$segstats[, c("RAmax", "Decmax")]
   )
   
-  if(length(match_gaia$bestmatch)>1){ ## Make sure that there are GAIA stars in frame
+  if(length(match_gaia$bestmatch)>1){ ## Make sure that there are GAIA stars in frame, length==1 => NA and no matches (we should at least have refID and compareID)
     ## calculate radius of stars/diffraction spikes
     
     plot_stub = paste0(ref_dir, "/ProFound/Star_Masks/", VID, "/", MODULE, "/", VID, "_", MODULE, "_", PIXSCALE, "_star_mask.pdf")
@@ -2093,7 +2107,6 @@ query_hst = function(input_args){
   }
   return(NULL)
 }
-
 
 
 copy_long = function(input_args){
