@@ -16,7 +16,7 @@ library(matrixStats)
 
 source("./ProFound_settings.R")
 
-jumprope_version = "1.3.3"
+jumprope_version = "1.3.4"
 
 frame_info = function(ref_dir){
   
@@ -1906,7 +1906,15 @@ frame_chunker = function(input_args){
 ## Combine chunk catalogue
 combine_chunks = function(input_args){
   
-  message("Combining chunks...")
+  # Testing purposes - FML
+  # input_args = list(
+  #   ref_dir = "/Volumes/BRAIDY/JWST/JP",
+  #   VID = "JADESGOODSS",
+  #   MODULE = "JADESGOODSS",
+  #   PIXSCALE = "short"
+  # )
+  
+  message(paste("Combining chunks for", VID, "..."))
   
   ref_dir = input_args$ref_dir
   VID = input_args$VID
@@ -1927,6 +1935,21 @@ combine_chunks = function(input_args){
   dir.create(
     measure_dir, recursive = TRUE, showWarnings = FALSE
   )
+  
+  clean_det_stub = paste0(
+    detect_dir, VID, "_", MODULE, "_", PIXSCALE, "_chunked_segstats.csv"
+  )
+  clean_measure_stub = paste0(
+    measure_dir, VID, "_", MODULE, "_", PIXSCALE, "_chunked_photometry.csv"
+  )
+  
+  ## Remove previous catalogues to avoid matching stuff up
+  if(file.exists(clean_det_stub)){
+    file.remove(clean_det_stub)
+  }
+  if(file.exists(clean_measure_stub)){
+    file.remove(clean_measure_stub)
+  }
   
   ## Combine detects
   list_detect_chunks = list.files(
@@ -1951,7 +1974,7 @@ combine_chunks = function(input_args){
   
   ## Load and combine the chunk catalogues
   combine_det_cat = rbindlist(
-    lapply(list_detect_chunk_cats, fread)
+    lapply(list_detect_chunk_cats, fread), fill = TRUE
   )
   ## Make coordinates consistent with the large mosaic
   combine_det_cat$xmax_tile = combine_det_cat$xmax
@@ -2008,7 +2031,7 @@ combine_chunks = function(input_args){
     combine_det_cat[!(1:dim(combine_det_cat)[1] %in% buffer_region_idx[!(1:length(buffer_region_idx) %in% clean_cat_idx)]), ]
   )
   #duplicate_det_cat = combine_det_cat[(1:dim(combine_det_cat)[1] %in% buffer_region_idx[clean_cat_idx]), ]
-
+  
   ## Now load the measure chunks
   list_measure_chunks = list.files(
     paste0(ref_dir, "/ProFound/Measurements/"), 
@@ -2021,13 +2044,6 @@ combine_chunks = function(input_args){
   )
   clean_measure_cat = data.frame(
     combine_measure_cat[!(1:dim(combine_measure_cat)[1] %in% buffer_region_idx[!(1:length(buffer_region_idx) %in% clean_cat_idx)]), ]
-  )
-  
-  clean_det_stub = paste0(
-    detect_dir, VID, "_", MODULE, "_", PIXSCALE, "_chunked_segstats.csv"
-  )
-  clean_measure_stub = paste0(
-    measure_dir, VID, "_", MODULE, "_", PIXSCALE, "_chunked_photometry.csv"
   )
   
   fwrite(
