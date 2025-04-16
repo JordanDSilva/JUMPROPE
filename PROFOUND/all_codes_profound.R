@@ -16,7 +16,7 @@ library(matrixStats)
 
 source("./ProFound_settings.R")
 
-jumprope_version = "1.3.4"
+jumprope_version = "1.3.5"
 
 frame_info = function(ref_dir){
   
@@ -1914,12 +1914,12 @@ combine_chunks = function(input_args){
   #   PIXSCALE = "short"
   # )
   
-  message(paste("Combining chunks for", VID, "..."))
-  
   ref_dir = input_args$ref_dir
   VID = input_args$VID
   MODULE = input_args$MODULE
   PIXSCALE = input_args$PIXSCALE
+  
+  message(paste0("Combining chunks for ", VID, "-", MODULE, "-", PIXSCALE, "..."))
   
   if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID){
     MODULE = paste0("NRC", MODULE)
