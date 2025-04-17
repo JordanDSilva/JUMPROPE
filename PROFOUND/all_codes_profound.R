@@ -425,8 +425,8 @@ star_mask = function(input_args){
     ## Sersic LogLikelihood
     loglike = sum(
       dnorm(
-        x = surf_fun(Data$rr, p),
-        mean = log10( Data$ff ),
+        x = log10( Data$ff ),
+        mean = surf_fun(Data$rr, p),
         sd = Data$ff_err / (log(10) * Data$ff), 
         log = T
       ) * (1/(Data$rr)), 
