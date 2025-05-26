@@ -495,13 +495,32 @@ do_cal_process = function(input_args, filelist = NULL){
       pro_redo = profoundProFound(JWST_cal_image$imDat, mask=JWST_cal_mask, skycut=2, pixcut=5, box=box, grid = box, redoskysize=redoskysize, sky=sky_redo$sky, redosky=FALSE, tolerance=Inf)
     }
 
-    ## what to do if no objects in frame
+    if(is.null(sky_redo$sky)){
+      ## if the polynomial sky is NULL, replace with the original profound sky
+      ## If NULL it probably means that the polynomial sky had some problem as per the try-catch
+      sky_redo$sky = pro$sky
+    }
+    if(is.null(pro_redo$skyRMS)){
+      ## if the polynomial skyRMS is NULL, replace with the original profound skyRMS
+      pro_redo$skyRMS = pro$skyRMS 
+    }
     if(is.null(pro_redo$objects_redo)){
-      pro_redo$objects_redo = matrix(0L, dim(JWST_cal_image$imDat)[1], dim(JWST_cal_image$imDat)[2])
+      pro_redo$objects_redo = pro$objects_redo 
     }
     sky_med = median(sky_redo$sky[JWST_cal_mask == 0 & pro_redo$objects_redo == 0], na.rm=TRUE)
     skyRMS_med = median(pro_redo$skyRMS[JWST_cal_mask == 0 & pro_redo$objects_redo == 0], na.rm=TRUE)
     
+    if(is.null(sky_med)){
+       sky_med = 0 ## I.e., don't remove anything. I think that you need two if-else here when working with NULL otherwise the '|' operator wont work
+    }else if(is.na(sky_med) | is.infinite(sky_med)){
+       sky_med  = 0
+    }
+    if(is.null(skyRMS_med)){
+       skyRMS_med = 0
+    }else if(is.na(skyRMS_med) | is.infinite(skyRMS_med)){
+       skyRMS_med  = 0 
+    }
+
     if(is.null(pro_redo$skyChiSq)){
       pro_redo$skyChiSq = 1e6
     }else if(is.infinite(pro_redo$skyChiSq) | is.na(pro_redo$skyChiSq)){
@@ -537,8 +556,8 @@ do_cal_process = function(input_args, filelist = NULL){
       NAXIS1 = NAXIS1,
       NAXIS2 = NAXIS2,
       NPIX = Npix,
-      SKY = ifelse(is.na(sky_med), -999, sky_med),
-      SKYRMS = ifelse(is.na(skyRMS_med), -999, skyRMS_med),
+      SKY = sky_med,
+      SKYRMS = skyRMS_med,
       SKYCHI = pro_redo$skyChiSq,
       MASK = maskpix,
       OBJ = objpix,
