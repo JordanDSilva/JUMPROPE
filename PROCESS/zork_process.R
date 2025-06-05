@@ -37,11 +37,13 @@ select_code_func = function(){
           ## 9 = Patch                                              ##
           ## 10 = RGB                                               ##
           ## 11 = Wisp remove                                       ##
+          ## 12 = Help                                              ##
           ##                                                        ##
           ##  e.g., 1,2,3,4,5,6,7,8,11 for everything + wisp rem    ##
           ## CONTROL + /\ to EXIT                                    ##
           ############################################################
-          ############################################################"
+          ############################################################
+          "
   )
   select_code = toString(readLines("stdin", n=1))
   
@@ -51,7 +53,7 @@ select_code_func = function(){
     )[[1]]
   )
   
-  if( sum(select_vector %in% 1:11) == 0){
+  if( sum(select_vector %in% 1:12) == 0){
     message("Oops, I think you made a mistake. Trying again.")
     select_code_func()
   }
@@ -193,7 +195,8 @@ zork = function(){
     'do_gen_stack' = do_gen_stack,
     'do_patch' = do_patch,
     'do_rgb' = do_RGB,
-    'do_wisp_rem' = do_wisp_rem
+    'do_wisp_rem' = do_wisp_rem,
+    'do_help' = do_help
   )
   
   #VID_list = ifelse(VID != "", unlist(strsplit(VID, "|", fixed = T)), list(c("")))
@@ -204,20 +207,26 @@ zork = function(){
   }
   
   for(VID in VID_list){
+    
     input_args = list(
       filelist = raw_files,
       additional_params = additional_params,
       
+      ref_dir = ref_dir,
+      
       Pro1oF_dir = Pro1oF_dir,
-      sky_frames_dir = sky_frames_dir,
-      sky_pro_dir = sky_pro_dir,
       cal_sky_dir = cal_sky_dir,
       cal_sky_renorm_dir = cal_sky_renorm_dir,
       cal_sky_info_save_dir = cal_sky_info_save_dir,
-      ref_dir = ref_dir,
+      
+      sky_frames_dir = sky_frames_dir,
+      sky_super_dir = sky_super_dir,
+      sky_pro_dir = sky_pro_dir,
+      
       invar_dir = invar_dir, 
       median_dir = median_dir, 
       patch_dir = patch_dir,
+      dump_dir = dump_dir, 
       
       magzero = 23.9,
       
@@ -231,7 +240,7 @@ zork = function(){
       cores_stack = cores_stack,
       tasks_stack = tasks_stack,
       
-      SIGMA_LO = NULL
+      SIGMA_LO = NULL #keep blurring at wisp rem stage off by default
     )
     
     lapply(select_code,

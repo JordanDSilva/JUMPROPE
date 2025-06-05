@@ -16,7 +16,7 @@ library(celestial)
 library(matrixStats)
 library(checkmate)
 
-pipe_version = "1.3.5" 
+pipe_version = "1.3.6" 
 
 load_files = function(input_args, which_module, sky_info = NULL){
   ## Load the correct files for what ever task
@@ -28,6 +28,8 @@ load_files = function(input_args, which_module, sky_info = NULL){
   
   Pro1oF_dir = input_args$Pro1oF_dir
   sky_pro_dir = input_args$sky_pro_dir
+  sky_frames_dir = input_args$sky_frames_dir
+  sky_super_dir = input_args$sky_super_dir
   cal_sky_dir = input_args$cal_sky_dir
   
   do_NIRISS = input_args$do_NIRISS
@@ -79,8 +81,8 @@ load_files = function(input_args, which_module, sky_info = NULL){
   }
   
   if(which_module == "super_sky"){
-    sky_frames_dir = paste0(sky_pro_dir, "/sky_frames/")
-    sky_super_dir = paste0(sky_pro_dir, "/sky_super/")
+    # sky_frames_dir = paste0(sky_pro_dir, "/sky_frames/")
+    # sky_super_dir = paste0(sky_pro_dir, "/sky_super/")
     files_sky = list.files(sky_frames_dir, 
                            full.names = TRUE, 
                            pattern = glob2rx(paste0("*", VID, "*.fits")))
@@ -165,8 +167,7 @@ do_1of = function(input_args){
   cat("\n")
   message("## Removing 1/f ##")
   cat("\n")
-  Sys.sleep(time = 5)
-  
+
   additional_params = input_args$additional_params
   Pro1oF_dir = input_args$Pro1oF_dir
   VID = input_args$VID
@@ -352,8 +353,7 @@ do_cal_process = function(input_args, filelist = NULL){
   cat("\n")
   message("## Calculating sky statistics ##")
   cat("\n")
-  Sys.sleep(time = 5)
-  
+
   Pro1oF_dir = input_args$Pro1oF_dir
   sky_frames_dir = input_args$sky_frames_dir
   VID = input_args$VID
@@ -586,11 +586,13 @@ do_regen_sky_info = function(input_args){
   cat("\n")
   
   sky_pro_dir = input_args$sky_pro_dir
+  sky_frames_dir = input_args$sky_frames_dir
+  
   cores = input_args$cores_pro
   
   registerDoParallel(cores=cores)
   
-  sky_frames_dir = paste0(sky_pro_dir, "/sky_frames/")
+  # sky_frames_dir = paste0(sky_pro_dir, "/sky_frames/")
   filelist = list.files(sky_frames_dir, full.names = TRUE, pattern = glob2rx(paste0("*", input_args$VID, "*.fits")))
   filelist = grep('.fits$', filelist, value=TRUE)
   
@@ -617,9 +619,11 @@ do_super_sky = function(input_args){
   cat("\n")
   message("## Making super skies ##")
   cat("\n")
-  Sys.sleep(time = 5)
-  
+
   sky_pro_dir = input_args$sky_pro_dir
+  sky_frames_dir = input_args$sky_frames_dir
+  sky_super_dir = input_args$sky_super_dir
+  
   VID = input_args$VID
   cores = input_args$cores_pro
   do_NIRISS = input_args$do_NIRISS
@@ -629,8 +633,9 @@ do_super_sky = function(input_args){
   
   registerDoParallel(cores=cores)
   
-  sky_frames_dir = paste0(sky_pro_dir, "/sky_frames/")
-  sky_super_dir = paste0(sky_pro_dir, "/sky_super/")
+  # sky_frames_dir = paste0(sky_pro_dir, "/sky_frames/")
+  # sky_super_dir = paste0(sky_pro_dir, "/sky_super/")
+  
   filelist = load_files(input_args, which_module = "super_sky")
   sky_info = fread(paste0(sky_pro_dir, '/sky_info.csv'))
   sky_info = sky_info[gsub("//", "/", paste0(sky_info$pathsky, "/", sky_info$filesky))%in%gsub("//", "/",filelist), ]
@@ -693,9 +698,6 @@ do_super_sky = function(input_args){
     }
     
     if(!is.null(sky_mean)){
-      CairoJPEG(filename = paste0(sky_super_dir,'/super_',combine_grid[i,1],'_',combine_grid[i,2],'.jpeg'), width=1000,height=1000)
-      magimage(sky_mean, qdiff=T)
-      dev.off()
       
       file_super_sky = paste0(sky_super_dir,'/super_',combine_grid[i,1],'_',combine_grid[i,2],'.fits')
       Rfits_write_image(sky_mean, filename=file_super_sky)
@@ -716,11 +718,12 @@ do_apply_super_sky = function(input_args){
   cat("\n")
   message("## Applying super skies ##")
   cat("\n")
-  Sys.sleep(time = 5)
-  
+
   Pro1oF_dir = input_args$Pro1oF_dir
   cal_sky_dir = input_args$cal_sky_dir
   sky_pro_dir = input_args$sky_pro_dir
+  sky_super_dir = input_args$sky_super_dir
+  
   VID = input_args$VID
   FILT = input_args$FILT
   cores = input_args$cores_pro
@@ -728,10 +731,13 @@ do_apply_super_sky = function(input_args){
   registerDoParallel(cores=cores)
   
   sky_info = fread(paste0(sky_pro_dir, "/sky_info.csv"))
-  sky_super_dir = paste0(sky_pro_dir, "/sky_super/")
+  # sky_super_dir = paste0(sky_pro_dir, "/sky_super/")
   
-  setcal_sky_remfile = function(file_image){
+  setcal_sky_remfile = function(file_image, cal_sky_dir){
     path = paste0(strsplit(dirname(file_image), '/cal',fixed=T),'/cal_sky/')
+    if(path != cal_sky_dir){
+      path = cal_sky_dir ## For scripting mode, normally JP will have pre-setup directories
+    }
     base = strsplit(basename(file_image),'.fits',fixed=T)[[1]]
     return(paste0(path,base,'_sky_rem.fits'))
   }
@@ -758,14 +764,14 @@ do_apply_super_sky = function(input_args){
     if(length(file_sky) == 0){
       stop('Missing file_sky ',i)
     }
+    
     file_sky = paste(sky_info[i,pathsky], file_sky, sep='/')
-    
     temp_sky = Rfits_read(file_sky, pointer=FALSE)
-    
     
     file_super_sky = paste0(sky_super_dir,'/super_',temp_cal[[1]]$keyvalues$DETECTOR,'_',temp_cal[[1]]$keyvalues$FILTER,'.fits')
     super_sky = Rfits_read_image(file_super_sky, header=FALSE)
     
+    ## linear model to each pixel 
     temp_lm = lm(temp_cal$SCI$imDat[temp_sky$PIXELMASK$imDat==0 & temp_sky$OBJECTMASK$imDat==0] ~ super_sky[temp_sky$PIXELMASK$imDat==0 & temp_sky$OBJECTMASK$imDat==0])$coefficients
     
     if(is.na(temp_lm[2])){
@@ -826,7 +832,7 @@ do_apply_super_sky = function(input_args){
       temp_cal$SCI$imDat[rezero] = 0
     }
     
-    file_cal_sky = setcal_sky_remfile(file_image)
+    file_cal_sky = setcal_sky_remfile(file_image, cal_sky_dir)
     
     if(file.exists(file_cal_sky)){
       message('Removing old cal_sky file: ',file_cal_sky)
@@ -858,8 +864,7 @@ do_modify_pedestal = function(input_args){
   cat("\n")
   message("## Modifying pedestal ##")
   cat("\n")
-  Sys.sleep(time = 5)
-  
+
   cal_sky_dir = input_args$cal_sky_dir
   cal_sky_renorm_dir = input_args$cal_sky_renorm_dir
   VID = input_args$VID
@@ -1020,8 +1025,7 @@ do_gen_stack = function(input_args){
   cat("\n")
   message("## Making ProPane stacks ##")
   cat("\n")
-  Sys.sleep(time = 5)
-  
+
   VID = input_args$VID
   FILT = input_args$FILT
   ref_dir = input_args$ref_dir
@@ -1055,12 +1059,18 @@ do_gen_stack = function(input_args){
     3000, 
     input_args$additional_params$NAXIS_long) 
   
+  # invar_dir = paste0(ref_dir, "/InVar_Stacks/")
+  # median_dir = paste0(ref_dir, "/Median_Stacks/")
+  # sky_frames_dir = paste0(ref_dir, "/sky_pro/sky_frames/")
+  # dump_dir_stub = paste0(ref_dir, "/dump/")
+  # orig_cal_sky_info = fread(paste0(ref_dir, "/Pro1oF/cal_sky_info.csv"))
   
-  invar_dir = paste0(ref_dir, "/InVar_Stacks/")
-  median_dir = paste0(ref_dir, "/Median_Stacks/")
-  sky_frames_dir = paste0(ref_dir, "/sky_pro/sky_frames/")
-  dump_dir_stub = paste0(ref_dir, "/dump/")
-  orig_cal_sky_info = fread(paste0(ref_dir, "/Pro1oF/cal_sky_info.csv"))
+  ## Better for scripting mode
+  invar_dir = input_args$invar_dir
+  median_dir = input_args$median_dir
+  sky_frames_dir = input_args$sky_frames_dir
+  dump_dir_stub = input_args$dump_dir
+  orig_cal_sky_info = fread(paste0(input_args$cal_sky_info_save_dir, '/cal_sky_info.csv'))
   
   unique_visits = unique(orig_cal_sky_info$VISIT_ID)
   
@@ -1133,6 +1143,10 @@ do_gen_stack = function(input_args){
                         function(x){y = dim(x)[1]
                         y > 0})
     module_list = c('NRCA_short', 'NRCA_long', 'NRCB_short', 'NRCB_long', 'NIS', 'MIRIMAGE')[module_idx]
+    
+    if(!is.null(input_args$additional_params$module_list)){
+      module_list = input_args$additional_params['module_list']
+    }
     
     registerDoParallel(cores=tasks)
     
@@ -1217,24 +1231,6 @@ do_gen_stack = function(input_args){
           CRPIX = NAXIS_long/2.0
         }
         
-        temp_proj = Rwcs_keypass(CRVAL1 = CRVAL1,
-                                 CRVAL2 = CRVAL2,
-                                 CRPIX1 = CRPIX,
-                                 CRPIX2 = CRPIX,
-                                 CD1_1 = CD1_1,
-                                 CD1_2 = CD1_2,
-                                 CD2_1 = CD1_2,
-                                 CD2_2 = -CD1_1
-        )
-        
-        temp_proj$NAXIS = 2
-        temp_proj$NAXIS1 = NAXIS
-        temp_proj$NAXIS2 = NAXIS
-        temp_proj[is.na(temp_proj)] = NULL
-        
-        temp_proj$DATE_BEG = as.character(min(as.POSIXlt.Date(input_info$`DATE-OBS`), na.rm=TRUE))
-        temp_proj$DATE_END = as.character(max(as.POSIXlt.Date(input_info$`DATE-OBS`), na.rm=TRUE))
-        
         image_list = {}
         inVar_list = {}
         
@@ -1306,6 +1302,37 @@ do_gen_stack = function(input_args){
         }
         dir.create(dump_stub, recursive = T)
         
+        # temp_proj = Rwcs_keypass(CRVAL1 = CRVAL1,
+        #                          CRVAL2 = CRVAL2,
+        #                          CRPIX1 = CRPIX,
+        #                          CRPIX2 = CRPIX,
+        #                          CD1_1 = CD1_1,
+        #                          CD1_2 = CD1_2,
+        #                          CD2_1 = CD1_2,
+        #                          CD2_2 = -CD1_1
+        # )
+        # 
+        # temp_proj$NAXIS = 2
+        # temp_proj$NAXIS1 = NAXIS
+        # temp_proj$NAXIS2 = NAXIS
+        # temp_proj[is.na(temp_proj)] = NULL
+        
+        temp_proj = propaneGenWCS(
+          image_list = image_list_point,
+          CRVAL1 = CRVAL1,
+          CRVAL2 = CRVAL2,
+          CRPIX1 = CRPIX,
+          CRPIX2 = CRPIX,
+          CD1_1 = CD1_1,
+          CD1_2 = CD1_2,
+          CD2_1 = CD1_2,
+          CD2_2 = -CD1_1,
+          NAXIS1 = NAXIS,
+          NAXIS2 = NAXIS
+        )
+        temp_proj$DATE_BEG = as.character(min(as.POSIXlt.Date(input_info$`DATE-OBS`), na.rm=TRUE))
+        temp_proj$DATE_END = as.character(max(as.POSIXlt.Date(input_info$`DATE-OBS`), na.rm=TRUE))
+        
         output_stack = propaneStackWarpInVar(
           image_list = image_list_point,
           inVar_list = inVar_list,
@@ -1320,9 +1347,9 @@ do_gen_stack = function(input_args){
           clip_dilate = clip_dilate,
           clip_sigma = clip_sigma,
           keep_extreme_pix = FALSE,
-          dump_frames = T,
+          dump_frames = TRUE,
           dump_dir = dump_stub,
-          multitype="cluster"
+          multitype="fork"
         )
 
         output_stack$image$keyvalues$CLIP_MIN = clip_tol[1]
@@ -1383,8 +1410,7 @@ do_wisp_rem = function(input_args){
   cat("\n")
   message("## Removing wisps ##")
   cat("\n")
-  Sys.sleep(time = 5)
-  
+
   filelist = input_args$filelist
   VID = input_args$VID
   median_dir = input_args$median_dir
@@ -1393,9 +1419,7 @@ do_wisp_rem = function(input_args){
   additional_params  = input_args$additional_params
 
   SIGMA_LO = input_args$SIGMA_LO
-  message(paste0("Using ", ifelse(SIGMA_LO)))
-  
-  wisp_poly = Rfits_read("wisp_poly.fits")
+  message(paste0("Using ", ifelse(is.null(SIGMA_LO), 'NULL', SIGMA_LO)))
   
   filelist = load_files(input_args, which_module = "wisp_rem")
   
@@ -1458,8 +1482,7 @@ do_wisp_rem = function(input_args){
     long_num = max(filter_long, na.rm = T)
     
     ref_file_long = ref_files[ which(grepl(long_num, ref_files))[1] ] #Get the longest filter
-    print(ref_file_long)
-    
+
     ref_im_list = c(ref_im_list, list(Rfits_point(ref_file_long))) ## Allow loop in wisp rem to read long wavelength reference
     message(paste("Loading reference for:", paste0(mod_visit_grid$VISIT_ID[ii]), mod_visit_grid$DETECTOR[ii] ))
   }
@@ -1492,7 +1515,6 @@ do_wisp_rem = function(input_args){
     }else{
       sigma_lo = SIGMA_LO
     }
-    #poly = wisp_ploy[[ info_wisp$DETECTOR[ii] ]]
     poly = NULL    
     
     wisp_fix = wispFixer(wisp_im = wisp_frame, ref_im = ref_im, poly = poly, sigma_lo = sigma_lo)
@@ -1523,8 +1545,7 @@ do_patch = function(input_args){
   cat("\n")
   message("## Patching ProPane stacks ##")
   cat("\n")
-  Sys.sleep(time = 5)
-  
+
   VID = input_args$VID
   FILT = input_args$FILT
   invar_dir = input_args$invar_dir
@@ -1612,11 +1633,11 @@ do_RGB = function(input_args){
   cat("\n")
   message("## Making RGB image ##")
   cat("\n")
-  Sys.sleep(time = 5)
-  
+
   VID = input_args$VID
   ref_dir = input_args$ref_dir
   patch_dir = input_args$patch_dir
+  cal_sky_info_save_dir = input_args$cal_sky_info_save_dir
   
   blue_filters = "F070W|F090W|F115W|F150W|F140M|F162M|F164N"
   green_filters = "F200W|F277W|F182M|F210M|F187N|F212N"
@@ -1624,7 +1645,8 @@ do_RGB = function(input_args){
   locut = 1e-6
   hicut = 0.05
   
-  cal_sky_info = fread(paste0(ref_dir, "/Pro1oF/cal_sky_info.csv"))
+  # cal_sky_info = fread(paste0(ref_dir, "/Pro1oF/cal_sky_info.csv"))
+  cal_sky_info = fread(paste0(cal_sky_info_save_dir, "/cal_sky_info.csv"))
   vid_temp = VID
   unique_visits = grep(vid_temp, unique(cal_sky_info$VISIT_ID), value = T)
   
@@ -1639,12 +1661,16 @@ do_RGB = function(input_args){
     
     frame_info = Rfits_key_scan(filelist = file_list,
                                 keylist = c("CRVAL1", "CRVAL2", "CD1_1", "CD1_2", "NAXIS1", "NAXIS2"))
-    temp_proj = Rwcs_keypass(CRVAL1 = mean(frame_info$CRVAL1),
-                             CRVAL2 = mean(frame_info$CRVAL2),
-                             CD1_1 = min(frame_info$CD1_1),
-                             CD1_2 = min(frame_info$CD1_2),
-                             CD2_1 = min(frame_info$CD1_2),
-                             CD2_2 = -min(frame_info$CD1_1)
+    # temp_proj = Rwcs_keypass(CRVAL1 = mean(frame_info$CRVAL1),
+    #                          CRVAL2 = mean(frame_info$CRVAL2),
+    #                          CD1_1 = min(frame_info$CD1_1),
+    #                          CD1_2 = min(frame_info$CD1_2),
+    #                          CD2_1 = min(frame_info$CD1_2),
+    #                          CD2_2 = -min(frame_info$CD1_1)
+    # )
+    temp_proj = propaneGenWCS(
+      filelist = file_list, 
+      rotation = 'get'
     )
     
     module_list = sapply(strsplit(file_list, "NRC"), function(x)(x[2]))
@@ -1814,4 +1840,78 @@ wispFixer = function(wisp_im, ref_im,
   wisp_im$imDat  = wisp_im$imDat - wisp_template + sky_level
   
   return(list(wisp_fix=wisp_im, wisp_template=wisp_template, ref_im_warp=ref_im_warp))
+}
+
+do_help = function(input_args){
+  
+  message("Author: Jordan C. J. D'Silva")
+  message("Date: ", Sys.Date())
+  
+  message("\n")
+  
+  message(
+    "Running zork: Rscript zork_process.R <VID, e.g., '2738|1176261001'> <FILT, e.g., 'F090W|F444W'> "
+  )
+  
+  message("\n")
+  
+  message("It is advised to separate the files into organised directories to avoid unwanted clashes occuring during the sub-routines.")
+  message("Recommended directory structure is, for example: ")
+  message(
+    'JP/
+  ├─ Pro1oF/
+  │  ├─ cal/
+  │  ├─ cal_sky/
+  │  ├─ cal_sky_renorm/
+  │  ├─ cal_sky_info.csv
+  ├─ sky_pro/
+  │  ├─ sky_frames/
+  │  ├─ sky_super/
+  │  ├─ sky_info.csv
+  ├─ InVar_Stacks/
+  ├─ Median_Stacks/
+  ├─ Patch_Stacks/
+  ├─ dump/'
+  )
+  
+  message("\n")
+  
+  message("Input arguments for each of the sub-routines in JP are as follows:")
+  message(
+    'input_args = list(
+      filelist = <path to the cal files produced from stage2 of the calibration pipeline>, ## <-- vector of strings
+      additional_params = additional_params, ## <-- extra 1/f settings, wisp removal settings, stacking settings as set in initialise_variables.R, list
+      
+      ref_dir = ref_dir, ## <-- Reference directory, where you want to put your JUMPROPE files, string
+            
+      Pro1oF_dir = Pro1oF_dir, ## <-- 1/f corrected file directory, string
+      cal_sky_dir = cal_sky_dir, ## <-- Sky removed files directory, string
+      cal_sky_renorm_dir = cal_sky_renorm_dir, ## <-- Sky removed and pedestal modified files directory, the input for making mosaics, string
+      cal_sky_info_save_dir = cal_sky_info_save_dir, ## <-- Usually the parent directory of above cal stuff, directory to store a CSV file with info about the frames, string
+      
+      sky_frames_dir = sky_frames_dir, ## <-- sky frames from ProFound directory, string
+      sky_super_dir = sky_super_dir, ## <-- super super, combined stack of sky files, directory, string
+      sky_pro_dir = sky_pro_dir, ## <-- Usually the parent directory of above sky stuff to keep the sky things together, string
+
+      invar_dir = invar_dir, ## <-- ProPane inverse variance stack directory, string
+      median_dir = median_dir, ## <-- Median stack directory, string
+      patch_dir = patch_dir, ## <-- Patched stack directory, string
+      dump_dir = dump_dir, ## <-- Dump frames directory, save the warp fields from mosaicking, string
+      
+      magzero = 23.9, ## <-- Magnitude zero-point for ProPane mosaics, 8.9/16.4/23.9 is Jy,milliJy/microJy, numeric
+      
+      VID = VID, ## <-- 4 digit program ID or 10 digit visit ID, string, e.g., "1234567890"
+      FILT = FILT, ## <-- Set of filters to process, string separated by "|", e.g., "F090W|F150W" to do those 2 filters
+      
+      do_NIRISS = do_NIRISS, ## <-- Process NIRISS, boolean
+      do_MIRI = do_MIRI, ## <-- Process MIRI, boolean
+      
+      cores_pro = cores_pro, ## <-- Cores for processing, numeric
+      cores_stack = cores_stack, ## <-- Cores for stacking with ProPane, numeric
+      tasks_stack = tasks_stack, ## <-- Cores for parallel stacking jobs, numeric
+  
+      SIGMA_LO = NULL #keep blurring at wisp rem stage off by default, otherwise numeric, standard deviation of Gaussian kernel to blur derived wisp template
+    )'
+  )
+  
 }

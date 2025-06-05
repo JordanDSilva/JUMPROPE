@@ -152,16 +152,21 @@ main = function(){
       filelist = raw_files,
       additional_params = additional_params,
       
+      ref_dir = ref_dir,
+      
       Pro1oF_dir = Pro1oF_dir,
-      sky_frames_dir = sky_frames_dir,
-      sky_pro_dir = sky_pro_dir,
       cal_sky_dir = cal_sky_dir,
       cal_sky_renorm_dir = cal_sky_renorm_dir,
       cal_sky_info_save_dir = cal_sky_info_save_dir,
-      ref_dir = ref_dir,
+      
+      sky_frames_dir = sky_frames_dir,
+      sky_super_dir = sky_super_dir,
+      sky_pro_dir = sky_pro_dir,
+      
       invar_dir = invar_dir, 
       median_dir = median_dir, 
       patch_dir = patch_dir,
+      dump_dir = dump_dir, 
       
       magzero = 23.9,
       
@@ -179,17 +184,18 @@ main = function(){
     )
    
     if(length(args) <= 1){
-      input_args$FILT = ""
+      input_args$FILT = 'F277W|F356W|F444W|F250M|F300M|F335M|F360M|F410M|F430M|F460M|F480M|F323N|F405N|F466N|F470N' ## Process long wavelengths first
+
     }
     
-    do_1of(input_args)
-    do_cal_process(input_args)
-    do_regen_sky_info(input_args)
-    do_super_sky(input_args)
-    do_apply_super_sky(input_args)
-    do_modify_pedestal(input_args)
-    do_cal_sky_info(input_args)
-    do_gen_stack(input_args)
+    # do_1of(input_args)
+    # do_cal_process(input_args)
+    # do_regen_sky_info(input_args)
+    # do_super_sky(input_args)
+    # do_apply_super_sky(input_args)
+    # do_modify_pedestal(input_args)
+    # do_cal_sky_info(input_args)
+    # do_gen_stack(input_args)
   
     if(input_args$do_NIRISS){
       input_args$FILT = "CLEAR"
@@ -202,12 +208,19 @@ main = function(){
       }
       
       ## Test for any short frames to process 
-      sky_info = fread(
-        paste0(
-          input_args$sky_pro, "/sky_info.csv"
-        )
-      )
-      if( length(grep(input_args$FILT, sky_info$filter)) > 0 ){
+      # sky_info = fread(
+      #   paste0(
+      #     input_args$sky_pro, "/sky_info.csv"
+      #   )
+      # )
+      
+      frame_info = data.frame(Rfits_key_scan(
+        filelist = raw_files, 
+        keylist = c('FILTER'), 
+        cores = cores_pro
+      ))
+      
+      if( length(grep(input_args$FILT, frame_info$FILTER)) > 0 ){
         do_wisp_rem(input_args)
         
         wisp_fix_files = load_raw_files(dir_raw = dir_raw)

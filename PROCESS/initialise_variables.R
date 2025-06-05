@@ -45,7 +45,8 @@ initialise_params = function(){
    tweak_catalogue = NULL, ## NULL will have no internal tweak
 
    NAXIS_long = NULL, ## Size of the long pixel scales mosaic, keep NULL for default (3000 pixels) 
-   NAXIS_short = NULL ## Size of the short pixel scales mosaic, keep NULL for default (6000 pixels) 
+   NAXIS_short = NULL, ## Size of the short pixel scales mosaic, keep NULL for default (6000 pixels) 
+   module_list = NULL ## What modules should we stack, options are ('NRCA_short', 'NRCA_long', 'NRCB_short', 'NRCB_long', 'NIS', 'MIRIMAGE')
   )
   ## Finish editing
 
