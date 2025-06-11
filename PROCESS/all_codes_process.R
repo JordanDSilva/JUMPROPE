@@ -16,7 +16,7 @@ library(celestial)
 library(matrixStats)
 library(checkmate)
 
-pipe_version = "1.3.6" 
+pipe_version = "1.3.8" 
 
 load_files = function(input_args, which_module, sky_info = NULL){
   ## Load the correct files for what ever task
@@ -506,10 +506,13 @@ do_cal_process = function(input_args, filelist = NULL){
     }
     if(is.null(pro_redo$objects_redo)){
       pro_redo$objects_redo = pro$objects_redo 
+    }else if(all(pro_redo$objects_redo == 1)){
+      pro_redo$objects_redo = pro$objects_redo ## polynomial skies way below RMS of the true sky, whole frame is objects!
     }
+    
     sky_med = median(sky_redo$sky[JWST_cal_mask == 0 & pro_redo$objects_redo == 0], na.rm=TRUE)
     skyRMS_med = median(pro_redo$skyRMS[JWST_cal_mask == 0 & pro_redo$objects_redo == 0], na.rm=TRUE)
-    
+
     if(is.null(sky_med)){
        sky_med = 0 ## I.e., don't remove anything. I think that you need two if-else here when working with NULL otherwise the '|' operator wont work
     }else if(is.na(sky_med) | is.infinite(sky_med)){
@@ -771,8 +774,13 @@ do_apply_super_sky = function(input_args){
     file_super_sky = paste0(sky_super_dir,'/super_',temp_cal[[1]]$keyvalues$DETECTOR,'_',temp_cal[[1]]$keyvalues$FILTER,'.fits')
     super_sky = Rfits_read_image(file_super_sky, header=FALSE)
     
+    obj_idx = temp_sky$PIXELMASK$imDat==0 & temp_sky$OBJECTMASK$imDat==0
+    if(sum(obj_idx) == 0){ ## otherwise the linear model is going to fail
+      obj_idx = temp_sky$PIXELMASK$imDat==0 & temp_cal$SCI$imDat <= quantile(temp_cal$SCI$imDat, probs =  0.5, na.rm = TRUE) ## minimally select stuff less than the median
+    }
+    
     ## linear model to each pixel 
-    temp_lm = lm(temp_cal$SCI$imDat[temp_sky$PIXELMASK$imDat==0 & temp_sky$OBJECTMASK$imDat==0] ~ super_sky[temp_sky$PIXELMASK$imDat==0 & temp_sky$OBJECTMASK$imDat==0])$coefficients
+    temp_lm = lm(temp_cal$SCI$imDat[obj_idx] ~ super_sky[obj_idx])$coefficients
     
     if(is.na(temp_lm[2])){
       temp_lm[2] = 0
@@ -792,7 +800,7 @@ do_apply_super_sky = function(input_args){
     
     rezero = which(temp_cal$SCI$imDat==0)
     temp_cal_sky = temp_cal$SCI$imDat - sky_map
-    temp_cal_sky[!(temp_sky$PIXELMASK$imDat==0 & temp_sky$OBJECTMASK$imDat==0)] = NA
+    temp_cal_sky[!(obj_idx)] = NA
     
     #pedestal check - basically use the extremes of the frame to find a safe pedestal:
     
@@ -1035,6 +1043,8 @@ do_gen_stack = function(input_args){
   cores = input_args$cores_stack
   tasks = input_args$tasks_stack
   
+  parallel_type = input_args$additional_params$parallel_type
+  
   ref_cat = input_args$additional_params$ref_cat
   if(is.null(ref_cat)){
     do_tweak = FALSE
@@ -1053,17 +1063,13 @@ do_gen_stack = function(input_args){
   NAXIS_short = ifelse(
     is.null(input_args$additional_params$NAXIS_short), 
     6000, #good for ceers, need 6000 for cosmos web
-    input_args$additional_params$NAXIS_short) 
+    input_args$additional_params$NAXIS_short
+  ) 
   NAXIS_long = ifelse(
     is.null(input_args$additional_params$NAXIS_long), 
     3000, 
-    input_args$additional_params$NAXIS_long) 
-  
-  # invar_dir = paste0(ref_dir, "/InVar_Stacks/")
-  # median_dir = paste0(ref_dir, "/Median_Stacks/")
-  # sky_frames_dir = paste0(ref_dir, "/sky_pro/sky_frames/")
-  # dump_dir_stub = paste0(ref_dir, "/dump/")
-  # orig_cal_sky_info = fread(paste0(ref_dir, "/Pro1oF/cal_sky_info.csv"))
+    input_args$additional_params$NAXIS_long
+  ) 
   
   ## Better for scripting mode
   invar_dir = input_args$invar_dir
@@ -1145,88 +1151,91 @@ do_gen_stack = function(input_args){
     module_list = c('NRCA_short', 'NRCA_long', 'NRCB_short', 'NRCB_long', 'NIS', 'MIRIMAGE')[module_idx]
     
     if(!is.null(input_args$additional_params$module_list)){
-      module_list = input_args$additional_params['module_list']
+      module_list_temp = input_args$additional_params$module_list
+      module_list = module_list[module_list %in% module_list_temp]
     }
-    
-    registerDoParallel(cores=tasks)
-    
+
     lo_loop = 1
     hi_loop = dim(stack_grid)[1]
     
     stack_grid = stack_grid[sample(hi_loop),] #randomise to spread out the CPU load (else all of the SMACS stacking end up in a single task and takes much longer)
+    
+    stack_grid = data.frame(stack_grid)
+    cal_sky_info = data.frame(cal_sky_info)
     
     list_residual_temp_files = list.files(invar_dir, pattern = "temp_list_.+", full.names = T)
     if(length(list_residual_temp_files)>0){
       unlink(list_residual_temp_files, recursive = T)
     }
     
-    dummy = foreach(i = lo_loop:hi_loop)%dopar%{
+    if(is.null(parallel_type)){
+      registerDoParallel(cores = tasks)
+    }else{
+      cl <- makeCluster(spec = tasks, type = 'PSOCK')
+      registerDoParallel(cl)
+    }
+    
+    dummy = foreach(i = lo_loop:hi_loop, .packages = c('Rwcs', 'Rfits', 'ProPane', 'ProFound'))%dopar%{
       message('Stacking ', i,' of ',hi_loop)
       for(j in module_list){
-        message('  Processing ',stack_grid[i,VISIT_ID],' ',stack_grid[i,FILTER], ' ', j)
+        message('  Processing ',stack_grid[i,'VISIT_ID'],' ',stack_grid[i,'FILTER'], ' ', j)
         
         if(j == 'MIRIMAGE'){
-          input_info = cal_sky_info[VISIT_ID==stack_grid[i,VISIT_ID] & FILTER==stack_grid[i,FILTER] & grepl('MIRIMAGE', DETECTOR),]
-
-          CRVAL1 = module_MIRIMAGE[VISIT_ID == stack_grid[i,VISIT_ID], CRVAL1]
-          CRVAL2 = module_MIRIMAGE[VISIT_ID == stack_grid[i,VISIT_ID], CRVAL2]
-          CD1_1 = module_MIRIMAGE[VISIT_ID == stack_grid[i,VISIT_ID], CD1_1]
-          CD1_2 = module_MIRIMAGE[VISIT_ID == stack_grid[i,VISIT_ID], CD1_2]
+          input_info = cal_sky_info[cal_sky_info[['VISIT_ID']]==stack_grid[i,'VISIT_ID'] & cal_sky_info[['FILTER']]==stack_grid[i,'FILTER'] & grepl('MIRIMAGE', cal_sky_info[['DETECTOR']]),]
+          CRVAL1 = module_MIRIMAGE[module_MIRIMAGE[['VISIT_ID']] == stack_grid[i,'VISIT_ID'], 'CRVAL1']
+          CRVAL2 = module_MIRIMAGE[module_MIRIMAGE[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CRVAL2']
+          CD1_1 = module_MIRIMAGE[module_MIRIMAGE[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CD1_1']
+          CD1_2 = module_MIRIMAGE[module_MIRIMAGE[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CD1_2']
           NAXIS = NAXIS_long
           CRPIX = NAXIS_long/2.0
         }
         
         if(j == 'NIS'){
-          input_info = cal_sky_info[VISIT_ID==stack_grid[i,VISIT_ID] & FILTER==stack_grid[i,FILTER] & grepl('NIS', DETECTOR),]
-
-          CRVAL1 = module_NIS[VISIT_ID == stack_grid[i,VISIT_ID], CRVAL1]
-          CRVAL2 = module_NIS[VISIT_ID == stack_grid[i,VISIT_ID], CRVAL2]
-          CD1_1 = module_NIS[VISIT_ID == stack_grid[i,VISIT_ID], CD1_1]
-          CD1_2 = module_NIS[VISIT_ID == stack_grid[i,VISIT_ID], CD1_2]
+          input_info = cal_sky_info[cal_sky_info[['VISIT_ID']]==stack_grid[i,'VISIT_ID'] & cal_sky_info[['FILTER']]==stack_grid[i,'FILTER'] & grepl('NIS', cal_sky_info[['DETECTOR']]),]
+          CRVAL1 = module_NIS[module_NIS[['VISIT_ID']] == stack_grid[i,'VISIT_ID'], 'CRVAL1']
+          CRVAL2 = module_NIS[module_NIS[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CRVAL2']
+          CD1_1 = module_NIS[module_NIS[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CD1_1']
+          CD1_2 = module_NIS[module_NIS[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CD1_2']
           NAXIS = NAXIS_long
           CRPIX = NAXIS_long/2.0
         }
         
         if(j == 'NRCA_short'){
-          input_info = cal_sky_info[VISIT_ID==stack_grid[i,VISIT_ID] & FILTER==stack_grid[i,FILTER] & grepl('NRCA', DETECTOR),]
-          
-          CRVAL1 = module_A_WCS_short[VISIT_ID == stack_grid[i,VISIT_ID], CRVAL1]
-          CRVAL2 = module_A_WCS_short[VISIT_ID == stack_grid[i,VISIT_ID], CRVAL2]
-          CD1_1 = module_A_WCS_short[VISIT_ID == stack_grid[i,VISIT_ID], CD1_1]
-          CD1_2 = module_A_WCS_short[VISIT_ID == stack_grid[i,VISIT_ID], CD1_2]
+          input_info = cal_sky_info[cal_sky_info[['VISIT_ID']]==stack_grid[i,'VISIT_ID'] & cal_sky_info[['FILTER']]==stack_grid[i,'FILTER'] & grepl('NRCA', cal_sky_info[['DETECTOR']]),]
+          CRVAL1 = module_A_WCS_short[module_A_WCS_short[['VISIT_ID']] == stack_grid[i,'VISIT_ID'], 'CRVAL1']
+          CRVAL2 = module_A_WCS_short[module_A_WCS_short[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CRVAL2']
+          CD1_1 = module_A_WCS_short[module_A_WCS_short[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CD1_1']
+          CD1_2 = module_A_WCS_short[module_A_WCS_short[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CD1_2']
           NAXIS = NAXIS_short
           CRPIX = NAXIS_short/2.0
         }
         
         if(j == 'NRCB_short'){
-          input_info = cal_sky_info[VISIT_ID==stack_grid[i,VISIT_ID] & FILTER==stack_grid[i,FILTER] & grepl('NRCB', DETECTOR),]
-          
-          CRVAL1 = module_B_WCS_short[VISIT_ID == stack_grid[i,VISIT_ID], CRVAL1]
-          CRVAL2 = module_B_WCS_short[VISIT_ID == stack_grid[i,VISIT_ID], CRVAL2]
-          CD1_1 = module_B_WCS_short[VISIT_ID == stack_grid[i,VISIT_ID], CD1_1]
-          CD1_2 = module_B_WCS_short[VISIT_ID == stack_grid[i,VISIT_ID], CD1_2]
+          input_info = cal_sky_info[cal_sky_info[['VISIT_ID']]==stack_grid[i,'VISIT_ID'] & cal_sky_info[['FILTER']]==stack_grid[i,'FILTER'] & grepl('NRCB', cal_sky_info[['DETECTOR']]),]
+          CRVAL1 = module_B_WCS_short[module_B_WCS_short[['VISIT_ID']] == stack_grid[i,'VISIT_ID'], 'CRVAL1']
+          CRVAL2 = module_B_WCS_short[module_B_WCS_short[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CRVAL2']
+          CD1_1 = module_B_WCS_short[module_B_WCS_short[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CD1_1']
+          CD1_2 = module_B_WCS_short[module_B_WCS_short[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CD1_2']
           NAXIS = NAXIS_short
           CRPIX = NAXIS_short/2.0
         }
         
         if(j == 'NRCA_long'){
-          input_info = cal_sky_info[VISIT_ID==stack_grid[i,VISIT_ID] & FILTER==stack_grid[i,FILTER] & grepl('NRCA', DETECTOR),]
-          
-          CRVAL1 = module_A_WCS_long[VISIT_ID == stack_grid[i,VISIT_ID], CRVAL1]
-          CRVAL2 = module_A_WCS_long[VISIT_ID == stack_grid[i,VISIT_ID], CRVAL2]
-          CD1_1 = module_A_WCS_long[VISIT_ID == stack_grid[i,VISIT_ID], CD1_1]
-          CD1_2 = module_A_WCS_long[VISIT_ID == stack_grid[i,VISIT_ID], CD1_2]
+          input_info = cal_sky_info[cal_sky_info[['VISIT_ID']]==stack_grid[i,'VISIT_ID'] & cal_sky_info[['FILTER']]==stack_grid[i,'FILTER'] & grepl('NRCA', cal_sky_info[['DETECTOR']]),]
+          CRVAL1 = module_A_WCS_long[module_A_WCS_long[['VISIT_ID']] == stack_grid[i,'VISIT_ID'], 'CRVAL1']
+          CRVAL2 = module_A_WCS_long[module_A_WCS_long[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CRVAL2']
+          CD1_1 = module_A_WCS_long[module_A_WCS_long[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CD1_1']
+          CD1_2 = module_A_WCS_long[module_A_WCS_long[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CD1_2']
           NAXIS = NAXIS_long
           CRPIX = NAXIS_long/2.0
         }
         
         if(j == 'NRCB_long'){
-          input_info = cal_sky_info[VISIT_ID==stack_grid[i,VISIT_ID] & FILTER==stack_grid[i,FILTER] & grepl('NRCB', DETECTOR),]
-          
-          CRVAL1 = module_B_WCS_long[VISIT_ID == stack_grid[i,VISIT_ID], CRVAL1]
-          CRVAL2 = module_B_WCS_long[VISIT_ID == stack_grid[i,VISIT_ID], CRVAL2]
-          CD1_1 = module_B_WCS_long[VISIT_ID == stack_grid[i,VISIT_ID], CD1_1]
-          CD1_2 = module_B_WCS_long[VISIT_ID == stack_grid[i,VISIT_ID], CD1_2]
+          input_info = cal_sky_info[cal_sky_info[['VISIT_ID']]==stack_grid[i,'VISIT_ID'] & cal_sky_info[['FILTER']]==stack_grid[i,'FILTER'] & grepl('NRCB', cal_sky_info[['DETECTOR']]),]
+          CRVAL1 = module_B_WCS_long[module_B_WCS_long[['VISIT_ID']] == stack_grid[i,'VISIT_ID'], 'CRVAL1']
+          CRVAL2 = module_B_WCS_long[module_B_WCS_long[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CRVAL2']
+          CD1_1 = module_B_WCS_long[module_B_WCS_long[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CD1_1']
+          CD1_2 = module_B_WCS_long[module_B_WCS_long[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CD1_2']
           NAXIS = NAXIS_long
           CRPIX = NAXIS_long/2.0
         }
@@ -1235,9 +1244,9 @@ do_gen_stack = function(input_args){
         inVar_list = {}
         
         for(k in 1:dim(input_info)[1]){
-          temp_image = Rfits_read_image(input_info[k,full], ext=2)
+          temp_image = Rfits_read_image(input_info[k,'full'], ext=2)
           
-          temp_mask = Rfits_read_image(input_info[k,full], ext=4, header=FALSE)
+          temp_mask = Rfits_read_image(input_info[k,'full'], ext=4, header=FALSE)
           
           temp_image = propaneBadPix(
             image = temp_image,
@@ -1285,7 +1294,7 @@ do_gen_stack = function(input_args){
           rm(JWST_cal_mask)
           image_list = c(image_list, list(temp_image))
           
-          sky_file = paste0(sky_frames_dir, sub('_rem', '', input_info[k,stub]),'_',input_info[k,FILTER],'.fits')
+          sky_file = paste0(sky_frames_dir, sub('_rem', '', input_info[k,'stub']),'_',input_info[k,'FILTER'],'.fits')
           inVar_list = c(inVar_list,
                          Rfits::Rfits_read_key(sky_file, 'SKYRMS')^-2
           )
@@ -1296,42 +1305,28 @@ do_gen_stack = function(input_args){
         rm(image_list)
         image_list_point = Rfits_read(temp_file, pointer=TRUE)
         
-        dump_stub = paste0(dump_dir_stub, stack_grid[i,VISIT_ID], "/", stack_grid$FILTER[i], "/", j, "/")
+        dump_stub = paste0(dump_dir_stub, stack_grid[i,'VISIT_ID'], "/", stack_grid[i,'FILTER'], "/", j, "/")
         if(dir.exists(dump_stub)){
           unlink(dump_stub, recursive = T)
         }
         dir.create(dump_stub, recursive = T)
         
-        # temp_proj = Rwcs_keypass(CRVAL1 = CRVAL1,
-        #                          CRVAL2 = CRVAL2,
-        #                          CRPIX1 = CRPIX,
-        #                          CRPIX2 = CRPIX,
-        #                          CD1_1 = CD1_1,
-        #                          CD1_2 = CD1_2,
-        #                          CD2_1 = CD1_2,
-        #                          CD2_2 = -CD1_1
-        # )
-        # 
-        # temp_proj$NAXIS = 2
-        # temp_proj$NAXIS1 = NAXIS
-        # temp_proj$NAXIS2 = NAXIS
-        # temp_proj[is.na(temp_proj)] = NULL
-        
         temp_proj = propaneGenWCS(
           image_list = image_list_point,
-          CRVAL1 = CRVAL1,
-          CRVAL2 = CRVAL2,
-          CRPIX1 = CRPIX,
-          CRPIX2 = CRPIX,
-          CD1_1 = CD1_1,
-          CD1_2 = CD1_2,
-          CD2_1 = CD1_2,
-          CD2_2 = -CD1_1,
-          NAXIS1 = NAXIS,
-          NAXIS2 = NAXIS
+          CRVAL1 = as.numeric(CRVAL1),
+          CRVAL2 = as.numeric(CRVAL2),
+          CRPIX1 = as.numeric(CRPIX),
+          CRPIX2 = as.numeric(CRPIX),
+          CD1_1 = as.numeric(CD1_1),
+          CD1_2 = as.numeric(CD1_2),
+          CD2_1 = as.numeric(CD1_2),
+          CD2_2 = -as.numeric(CD1_1),
+          NAXIS1 = as.numeric(NAXIS),
+          NAXIS2 = as.numeric(NAXIS)
         )
-        temp_proj$DATE_BEG = as.character(min(as.POSIXlt.Date(input_info$`DATE-OBS`), na.rm=TRUE))
-        temp_proj$DATE_END = as.character(max(as.POSIXlt.Date(input_info$`DATE-OBS`), na.rm=TRUE))
+
+        temp_proj$DATE_BEG = as.character(min(as.POSIXlt.Date(input_info[["DATE.OBS"]]), na.rm=TRUE))
+        temp_proj$DATE_END = as.character(max(as.POSIXlt.Date(input_info[["DATE.OBS"]]), na.rm=TRUE))
         
         output_stack = propaneStackWarpInVar(
           image_list = image_list_point,
@@ -1349,7 +1344,7 @@ do_gen_stack = function(input_args){
           keep_extreme_pix = FALSE,
           dump_frames = TRUE,
           dump_dir = dump_stub,
-          multitype="fork"
+          multitype="cluster" ## Just keep this default since this parallelisation occurs in the ProPane package (and the underlying C libraries)
         )
 
         output_stack$image$keyvalues$CLIP_MIN = clip_tol[1]
@@ -1389,19 +1384,25 @@ do_gen_stack = function(input_args){
         
         file.remove(temp_file)
         
-        filestub = paste0(invar_dir, '/stack_',stack_grid[i,VISIT_ID],'_',stack_grid[i,FILTER],'_',j)
+        filestub = paste0(invar_dir, '/stack_',stack_grid[i,'VISIT_ID'],'_',stack_grid[i,'FILTER'],'_',j)
         
         Rfits_write(data = output_stack,
                     filename = paste0(filestub,'.fits')
         )
         
-        filestub_med = paste0(median_dir, '/med_',stack_grid[i,VISIT_ID],'_',stack_grid[i,FILTER],'_',j)
+        filestub_med = paste0(median_dir, '/med_',stack_grid[i,'VISIT_ID'],'_',stack_grid[i,'FILTER'],'_',j)
         
         Rfits_write(data = median_stack,
                     filename = paste0(filestub_med,'.fits')
         )
         gc()
       }
+    }
+    
+    if(!is.null(parallel_type)){
+      stopCluster(cl)
+    }else{
+      stopImplicitCluster()
     }
   }
 }
@@ -1417,6 +1418,8 @@ do_wisp_rem = function(input_args){
   cores = input_args$cores_pro
   
   additional_params  = input_args$additional_params
+  
+  parallel_type = input_args$additional_params$parallel_type
 
   SIGMA_LO = input_args$SIGMA_LO
   message(paste0("Using ", ifelse(is.null(SIGMA_LO), 'NULL', SIGMA_LO)))
@@ -1436,7 +1439,7 @@ do_wisp_rem = function(input_args){
   }else{
     info_wisp = info[DETECTOR %in% c('NRCA3','NRCA4', 'NRCB3','NRCB4'),] 
   }
-  mod_visit_grid = info_wisp[,c("MODULE", "VISIT_ID", "CRVAL1", "CRVAL2", "DETECTOR")]
+  mod_visit_grid = info_wisp[,c("stub", "MODULE", "VISIT_ID", "CRVAL1", "CRVAL2", "DETECTOR")]
   
   cat('Processing',dim(info_wisp)[1],'files\n')
   
@@ -1466,33 +1469,29 @@ do_wisp_rem = function(input_args){
     }
     
     filter_long = c(
-      str_match(ref_files, "F\\s*(.*?)\\s*W")[,2]
+      str_match(ref_files, "F\\s*(.*?)\\s*[WMN]")[,2]
     )
-    if(length(filter_long) == 0){
-      filter_long = c(
-        str_match(ref_files, "F\\s*(.*?)\\s*M")[,2]
-      )
-    }
-    if(length(filter_long) == 0){
-      filter_long = c(
-        str_match(ref_files, "F\\s*(.*?)\\s*N")[,2]
-      )
-    }
+
     filter_long[is.na(filter_long)] = -1
     long_num = max(filter_long, na.rm = T)
     
     ref_file_long = ref_files[ which(grepl(long_num, ref_files))[1] ] #Get the longest filter
 
     ref_im_list = c(ref_im_list, list(Rfits_point(ref_file_long))) ## Allow loop in wisp rem to read long wavelength reference
-    message(paste("Loading reference for:", paste0(mod_visit_grid$VISIT_ID[ii]), mod_visit_grid$DETECTOR[ii] ))
+    message(paste("Loading reference for:", paste0(mod_visit_grid$VISIT_ID[ii]), mod_visit_grid$DETECTOR[ii], mod_visit_grid$stub[ii] ))
   }
   
-  registerDoParallel(cores = cores)  
-  temp = foreach(ii = 1:dim(info_wisp)[1], .errorhandling = "pass")%dopar%{
+  if(is.null(parallel_type)){
+    registerDoParallel(cores = cores)
+  }else{
+    cl <- makeCluster(spec = cores, type = 'PSOCK')
+    registerDoParallel(cl)
+  }
+  
+  temp = foreach(ii = 1:dim(info_wisp)[1], .errorhandling = "pass", .packages = c("Rwcs", "Rfits", "ProPane", "ProFound"))%dopar%{
     ## copy original data to directory where we keep the wisps
     vid = paste0(info_wisp$VISIT_ID[ii])
     modl = paste0("NRC", info_wisp$MODULE[ii])
-    message(paste0("Running: ", info_wisp$file[ii]))
     
     # file.copy(info_wisp$full[ii], paste0(keep_wisp_stub, "/", vid, "/", info_wisp$file[ii]), overwrite = T)
     wisp_frame = Rfits_read_image(info_wisp$full[ii], ext = 2)
@@ -1539,6 +1538,13 @@ do_wisp_rem = function(input_args){
     }
     return(NULL)
   }
+  
+  if(!is.null(parallel_type)){
+    stopCluster(cl)
+  }else{
+    stopImplicitCluster()
+  }
+  
 }
 do_patch = function(input_args){
   
@@ -1565,25 +1571,29 @@ do_patch = function(input_args){
   }else{
     pixscale_list = c("short", "long")
   }
+  
   for(j in pixscale_list){
-    invar_files = list.files(path=invar_dir, pattern = paste0(j, ".fits$"), full.names = T)
-    median_files = list.files(path=median_dir, pattern = paste0(j, ".fits$"), full.names = T)
-    invar_files=invar_files[grepl(VID, invar_files) & grepl(FILT, invar_files)]
-    median_files=median_files[grepl(VID, median_files) & grepl(FILT, median_files)]
+    invar_files = list.files(path=invar_dir, pattern = glob2rx(paste0("*stack*", j, "*.fits$")), full.names = T)
+    median_files = list.files(path=median_dir, pattern = glob2rx(paste0("*med*", j, "*.fits$")), full.names = T)
+    invar_files = invar_files[grepl(VID, invar_files) & grepl(FILT, invar_files) & !grepl("patch", invar_files)]
+    median_files = median_files[grepl(VID, median_files) & grepl(FILT, median_files) & !grepl("patch", median_files)]
     
     if(length(median_files)==0){
       message("No frames") 
     }else{
-      file_names = list.files(path=invar_dir, pattern = paste0(j, ".fits$"), full.names = F)
-      file_names=file_names[grepl(VID, file_names) & grepl(FILT, file_names)]
+      
+      # file_names = list.files(path=invar_dir, pattern = glob2rx(paste0("*stack*", j, "*.fits$")), full.names = F) ## For the stubs
+      # file_names = file_names[grepl(VID, file_names) & grepl(FILT, file_names)]
       
       foreach(i = 1:length(invar_files))%dopar%{
         message(paste0("Patching: ", invar_files[i]))
-        load_invar = Rfits_read(invar_files[i], pointer=F)
-        load_median = Rfits_read(median_files[i], pointer=F)
+        load_invar = Rfits_read(invar_files[i], pointer=FALSE)
+        load_median = Rfits_read(median_files[i], pointer=FALSE)
         
         temp = load_invar$image
-        fstub = strsplit(file_names[i], "stack")[[1]][2]
+        
+        fstub = str_remove( str_remove(string = temp$filename, pattern = dirname(temp$filename)), ".+stack" )
+        
         med_patch=propanePatch(image_inVar = temp, 
                                image_med = load_median$image)
         
@@ -1611,17 +1621,26 @@ do_patch = function(input_args){
           mask = (edge_mask + big_NA_mask) == 1,
         )
         
+        patch_mask = temp - propane_mask_fix
+
         patch = list()
+
         patch$image = propane_mask_fix
-        patch$patch = temp - propane_mask_fix
+        patch$patch = patch_mask
         patch$inVar = load_invar$inVar
         patch$weight = load_invar$weight
+        
         patch$image$keyvalues$EXTNAME = "image"
         patch$patch$keyvalues$EXTNAME = "patch"
         patch$inVar$keyvalues$EXTNAME = "inVar"
         patch$weight$keyvalues$EXTNAME = "weight"
-        
-        Rfits_write_all(patch, paste0(patch_stub, "/stack_patch", fstub))
+
+        class(patch) = "Rfits_list"
+
+        Rfits_write_all(
+          data = patch, 
+          filename = paste0(patch_stub, "patch", fstub)
+        )
         
       }
       stopImplicitCluster()
@@ -1636,14 +1655,15 @@ do_RGB = function(input_args){
 
   VID = input_args$VID
   ref_dir = input_args$ref_dir
+  RGB_dir = input_args$RGB_dir
   patch_dir = input_args$patch_dir
   cal_sky_info_save_dir = input_args$cal_sky_info_save_dir
   
   blue_filters = "F070W|F090W|F115W|F150W|F140M|F162M|F164N"
   green_filters = "F200W|F277W|F182M|F210M|F187N|F212N"
   red_filters = "F356W|F444W|F250M|F300M|F335M|F360M|F410M|F430M|F460M|F480M|F323N|F405N|F466N|F470N|F560W|F770W|F1000W|F1130W|F1280W|F1500W|F1800W|F2100W|F2550W"
-  locut = 1e-6
-  hicut = 0.05
+  locut = 0.6
+  hicut = 0.9999
   
   # cal_sky_info = fread(paste0(ref_dir, "/Pro1oF/cal_sky_info.csv"))
   cal_sky_info = fread(paste0(cal_sky_info_save_dir, "/cal_sky_info.csv"))
@@ -1652,11 +1672,17 @@ do_RGB = function(input_args){
   
   for(VID in unique_visits){
     
-    RGB_dir = paste0(ref_dir, "/RGB/", VID, "/")
-    dir.create(RGB_dir, showWarnings = F, recursive = T)
+    if(is.null(RGB_dir)){
+      RGB_dir = paste0(ref_dir, "/RGB/", VID, "/")
+      if(is.null(ref_dir)){
+        stop('Please provide a parent directory to put the RGB folder')
+      }else{
+        dir.create(RGB_dir, showWarnings = F, recursive = T)
+      }
+    }
     
     file_list = list.files(patch_dir, 
-                           pattern = glob2rx(paste0("*", VID, "*short*fits")),
+                           pattern = glob2rx(paste0("*patch*", VID, "*short*fits")),
                            full.names = T)
     
     frame_info = Rfits_key_scan(filelist = file_list,
@@ -1740,7 +1766,7 @@ do_RGB = function(input_args){
     im_width = 12 #inches
     im_height = im_width * (temp_proj$NAXIS2 / temp_proj$NAXIS1)
     
-    filestub = paste0(patch_dir, '/patch_RGB_stack_',VID, "_all", "_clear.png")
+    filestub = paste0(patch_dir, '/RGB_patch_image_',VID, "_all", "_clear.png")
     CairoPNG(filename = filestub, width=im_width, height=im_height, 
              units='in', res=400, quality=100)
     par(mar=c(0,0,0,0), oma=rep(0,4))
@@ -1750,12 +1776,68 @@ do_RGB = function(input_args){
       B = B_patch,
       locut=locut,
       hicut=hicut,
-      type='num',
+      type='quan',
+      stretch = 'log',
       sparse=1,
-      decorate=F)
+      decorate=F
+    )
     dev.off()
   }
 
+}
+do_wisp_reverse = function(input_args){
+  
+  cat("\n")
+  message("## Reversing wisp correction ##")
+  cat("\n")
+  
+  filelist_all = input_args$filelist ## raw CAL files - straight from the calibration pipeline
+  VID = input_args$VID
+  cores = input_args$cores
+  
+  do_claws = input_args$additional_params$do_claws
+  
+  if(VID != ""){
+    scan_wisp_rem = Rfits_key_scan(filelist = filelist_all, keylist = c("FILTER", "PROGRAM"))
+    not_pid_idx = sapply(scan_wisp_rem$PROGRAM, function(x)grepl(x, VID, fixed = T)) ## make sure PID is not embedded in string of VID
+    filelist = filelist_all[not_pid_idx]
+  }else{
+    filelist = filelist_all
+  }
+  ## stop edit 
+  
+  info = Rfits_key_scan(filelist = filelist,
+                        keylist=c('DETECTOR', 'MODULE', 'FILTER', 'VID'), cores=1)
+  
+  if(do_claws){
+    info_wisp = info[DETECTOR %in% c('NRCA1', 'NRCA2', 'NRCA3','NRCA4', 'NRCB1','NRCB2', 'NRCB3','NRCB4', 'MIRIMAGE'),] 
+  }else{
+    info_wisp = info[DETECTOR %in% c('NRCA3','NRCA4', 'NRCB3','NRCB4', 'MIRIMAGE'),] 
+  }
+  
+  ## WISP remove reverseal for NIRCam (step 11)
+  module_list = paste0("NRC", unique(info$MODULE))
+  unique_visits = unique(info_wisp$VID)
+  
+  message("Reversing wisp correction on short wavelength detectors:")
+  cat('Processing',dim(info_wisp)[1],'files\n')
+  
+  message("Showing <10 files")
+  print(
+    head(info_wisp[, c("stub", "DETECTOR", "MODULE")], 10)
+  )
+  message("...")
+  
+  registerDoParallel(cores = cores)
+  temp = foreach(ii = 1:dim(info_wisp)[1], .errorhandling = "stop")%dopar%{
+    ## copy original data to directory where we keep the wisps
+    vid = paste0(info_wisp$VID[ii])
+    modl = paste0("NRC", info_wisp$MODULE[ii])
+    wisp_frame = Rfits_read(info_wisp$full[ii])
+    if(!is.null(wisp_frame$SCI_ORIG)){
+      Rfits_write_pix(data = wisp_frame$SCI_ORIG[,]$imDat, filename = info_wisp$full[ii], ext = 2) 
+    }
+  }
 }
 
 wispFixer = function(wisp_im, ref_im,
@@ -1844,6 +1926,10 @@ wispFixer = function(wisp_im, ref_im,
 
 do_help = function(input_args){
   
+  cat("\n")
+  message("## Help ##")
+  cat("\n")
+  
   message("Author: Jordan C. J. D'Silva")
   message("Date: ", Sys.Date())
   
@@ -1871,7 +1957,8 @@ do_help = function(input_args){
   ├─ InVar_Stacks/
   ├─ Median_Stacks/
   ├─ Patch_Stacks/
-  ├─ dump/'
+  ├─ dump/
+  ├─ RGB/'
   )
   
   message("\n")
@@ -1897,6 +1984,8 @@ do_help = function(input_args){
       median_dir = median_dir, ## <-- Median stack directory, string
       patch_dir = patch_dir, ## <-- Patched stack directory, string
       dump_dir = dump_dir, ## <-- Dump frames directory, save the warp fields from mosaicking, string
+      
+      RGB_dir = RGB_dir, ## <-- RGB image directory, string
       
       magzero = 23.9, ## <-- Magnitude zero-point for ProPane mosaics, 8.9/16.4/23.9 is Jy,milliJy/microJy, numeric
       

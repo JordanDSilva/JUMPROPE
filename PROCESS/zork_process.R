@@ -37,7 +37,8 @@ select_code_func = function(){
           ## 9 = Patch                                              ##
           ## 10 = RGB                                               ##
           ## 11 = Wisp remove                                       ##
-          ## 12 = Help                                              ##
+          ## 12 = Reverse wisp removal                              ##
+          ## 13 = Help                                              ##
           ##                                                        ##
           ##  e.g., 1,2,3,4,5,6,7,8,11 for everything + wisp rem    ##
           ## CONTROL + /\ to EXIT                                    ##
@@ -53,7 +54,7 @@ select_code_func = function(){
     )[[1]]
   )
   
-  if( sum(select_vector %in% 1:12) == 0){
+  if( sum(select_vector %in% 1:13) == 0){
     message("Oops, I think you made a mistake. Trying again.")
     select_code_func()
   }
@@ -196,6 +197,7 @@ zork = function(){
     'do_patch' = do_patch,
     'do_rgb' = do_RGB,
     'do_wisp_rem' = do_wisp_rem,
+    'do_wisp_reverse' = do_wisp_reverse,
     'do_help' = do_help
   )
   
