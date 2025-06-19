@@ -16,7 +16,7 @@ library(celestial)
 library(matrixStats)
 library(checkmate)
 
-pipe_version = "1.3.8" 
+pipe_version = "1.3.9" 
 
 load_files = function(input_args, which_module, sky_info = NULL){
   ## Load the correct files for what ever task
@@ -442,8 +442,8 @@ do_cal_process = function(input_args, filelist = NULL){
           return(list(pro = pro, redoskysize=101))
         },
         error = function(cond){
-          message("Adjusting redoskysize=", redoskysize, " from 101")
           redoskysize = 21
+          message("Adjusting redoskysize=", redoskysize, " from 101: ", basename)
           pro = profoundProFound(x$image, mask = x$mask, 
                                  skycut=2, 
                                  pixcut=5, 
@@ -467,23 +467,25 @@ do_cal_process = function(input_args, filelist = NULL){
     redoskysize = pro_out$redoskysize
     
     sky_redo_func = function(x){
-        tryCatch(
-          {
-            sky_redo = profoundSkyPoly(x$image, objects=x$pro$objects_redo, degree=x$sky_poly_deg, quancut=0.99, mask=x$mask)
-            return(sky_redo)
-          },
-          error = function(cond){
-            message("Adjusting object mask for polynomial skies")
-            sky_redo = profoundSkyPoly(x$image, objects=x$pro$objects, degree=x$sky_poly_deg, quancut=0.99, mask=x$mask)
-            return(sky_redo)
-          },
-          warning = function(cond){
-            NULL
-          },
-          finally = {
-            NULL
-          }
-        )
+      tryCatch(
+        {
+        sky_redo = profoundSkyPoly(x$image, objects=x$pro$objects_redo, degree=x$sky_poly_deg, quancut=0.99, mask=x$mask)
+          return(sky_redo)
+        },
+        error = function(cond){
+          message("Adjusting object mask for polynomial skies")
+          sky_redo = profoundSkyPoly(x$image, objects=x$pro$objects, degree=x$sky_poly_deg, quancut=0.99, mask=x$mask)
+          return(sky_redo)
+        },
+        warning = function(cond){
+          message("Adjusting object mask for polynomial skies")
+          sky_redo = profoundSkyPoly(x$image, objects=x$pro$objects, degree=x$sky_poly_deg, quancut=0.99, mask=x$mask)
+          return(sky_redo)
+        },
+        finally = {
+          NULL
+        }
+      )
     }
     
     if(do_MIRI){
@@ -506,30 +508,54 @@ do_cal_process = function(input_args, filelist = NULL){
     }
     if(is.null(pro_redo$objects_redo)){
       pro_redo$objects_redo = pro$objects_redo 
-    }else if(all(pro_redo$objects_redo == 1)){
-      pro_redo$objects_redo = pro$objects_redo ## polynomial skies way below RMS of the true sky, whole frame is objects!
     }
     
-    sky_med = median(sky_redo$sky[JWST_cal_mask == 0 & pro_redo$objects_redo == 0], na.rm=TRUE)
-    skyRMS_med = median(pro_redo$skyRMS[JWST_cal_mask == 0 & pro_redo$objects_redo == 0], na.rm=TRUE)
-
-    if(is.null(sky_med)){
-       sky_med = 0 ## I.e., don't remove anything. I think that you need two if-else here when working with NULL otherwise the '|' operator wont work
-    }else if(is.na(sky_med) | is.infinite(sky_med)){
-       sky_med  = 0
-    }
-    if(is.null(skyRMS_med)){
-       skyRMS_med = 0
-    }else if(is.na(skyRMS_med) | is.infinite(skyRMS_med)){
-       skyRMS_med  = 0 
-    }
-
     if(is.null(pro_redo$skyChiSq)){
       pro_redo$skyChiSq = 1e6
-    }else if(is.infinite(pro_redo$skyChiSq) | is.na(pro_redo$skyChiSq)){
-      pro_redo$skyChiSq = 1e6 ## set to large value, Rfits no like Inf...
+    }
+    if(is.na(pro_redo$skyChiSq)){
+      pro_redo$skyChiSq = 1e6
+    }
+    if(is.infinite(pro_redo$skyChiSq)){
+      pro_redo$skyChiSq = 1e6
     }
     
+    if(pro_redo$skyChiSq >= 1e6){
+      if(sum(pro_redo$objects_redo == 1) / prod(dim(pro_redo$objects_redo)) > 0.9){
+        pro_redo$objects_redo = pro$objects 
+      }else{
+        pro_redo$objects_redo = pro$objects_redo
+      }
+    }
+    
+    # if(sum(pro_redo$objects_redo == 1)/prod(dim(pro_redo$objects_redo)) > 0.9){ ## Need to at least have 10% sky pixels?
+    #   pro_redo$objects_redo = pro_redo$objects ## polynomial skies way below RMS of the true sky, whole frame is objects. Open clusters for example...
+    # }
+     
+    sky_med = median(sky_redo$sky[JWST_cal_mask == 0 & pro_redo$objects_redo == 0], na.rm=TRUE)
+    skyRMS_med = median(pro_redo$skyRMS[JWST_cal_mask == 0 & pro_redo$objects_redo == 0], na.rm=TRUE)
+    
+    ## Sky statistics being NULL/NA/Inf likely problem with the array slicing above, e.g., if the whole frame has objects 
+    if(is.null(sky_med)){
+       sky_med = 0.0 
+    }
+    if(is.na(sky_med)){
+       sky_med = 0.0 
+    }
+    if(is.infinite(sky_med)){
+       sky_med = 0.0 
+    }
+    
+    if(is.null(skyRMS_med)){
+       skyRMS_med = 1.0 
+    }
+    if(is.na(skyRMS_med)){
+       skyRMS_med = 1.0 
+    }
+    if(is.infinite(skyRMS_med)){
+       skyRMS_med = 1.0 
+    }
+
     maskpix = sum(JWST_cal_mask!=0, na.rm=TRUE)/Npix
     objpix = sum(pro_redo$objects_redo!=0, na.rm=TRUE)/Npix
     goodpix = sum(JWST_cal_mask==0 & pro_redo$objects_redo==0, na.rm=TRUE)/Npix
@@ -954,29 +980,47 @@ do_modify_pedestal = function(input_args){
         temp_cal_sky = Rfits_read(cal_sky_info[i,full])
         ext_names = names(temp_cal_sky)
         
-        message('Testing sky with ProFound: ',cal_sky_info[i,file])
         temp_mask = Rfits_read_image(cal_sky_info[i,full], ext = "DQ", header = F)
         JWST_cal_mask = profoundDilate(temp_mask %% 2 == 1, size=3)
         
         pro_current_sky = profoundProFound(temp_cal_sky$SCI[,]$imDat, mask=JWST_cal_mask, sky=0, box=683, redosky = FALSE)
 
+        if(is.null(pro_current_sky$skyChiSq)){
+          pro_current_sky$skyChiSq = 1e6
+        }
+        if(is.na(pro_current_sky$skyChiSq)){
+          pro_current_sky$skyChiSq = 1e6
+        }
+        if(is.infinite(pro_current_sky$skyChiSq)){
+          pro_current_sky$skyChiSq = 1e6
+        }
+        
         if(pro_current_sky$skyChiSq < 0.9 | pro_current_sky$skyChiSq > 1.1){
           message('Bad Sky: ',cal_sky_info[i,file],'. Current: ',round(pro_current_sky$skyChiSq,2),' Trying to make better sky with ProFound')
-          if(sum(pro_current_sky$objects) / prod(dim(temp_cal_sky$SCI)) < 0.2){
-            pro_new_sky = profoundProFound(temp_cal_sky$SCI[,]$imDat, mask=JWST_cal_mask, box=683, roughpedestal = TRUE)
-            if(pro_new_sky$skyChiSq > 0.9 & pro_new_sky$skyChiSq < 1.1){
-              message('Using better ProFound Sky: ',cal_sky_info[i,file],' Old: ',round(pro_current_sky$skyChiSq,2),' New: ',round(pro_new_sky$skyChiSq,2))
-              replace_SCI = temp_cal_sky$SCI[,]$imDat - pro_new_sky$sky
-              replace_SKY_Super = temp_cal_sky$SKY_Super[,]$imDat + pro_new_sky$sky
-              replace_SKY_P = temp_cal_sky$SCI$keyvalues$SKY_P + mean(pro_new_sky$sky, na.rm=TRUE)
-              
-              Rfits_write_pix(replace_SCI, file_cal_sky_renorm, ext=which(ext_names == 'SCI')[1])
-              Rfits_write_pix(replace_SKY_Super, file_cal_sky_renorm, ext=which(ext_names == 'SKY_Super'))
-              Rfits_write_key(file_cal_sky_renorm, keyname='SKY_P', keyvalue=replace_SKY_P, keycomment='SKY P coef in SKY = M.SuperSky + B + P', ext=2)
-              Rfits_write_key(file_cal_sky_renorm, keyname='SKY_CHI', keyvalue=pro_new_sky$skyChiSq, keycomment='SKY Chi-Sq', ext=2)
-            }else{
-              Rfits_write_key(file_cal_sky_renorm, keyname='SKY_CHI', keyvalue=pro_current_sky$skyChiSq, keycomment='SKY Chi-Sq', ext=2)
-            }
+          # if(sum(pro_current_sky$objects) / prod(dim(temp_cal_sky$SCI)) < 0.2){ ## What was this for?
+          
+          pro_new_sky = profoundProFound(temp_cal_sky$SCI[,]$imDat, mask=JWST_cal_mask, box=683, roughpedestal = TRUE)
+          
+          if(is.null(pro_new_sky$skyChiSq)){
+            pro_new_sky$skyChiSq = 1e6
+          }
+          if(is.na(pro_new_sky$skyChiSq)){
+            pro_new_sky$skyChiSq = 1e6
+          }
+          if(is.infinite(pro_new_sky$skyChiSq)){
+            pro_new_sky$skyChiSq = 1e6
+          }
+          
+          if(pro_new_sky$skyChiSq > 0.9 & pro_new_sky$skyChiSq < 1.1){
+            message('Using better ProFound Sky: ',cal_sky_info[i,file],' Old: ',round(pro_current_sky$skyChiSq,2),' New: ',round(pro_new_sky$skyChiSq,2))
+            replace_SCI = temp_cal_sky$SCI[,]$imDat - pro_new_sky$sky
+            replace_SKY_Super = temp_cal_sky$SKY_Super[,]$imDat + pro_new_sky$sky
+            replace_SKY_P = temp_cal_sky$SCI$keyvalues$SKY_P + mean(pro_new_sky$sky, na.rm=TRUE)
+            
+            Rfits_write_pix(replace_SCI, file_cal_sky_renorm, ext=which(ext_names == 'SCI')[1])
+            Rfits_write_pix(replace_SKY_Super, file_cal_sky_renorm, ext=which(ext_names == 'SKY_Super'))
+            Rfits_write_key(file_cal_sky_renorm, keyname='SKY_P', keyvalue=replace_SKY_P, keycomment='SKY P coef in SKY = M.SuperSky + B + P', ext=2)
+            Rfits_write_key(file_cal_sky_renorm, keyname='SKY_CHI', keyvalue=pro_new_sky$skyChiSq, keycomment='SKY Chi-Sq', ext=2)
           }else{
             Rfits_write_key(file_cal_sky_renorm, keyname='SKY_CHI', keyvalue=pro_current_sky$skyChiSq, keycomment='SKY Chi-Sq', ext=2)
           }
@@ -1171,11 +1215,11 @@ do_gen_stack = function(input_args){
     if(is.null(parallel_type)){
       registerDoParallel(cores = tasks)
     }else{
-      cl <- makeCluster(spec = tasks, type = 'PSOCK')
+      cl <- makeCluster(spec = tasks, type = parallel_type)
       registerDoParallel(cl)
     }
     
-    dummy = foreach(i = lo_loop:hi_loop, .packages = c('Rwcs', 'Rfits', 'ProPane', 'ProFound'))%dopar%{
+   dummy = foreach(i = lo_loop:hi_loop, .packages = c('Rwcs', 'Rfits', 'ProPane', 'ProFound'))%dopar%{
       message('Stacking ', i,' of ',hi_loop)
       for(j in module_list){
         message('  Processing ',stack_grid[i,'VISIT_ID'],' ',stack_grid[i,'FILTER'], ' ', j)
@@ -1295,9 +1339,7 @@ do_gen_stack = function(input_args){
           image_list = c(image_list, list(temp_image))
           
           sky_file = paste0(sky_frames_dir, sub('_rem', '', input_info[k,'stub']),'_',input_info[k,'FILTER'],'.fits')
-          inVar_list = c(inVar_list,
-                         Rfits::Rfits_read_key(sky_file, 'SKYRMS')^-2
-          )
+          inVar_list = c(inVar_list, Rfits::Rfits_read_key(sky_file, 'SKYRMS')^-2)
         }
         
         temp_file = paste0(invar_dir, '/temp_list_',i,'.fits')
@@ -2002,5 +2044,4 @@ do_help = function(input_args){
       SIGMA_LO = NULL #keep blurring at wisp rem stage off by default, otherwise numeric, standard deviation of Gaussian kernel to blur derived wisp template
     )'
   )
-  
 }
