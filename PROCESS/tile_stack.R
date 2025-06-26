@@ -113,13 +113,13 @@ deep_stacker = function(input_args){
     ## Pull the files form the stack_patch directory
     list_files = list.files(
       path = patch_dir, 
-      pattern = glob2rx(paste0("*stack_patch*", input_args$program_id, "*.fits")),
+      pattern = glob2rx(paste0("*patch*", input_args$program_id, "*.fits")),
       full.names = T
     )
     
     list_files_names = list.files(
       path = patch_dir, 
-      pattern = glob2rx(paste0("*stack_patch*", input_args$program_id, "*.fits")),
+      pattern = glob2rx(paste0("*patch*", input_args$program_id, "*.fits")),
       full.names = F
     )
     
@@ -139,11 +139,7 @@ deep_stacker = function(input_args){
       cores = 1, ## safe :)
       plot=F
     )
-    filters_w2 = str_extract(find_frames$file, pattern = regex("F(\\d+).W2")) ## string match F and W with only digits in between 
-    filters_all = str_extract(find_frames$file, pattern = regex("F(\\d+).W|F(\\d+).M|CLEAR|MIRI"))
-    filters_all[which(filters_w2 == "F150W2")] = "F150W2"
-    filters_all = na.omit(filters_all)
-    
+    filters_all = str_extract(find_frames$file, pattern = regex("F(\\d+).[W2WMN]")) ## Regex pattern all kinds of filters
     find_frames$FILT = filters_all
   }
   
