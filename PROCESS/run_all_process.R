@@ -188,14 +188,14 @@ main = function(){
 
     }
     
-    # do_1of(input_args)
-    # do_cal_process(input_args)
-    # do_regen_sky_info(input_args)
-    # do_super_sky(input_args)
-    # do_apply_super_sky(input_args)
-    # do_modify_pedestal(input_args)
-    # do_cal_sky_info(input_args)
-    # do_gen_stack(input_args)
+    do_1of(input_args)
+    do_cal_process(input_args)
+    do_regen_sky_info(input_args)
+    do_super_sky(input_args)
+    do_apply_super_sky(input_args)
+    do_modify_pedestal(input_args)
+    do_cal_sky_info(input_args)
+    do_gen_stack(input_args)
   
     if(input_args$do_NIRISS){
       input_args$FILT = "CLEAR"
