@@ -1487,7 +1487,6 @@ do_gen_stack = function(input_args){
       }
      return(NULL)
     }
-    
    if(!is.null(parallel_type)){
      stopCluster(cl)
      registerDoSEQ()
@@ -1677,7 +1676,6 @@ do_patch = function(input_args){
     if(length(median_files)==0){
       message("No frames") 
     }else{
-      
       if(is.null(parallel_type)){
         registerDoParallel(cores = cores)
       }else{
