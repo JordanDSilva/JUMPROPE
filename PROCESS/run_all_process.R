@@ -20,58 +20,6 @@ library(dplyr)
 source("all_codes_process.R")
 source("initialise_variables.R")
 
-make_directory_structure = function(){
-  message("Should I make the directory structure for you? (T/F): ")
-  make_dirs = readLines("stdin", n = 1)
-  if(make_dirs == "T"){
-    message("Where should I make the directory (supply directory or nothing): ")
-    ref_dir = readLines("stdin", n=1)
-    if(ref_dir==""){
-      ref_dir = getwd()
-      message("No user input. Making in current working directory.")
-    }
-    print(ref_dir)
-    dir.create(paste0(ref_dir, "/Pro1oF/cal/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/Pro1oF/cal_sky/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/Pro1oF/cal_sky_renorm/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/sky_pro/sky_frames/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/sky_pro/sky_super/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/dump/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/InVar_Stacks/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/Median_Stacks/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/Patch_Stacks/"), recursive = T, showWarnings = F)
-    
-    dir.create(paste0(ref_dir, "/ProFound/Data/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/ProFound/GAIA_Cats/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/ProFound/Star_Masks/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/ProFound/HST_cutout/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/ProFound/Detects/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/ProFound/Sampling/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/ProFound/Inspect/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/ProFound/Measurements/"), recursive = T, showWarnings = F)
-    
-    return(ref_dir)
-  }else{
-    message("Continuing...")
-    message("Where is the reference directory (supply directory or nothing): ")
-    ref_dir = readLines("stdin", n=1)
-    if(ref_dir==""){
-      ref_dir = getwd()
-      message("No user input. Assuming everything in current working directory.")
-    }
-    return(ref_dir)
-  }
-}
-load_raw_files = function(dir_raw){
-  
-  cal_files = c(
-    list.files(dir_raw, pattern = ".fits$", full.names = T, recursive = T),
-    NULL
-  )
-  
-  return(cal_files)
-}
-
 main = function(){
   args = commandArgs(trailingOnly = T)
   if (length(args)==0) {
