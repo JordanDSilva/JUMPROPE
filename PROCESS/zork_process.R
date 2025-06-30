@@ -26,6 +26,7 @@ select_code_func = function(){
           ############################################################
           ## Thank you for choosing ZORK for your JWST processing!  ##
           ## Press:                                                 ##
+          ## 0 = Set up directory structure                         ##
           ## 1 = Pro1oF                                             ##
           ## 2 = Create sky                                         ##
           ## 3 = Regen sky info                                     ##
@@ -53,67 +54,18 @@ select_code_func = function(){
       select_code, ","
     )[[1]]
   )
-  
-  if( sum(select_vector %in% 1:13) == 0){
+  if( sum(select_vector %in% 0:13) == 0){
     message("Oops, I think you made a mistake. Trying again.")
     select_code_func()
   }
   else{
-    return(select_vector)
+    return(
+      select_vector+1 ## Plus one since can't index list with 0
+    )
   }
   
 }
-make_directory_structure = function(){
-  message("Should I make the directory structure for you? (T/F): ")
-  make_dirs = readLines("stdin", n = 1)
-  if(make_dirs == "T"){
-    message("Where should I make the directory (supply directory or nothing): ")
-    ref_dir = readLines("stdin", n=1)
-    if(ref_dir==""){
-      ref_dir = getwd()
-      message("No user input. Making in current working directory.")
-    }
-    print(ref_dir)
-    dir.create(paste0(ref_dir, "/Pro1oF/cal/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/Pro1oF/cal_sky/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/Pro1oF/cal_sky_renorm/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/sky_pro/sky_frames/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/sky_pro/sky_super/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/dump/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/InVar_Stacks/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/Median_Stacks/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/Patch_Stacks/"), recursive = T, showWarnings = F)
-    
-    dir.create(paste0(ref_dir, "/ProFound/Data/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/ProFound/GAIA_Cats/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/ProFound/Star_Masks/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/ProFound/HST_cutout/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/ProFound/Detects/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/ProFound/Sampling/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/ProFound/Inspect/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/ProFound/Measurements/"), recursive = T, showWarnings = F)
-    
-    return(ref_dir)
-  }else{
-    message("Continuing...")
-    message("Where is the reference directory (supply directory or nothing): ")
-    ref_dir = readLines("stdin", n=1)
-    if(ref_dir==""){
-      ref_dir = getwd()
-      message("No user input. Assuming everything in current working directory.")
-    }
-    return(ref_dir)
-  }
-}
-load_raw_files = function(dir_raw){
-  
-  cal_files = c(
-    list.files(dir_raw, pattern = ".fits$", full.names = T, recursive = T),
-    NULL
-  )
-  
-  return(cal_files)
-}
+
 zork = function(){
   
   args = commandArgs(trailingOnly = T)
@@ -185,7 +137,9 @@ zork = function(){
   
   select_code = select_code_func()
 
+  make_dir_temp_func = function(input_args){make_directory_structure()}
   code_organiser = list(
+    'make_directory_structure'=make_dir_temp_func, ## Hack to handle input_args
     'do_1oF'=do_1of,
     'do_cal_process'=do_cal_process,
     'do_regen_sky_info' = do_regen_sky_info,
