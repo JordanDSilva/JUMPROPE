@@ -788,7 +788,7 @@ do_apply_super_sky = function(input_args){
 
   sky_info = data.frame(sky_info)
   
-  cat('Processing ',length(sky_filelist),'files...\n')
+  cat('Processing',length(sky_filelist),'files...\n')
   
   lo_loop = 1
   hi_loop = length(sky_filelist)
@@ -938,7 +938,7 @@ do_modify_pedestal = function(input_args){
   
   filelist = load_files(input_args, which_module = "modify_pedestal")
   
-  cat('Processing',length(filelist),'file...\n')
+  cat('Processing',length(filelist),'files...\n')
   
   cal_sky_info_ext1 = Rfits_key_scan(filelist = filelist,
                                      keylist = c('VISIT_ID', 'OBS_ID', 'EXPOSURE', 'DETECTOR', 'MODULE', 'CHANNEL', 'FILTER'),
@@ -954,7 +954,6 @@ do_modify_pedestal = function(input_args){
                                      cores = cores
   )
   
-
   cal_sky_info = as.data.table(cbind(cal_sky_info_ext1, cal_sky_info_ext2))
   
   ped_info = cal_sky_info[,list(ped_mean = mean(SKY_B + SKY_P), ped_med = median(SKY_B + SKY_P), ped_max = max(SKY_B + SKY_P), ped_min = min(SKY_B + SKY_P)), by=list(OBS_ID, EXPOSURE)]
