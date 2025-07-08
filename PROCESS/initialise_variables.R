@@ -11,6 +11,8 @@ initialise_params = function(){
     ## Keep trend data determines the aggressiveness of the 1/f. If nothing in this data frame, then default 1/f proceeds. 
     ## Default should be good for most blank fields.
     
+    skip_completed_files = FALSE, ## Only process files (in any step) that do not exist in the specified directory
+    
     ## vlarge for big objects that fill frame e.g., VV191. Least aggressive 1/f.
     ID_vlarge = data.frame(
       VISIT_ID = c(

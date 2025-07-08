@@ -16,7 +16,7 @@ library(celestial)
 library(matrixStats)
 library(checkmate)
 
-pipe_version = "1.4.0" 
+pipe_version = "1.4.1" 
 
 load_files = function(input_args, which_module, sky_info = NULL){
   ## Load the correct files for what ever task
@@ -179,6 +179,7 @@ do_1of = function(input_args){
   trend_block_vlarge = 101 #good for larger sources
   trend_block_large = 501 # good for frames with fairly large sources
   
+  skip_completed_files = additional_params$skip_completed_files
   ID_vlarge = additional_params$ID_vlarge
   ID_large = additional_params$ID_large
   
@@ -191,6 +192,7 @@ do_1of = function(input_args){
   cat(head(filelist, 10), sep='\n')
   cat("...")
   cat('Processing',length(filelist),'files\n')
+  message("Skip completed files is ", ifelse(skip_completed_files, "ON", "OFF"))
   
   lo_loop = 1
   hi_loop = length(filelist)
@@ -209,125 +211,127 @@ do_1of = function(input_args){
     file_image = filelist[i]
     basename = strsplit(basename(file_image),'.fits$')[[1]]
     fullbase = paste(Pro1oF_dir,basename,sep='/')
-
-    temp_image = Rfits_read(filelist[i], pointer=FALSE)
-
-    if(do_MIRI){
-      keep_trend = FALSE
-      if(ow_large & ow_vlarge){
-        message("Can't use both LARGE and VLARGE keep_trend \n Defaulting to keep_trend FALSE")
+    
+    if( !(skip_completed_files & file.exists(paste0(fullbase,'_Pro1oF.fits'))) ){
+      temp_image = Rfits_read(filelist[i], pointer=FALSE)
+  
+      if(do_MIRI){
         keep_trend = FALSE
-      }else{
-
-        if(ow_vlarge){
-          keep_trend = TRUE
-          trend_block = trend_block_vlarge
-          message("KT: TRUE", " TB ", trend_block_vlarge)
-        }
-
-        if(ow_large){
-          keep_trend = TRUE
-          trend_block = trend_block_large
-          message("KT: TRUE", " TB ", trend_block_large)
-        }
-      }
-
-      temp_mask = temp_image$DQ$imDat
-      JWST_cal_mask = profoundDilate(temp_mask %% 2 == 1, size=3)
-
-      temp_zap = profoundSkyScan(image = temp_image$SCI$imDat,
-                                 mask = (temp_image$SCI$imDat==0) | JWST_cal_mask,
-                                 # mask = foo,
-                                 clip = c(0.0,0.9),
-                                 scan_block = c(nrow(temp_image$SCI$imDat), ncol(temp_image$SCI$imDat)),
-                                 trend_block = trend_block,
-                                 keep_trend = keep_trend)
-
-      Rfits_write(
-        data = temp_image,
-        filename = paste0(fullbase,'_MIRI.fits')
-      )
-      Rfits_write_pix(temp_zap$image_fix, paste0(fullbase,'_MIRI.fits'), ext=2)
-
-      check_Nhdu = Rfits_nhdu(paste0(fullbase,'_MIRI.fits'))
-      extloc = Rfits_extname_to_ext(paste0(fullbase,'_MIRI.fits'), 'SKY_Pro1oF')
-
-      if(is.na(extloc)){
-        Rfits_write_image(temp_zap$row_map + temp_zap$col_map, filename=paste0(fullbase,'_MIRI.fits'), create_file=FALSE)
-        Rfits_write_key(filename=paste0(fullbase,'_MIRI.fits'), ext=check_Nhdu+1, keyname='EXTNAME', keyvalue='SKY_Pro1oF', keycomment='extension name')
-      }else{
-        Rfits_write_pix(temp_zap$row_map + temp_zap$col_map, paste0(fullbase,'_MIRI.fits'), ext=extloc)
-      }
-    }else{
-      if(!(any(c(ow_vlarge, ow_large)))){
-        if(any(temp_image[[1]]$keyvalues$VISIT_ID == ID_vlarge$VISIT_ID & temp_image[[1]]$keyvalues$MODULE == ID_vlarge$MODULE)){
-          trend_block = trend_block_vlarge
-          keep_trend = TRUE
-          message(temp_image[[1]]$keyvalues$VISIT_ID,' ',temp_image[[1]]$keyvalues$MODULE, ' KT: TRUE', ' TB: ',trend_block)
-        }else if(any(temp_image[[1]]$keyvalues$VISIT_ID == ID_large$VISIT_ID & temp_image[[1]]$keyvalues$MODULE == ID_large$MODULE)){
-          trend_block = trend_block_large
-          keep_trend = TRUE
-          message(temp_image[[1]]$keyvalues$VISIT_ID,' ',temp_image[[1]]$keyvalues$MODULE, ' KT: TRUE', ' TB: ',trend_block)
-        }else if(any(temp_image[[1]]$keyvalues$VISIT_ID == ID_large$VISIT_ID & temp_image[[1]]$keyvalues$INSTRUME == ID_large$MODULE)){
-          trend_block = trend_block_large
-          keep_trend = TRUE
-          message(temp_image[[1]]$keyvalues$VISIT_ID,' ',temp_image[[1]]$keyvalues$INSTRUME, ' KT: TRUE', ' TB: ',trend_block)
-        }else{
-          keep_trend = FALSE
-          message(temp_image[[1]]$keyvalues$VISIT_ID,' ',temp_image[[1]]$keyvalues$MODULE, ' KT: FALSE')
-        }
-      }else{
-        ## set over write
         if(ow_large & ow_vlarge){
           message("Can't use both LARGE and VLARGE keep_trend \n Defaulting to keep_trend FALSE")
           keep_trend = FALSE
         }else{
+  
           if(ow_vlarge){
             keep_trend = TRUE
             trend_block = trend_block_vlarge
             message("KT: TRUE", " TB ", trend_block_vlarge)
           }
+  
           if(ow_large){
             keep_trend = TRUE
             trend_block = trend_block_large
             message("KT: TRUE", " TB ", trend_block_large)
           }
         }
-      }
-
-      temp_mask = temp_image$DQ$imDat
-      JWST_cal_mask = profoundDilate(temp_mask %% 2 == 1, size=3)
-
-      if(nrow(temp_image$SCI$imDat) != 2048 | ncol(temp_image$SCI$imDat) != 2048){
-        scan_block = c(
-          nrow(temp_image$SCI$imDat),
-          ncol(temp_image$SCI$imDat)
+  
+        temp_mask = temp_image$DQ$imDat
+        JWST_cal_mask = profoundDilate(temp_mask %% 2 == 1, size=3)
+  
+        temp_zap = profoundSkyScan(image = temp_image$SCI$imDat,
+                                   mask = (temp_image$SCI$imDat==0) | JWST_cal_mask,
+                                   # mask = foo,
+                                   clip = c(0.0,0.9),
+                                   scan_block = c(nrow(temp_image$SCI$imDat), ncol(temp_image$SCI$imDat)),
+                                   trend_block = trend_block,
+                                   keep_trend = keep_trend)
+  
+        Rfits_write(
+          data = temp_image,
+          filename = paste0(fullbase,'_MIRI.fits')
         )
+        Rfits_write_pix(temp_zap$image_fix, paste0(fullbase,'_MIRI.fits'), ext=2)
+  
+        check_Nhdu = Rfits_nhdu(paste0(fullbase,'_MIRI.fits'))
+        extloc = Rfits_extname_to_ext(paste0(fullbase,'_MIRI.fits'), 'SKY_Pro1oF')
+  
+        if(is.na(extloc)){
+          Rfits_write_image(temp_zap$row_map + temp_zap$col_map, filename=paste0(fullbase,'_MIRI.fits'), create_file=FALSE)
+          Rfits_write_key(filename=paste0(fullbase,'_MIRI.fits'), ext=check_Nhdu+1, keyname='EXTNAME', keyvalue='SKY_Pro1oF', keycomment='extension name')
+        }else{
+          Rfits_write_pix(temp_zap$row_map + temp_zap$col_map, paste0(fullbase,'_MIRI.fits'), ext=extloc)
+        }
       }else{
-        scan_block = c(512, 2048)
+        if(!(any(c(ow_vlarge, ow_large)))){
+          if(any(temp_image[[1]]$keyvalues$VISIT_ID == ID_vlarge$VISIT_ID & temp_image[[1]]$keyvalues$MODULE == ID_vlarge$MODULE)){
+            trend_block = trend_block_vlarge
+            keep_trend = TRUE
+            message(temp_image[[1]]$keyvalues$VISIT_ID,' ',temp_image[[1]]$keyvalues$MODULE, ' KT: TRUE', ' TB: ',trend_block)
+          }else if(any(temp_image[[1]]$keyvalues$VISIT_ID == ID_large$VISIT_ID & temp_image[[1]]$keyvalues$MODULE == ID_large$MODULE)){
+            trend_block = trend_block_large
+            keep_trend = TRUE
+            message(temp_image[[1]]$keyvalues$VISIT_ID,' ',temp_image[[1]]$keyvalues$MODULE, ' KT: TRUE', ' TB: ',trend_block)
+          }else if(any(temp_image[[1]]$keyvalues$VISIT_ID == ID_large$VISIT_ID & temp_image[[1]]$keyvalues$INSTRUME == ID_large$MODULE)){
+            trend_block = trend_block_large
+            keep_trend = TRUE
+            message(temp_image[[1]]$keyvalues$VISIT_ID,' ',temp_image[[1]]$keyvalues$INSTRUME, ' KT: TRUE', ' TB: ',trend_block)
+          }else{
+            keep_trend = FALSE
+            message(temp_image[[1]]$keyvalues$VISIT_ID,' ',temp_image[[1]]$keyvalues$MODULE, ' KT: FALSE')
+          }
+        }else{
+          ## set over write
+          if(ow_large & ow_vlarge){
+            message("Can't use both LARGE and VLARGE keep_trend \n Defaulting to keep_trend FALSE")
+            keep_trend = FALSE
+          }else{
+            if(ow_vlarge){
+              keep_trend = TRUE
+              trend_block = trend_block_vlarge
+              message("KT: TRUE", " TB ", trend_block_vlarge)
+            }
+            if(ow_large){
+              keep_trend = TRUE
+              trend_block = trend_block_large
+              message("KT: TRUE", " TB ", trend_block_large)
+            }
+          }
+        }
+  
+        temp_mask = temp_image$DQ$imDat
+        JWST_cal_mask = profoundDilate(temp_mask %% 2 == 1, size=3)
+  
+        if(nrow(temp_image$SCI$imDat) != 2048 | ncol(temp_image$SCI$imDat) != 2048){
+          scan_block = c(
+            nrow(temp_image$SCI$imDat),
+            ncol(temp_image$SCI$imDat)
+          )
+        }else{
+          scan_block = c(512, 2048)
+        }
+  
+        temp_zap = profoundSkyScan(image = temp_image$SCI$imDat,
+                                   mask = (temp_image$SCI$imDat==0) | JWST_cal_mask | is.na(temp_image$SCI$imDat),
+                                   clip = c(0.0,0.9),
+                                   scan_block = scan_block,
+                                   trend_block = trend_block,
+                                   keep_trend = keep_trend)
+  
+        file.copy(filelist[i], paste0(fullbase,'_Pro1oF.fits'), overwrite=TRUE)
+        Rfits_write_pix(temp_zap$image_fix, paste0(fullbase,'_Pro1oF.fits'), ext=2)
+  
+        check_Nhdu = Rfits_nhdu(paste0(fullbase,'_Pro1oF.fits'))
+        extloc = Rfits_extname_to_ext(paste0(fullbase,'_Pro1oF.fits'), 'SKY_Pro1oF')
+  
+        if(is.na(extloc)){
+          Rfits_write_image(temp_zap$row_map + temp_zap$col_map, filename=paste0(fullbase,'_Pro1oF.fits'), create_file=FALSE)
+          Rfits_write_key(filename=paste0(fullbase,'_Pro1oF.fits'), ext=check_Nhdu+1, keyname='EXTNAME', keyvalue='SKY_Pro1oF', keycomment='extension name')
+        }else{
+          Rfits_write_pix(temp_zap$row_map + temp_zap$col_map, paste0(fullbase,'_Pro1oF.fits'), ext=extloc)
+        }
       }
-
-      temp_zap = profoundSkyScan(image = temp_image$SCI$imDat,
-                                 mask = (temp_image$SCI$imDat==0) | JWST_cal_mask | is.na(temp_image$SCI$imDat),
-                                 clip = c(0.0,0.9),
-                                 scan_block = scan_block,
-                                 trend_block = trend_block,
-                                 keep_trend = keep_trend)
-
-      file.copy(filelist[i], paste0(fullbase,'_Pro1oF.fits'), overwrite=TRUE)
-      Rfits_write_pix(temp_zap$image_fix, paste0(fullbase,'_Pro1oF.fits'), ext=2)
-
-      check_Nhdu = Rfits_nhdu(paste0(fullbase,'_Pro1oF.fits'))
-      extloc = Rfits_extname_to_ext(paste0(fullbase,'_Pro1oF.fits'), 'SKY_Pro1oF')
-
-      if(is.na(extloc)){
-        Rfits_write_image(temp_zap$row_map + temp_zap$col_map, filename=paste0(fullbase,'_Pro1oF.fits'), create_file=FALSE)
-        Rfits_write_key(filename=paste0(fullbase,'_Pro1oF.fits'), ext=check_Nhdu+1, keyname='EXTNAME', keyvalue='SKY_Pro1oF', keycomment='extension name')
-      }else{
-        Rfits_write_pix(temp_zap$row_map + temp_zap$col_map, paste0(fullbase,'_Pro1oF.fits'), ext=extloc)
-      }
+      return(NULL)
     }
-    return(NULL)
   }
   
   if(!is.null(parallel_type)){
@@ -353,6 +357,7 @@ do_cal_process = function(input_args, filelist = NULL){
   do_NIRISS = input_args$do_NIRISS
   do_MIRI = input_args$do_MIRI
   parallel_type = input_args$additional_params$parallel_type
+  skip_completed_files = additional_params$skip_completed_files
   
   if(is.null(filelist)){
     filelist = (load_files(input_args, which_module = "cal_process"))
@@ -362,6 +367,7 @@ do_cal_process = function(input_args, filelist = NULL){
   cat(head(filelist, 10), sep='\n')
   cat("...")
   cat('Processing',length(filelist),'files...\n')
+  message("Skip completed files is ", ifelse(skip_completed_files, "ON", "OFF"))
   
   if(is.null(parallel_type)){
     registerDoParallel(cores = cores)
@@ -391,212 +397,216 @@ do_cal_process = function(input_args, filelist = NULL){
     basename = strsplit(basename(file_image),'.fits',fixed=T)[[1]]
     fullbase = paste(sky_frames_dir,basename,sep='/')
     file_sky = paste0(fullbase,'_sky_',obs_info[i,"FILTER"],'.fits')
-    print(file_sky)
     
-    #get cal data
-    JWST_cal_image = Rfits_read_image(file_image, ext=2)
-    temp_mask = Rfits_read_image(file_image, ext=4, header = FALSE)
-    JWST_cal_mask = profoundDilate(temp_mask %% 2 == 1, size=3)
-    
-    #basic info
-    suppressMessages({ #do not really want to see lots of SIP warnings!
-      RA_im = centre(JWST_cal_image)[1]
-      Dec_im = centre(JWST_cal_image)[2]
-    })
-    NAXIS1 = JWST_cal_image$keyvalues$NAXIS1
-    NAXIS2 = JWST_cal_image$keyvalues$NAXIS2
-    Npix = NAXIS1*NAXIS2
-
-    if(do_MIRI){
-      box = 64
-      redoskysize = 21
-      sky_poly_deg = 2
-    }else{
-      box = 512
-      redoskysize = 101
-      sky_poly_deg = 2
-    }
-    
-    ## TryCatch for ProFound in case there are not enough sky pixels to be sampled.
-    ## Usually caused by zealous object dilation => lower redoskysize
-    pro_func = function(x){
-      tryCatch(
-        {
-          pro = profoundProFound(x$image, mask = x$mask, 
-                                 skycut=2, 
-                                 pixcut=5, 
-                                 box=x$box, 
-                                 redoskysize = x$redoskysize, 
-                                 roughpedestal = TRUE, 
-                                 tolerance=Inf 
-                                 )
-          return(list(pro = pro, redoskysize=101))
-        },
-        error = function(cond){
-          redoskysize = 21
-          message("Adjusting redoskysize=", redoskysize, " from 101: ", basename)
-          pro = profoundProFound(x$image, mask = x$mask, 
-                                 skycut=2, 
-                                 pixcut=5, 
-                                 box=x$box, 
-                                 redoskysize = redoskysize, 
-                                 roughpedestal = TRUE, 
-                                 tolerance=Inf)
-          return(list(pro=pro, redoskysize=redoskysize))
-        },
-        warning = function(cond){
-          NULL
-        },
-        finally = {
-          NULL
-        }
-      )
-    }
-    
-    pro_out = pro_func(list(image = JWST_cal_image$imDat, mask = JWST_cal_mask, box = box, redoskysize = redoskysize))
-    pro = pro_out$pro
-    redoskysize = pro_out$redoskysize
-    
-    sky_redo_func = function(x){
-      tryCatch(
-        {
-        sky_redo = profoundSkyPoly(x$image, objects=x$pro$objects_redo, degree=x$sky_poly_deg, quancut=0.99, mask=x$mask)
-          return(sky_redo)
-        },
-        error = function(cond){
-          message("Adjusting object mask for polynomial skies")
-          sky_redo = profoundSkyPoly(x$image, objects=x$pro$objects, degree=x$sky_poly_deg, quancut=0.99, mask=x$mask)
-          return(sky_redo)
-        },
-        warning = function(cond){
-          message("Adjusting object mask for polynomial skies")
-          sky_redo = profoundSkyPoly(x$image, objects=x$pro$objects, degree=x$sky_poly_deg, quancut=0.99, mask=x$mask)
-          return(sky_redo)
-        },
-        finally = {
-          NULL
-        }
-      )
-    }
-    
-    if(do_MIRI){
-      ## Do not do polynomial sky for MIRI - too hard
-      sky_redo = list(sky = pro$sky)
-      pro_redo = pro
-    }else{
-      sky_redo = sky_redo_func(list(image = JWST_cal_image$imDat, pro = pro, mask = JWST_cal_mask, sky_poly_deg = sky_poly_deg))
-      pro_redo = profoundProFound(JWST_cal_image$imDat, mask=JWST_cal_mask, skycut=2, pixcut=5, box=box, grid = box, redoskysize=redoskysize, sky=sky_redo$sky, redosky=FALSE, tolerance=Inf)
-    }
-
-    if(is.null(sky_redo$sky)){
-      ## if the polynomial sky is NULL, replace with the original profound sky
-      ## If NULL it probably means that the polynomial sky had some problem as per the try-catch
-      sky_redo$sky = pro$sky
-    }
-    if(is.null(pro_redo$skyRMS)){
-      ## if the polynomial skyRMS is NULL, replace with the original profound skyRMS
-      pro_redo$skyRMS = pro$skyRMS 
-    }
-    if(is.null(pro_redo$objects_redo)){
-      pro_redo$objects_redo = pro$objects_redo 
-    }
-    
-    if(is.null(pro_redo$skyChiSq)){
-      pro_redo$skyChiSq = 1e6
-    }
-    if(is.na(pro_redo$skyChiSq)){
-      pro_redo$skyChiSq = 1e6
-    }
-    if(is.infinite(pro_redo$skyChiSq)){
-      pro_redo$skyChiSq = 1e6
-    }
-    
-    if(pro_redo$skyChiSq >= 1e6){
-      if(sum(pro_redo$objects_redo == 1) / prod(dim(pro_redo$objects_redo)) > 0.9){
-        pro_redo$objects_redo = pro$objects 
+    if( !(skip_completed_files & file.exists(file_sky)) ){
+      #get cal data
+      JWST_cal_image = Rfits_read_image(file_image, ext=2)
+      temp_mask = Rfits_read_image(file_image, ext=4, header = FALSE)
+      JWST_cal_mask = profoundDilate(temp_mask %% 2 == 1, size=3)
+      
+      #basic info
+      suppressMessages({ #do not really want to see lots of SIP warnings!
+        RA_im = centre(JWST_cal_image)[1]
+        Dec_im = centre(JWST_cal_image)[2]
+      })
+      NAXIS1 = JWST_cal_image$keyvalues$NAXIS1
+      NAXIS2 = JWST_cal_image$keyvalues$NAXIS2
+      Npix = NAXIS1*NAXIS2
+      
+      if(do_MIRI){
+        box = 64
+        redoskysize = 21
+        sky_poly_deg = 2
       }else{
-        pro_redo$objects_redo = pro$objects_redo
+        box = 512
+        redoskysize = 101
+        sky_poly_deg = 2
       }
+      
+      ## TryCatch for ProFound in case there are not enough sky pixels to be sampled.
+      ## Usually caused by zealous object dilation => lower redoskysize
+      pro_func = function(x){
+        tryCatch(
+          {
+            pro = profoundProFound(x$image, mask = x$mask, 
+                                   skycut=2, 
+                                   pixcut=5, 
+                                   box=x$box, 
+                                   redoskysize = x$redoskysize, 
+                                   roughpedestal = TRUE, 
+                                   tolerance=Inf 
+            )
+            return(list(pro = pro, redoskysize=101))
+          },
+          error = function(cond){
+            redoskysize = 21
+            message("Adjusting redoskysize=", redoskysize, " from 101: ", basename)
+            pro = profoundProFound(x$image, mask = x$mask, 
+                                   skycut=2, 
+                                   pixcut=5, 
+                                   box=x$box, 
+                                   redoskysize = redoskysize, 
+                                   roughpedestal = TRUE, 
+                                   tolerance=Inf)
+            return(list(pro=pro, redoskysize=redoskysize))
+          },
+          warning = function(cond){
+            NULL
+          },
+          finally = {
+            NULL
+          }
+        )
+      }
+      
+      pro_out = pro_func(list(image = JWST_cal_image$imDat, mask = JWST_cal_mask, box = box, redoskysize = redoskysize))
+      pro = pro_out$pro
+      redoskysize = pro_out$redoskysize
+      
+      sky_redo_func = function(x){
+        tryCatch(
+          {
+            sky_redo = profoundSkyPoly(x$image, objects=x$pro$objects_redo, degree=x$sky_poly_deg, quancut=0.99, mask=x$mask)
+            return(sky_redo)
+          },
+          error = function(cond){
+            message("Adjusting object mask for polynomial skies")
+            sky_redo = profoundSkyPoly(x$image, objects=x$pro$objects, degree=x$sky_poly_deg, quancut=0.99, mask=x$mask)
+            return(sky_redo)
+          },
+          warning = function(cond){
+            message("Adjusting object mask for polynomial skies")
+            sky_redo = profoundSkyPoly(x$image, objects=x$pro$objects, degree=x$sky_poly_deg, quancut=0.99, mask=x$mask)
+            return(sky_redo)
+          },
+          finally = {
+            NULL
+          }
+        )
+      }
+      
+      if(do_MIRI){
+        ## Do not do polynomial sky for MIRI - too hard
+        sky_redo = list(sky = pro$sky)
+        pro_redo = pro
+      }else{
+        sky_redo = sky_redo_func(list(image = JWST_cal_image$imDat, pro = pro, mask = JWST_cal_mask, sky_poly_deg = sky_poly_deg))
+        pro_redo = profoundProFound(JWST_cal_image$imDat, mask=JWST_cal_mask, skycut=2, pixcut=5, box=box, grid = box, redoskysize=redoskysize, sky=sky_redo$sky, redosky=FALSE, tolerance=Inf)
+      }
+      
+      if(is.null(sky_redo$sky)){
+        ## if the polynomial sky is NULL, replace with the original profound sky
+        ## If NULL it probably means that the polynomial sky had some problem as per the try-catch
+        sky_redo$sky = pro$sky
+      }
+      if(is.null(pro_redo$skyRMS)){
+        ## if the polynomial skyRMS is NULL, replace with the original profound skyRMS
+        pro_redo$skyRMS = pro$skyRMS 
+      }
+      if(is.null(pro_redo$objects_redo)){
+        pro_redo$objects_redo = pro$objects_redo 
+      }
+      
+      if(is.null(pro_redo$skyChiSq)){
+        pro_redo$skyChiSq = 1e6
+      }
+      if(is.na(pro_redo$skyChiSq)){
+        pro_redo$skyChiSq = 1e6
+      }
+      if(is.infinite(pro_redo$skyChiSq)){
+        pro_redo$skyChiSq = 1e6
+      }
+      
+      if(pro_redo$skyChiSq >= 1e6){
+        if(sum(pro_redo$objects_redo == 1) / prod(dim(pro_redo$objects_redo)) > 0.9){
+          pro_redo$objects_redo = pro$objects 
+        }else{
+          pro_redo$objects_redo = pro$objects_redo
+        }
+      }
+      
+      # if(sum(pro_redo$objects_redo == 1)/prod(dim(pro_redo$objects_redo)) > 0.9){ ## Need to at least have 10% sky pixels?
+      #   pro_redo$objects_redo = pro_redo$objects ## polynomial skies way below RMS of the true sky, whole frame is objects. Open clusters for example...
+      # }
+      
+      sky_med = median(sky_redo$sky[JWST_cal_mask == 0 & pro_redo$objects_redo == 0], na.rm=TRUE)
+      skyRMS_med = median(pro_redo$skyRMS[JWST_cal_mask == 0 & pro_redo$objects_redo == 0], na.rm=TRUE)
+      
+      ## Sky statistics being NULL/NA/Inf likely problem with the array slicing above, e.g., if the whole frame has objects 
+      if(is.null(sky_med)){
+        sky_med = 0.0 
+      }
+      if(is.na(sky_med)){
+        sky_med = 0.0 
+      }
+      if(is.infinite(sky_med)){
+        sky_med = 0.0 
+      }
+      
+      if(is.null(skyRMS_med)){
+        skyRMS_med = 1.0 
+      }
+      if(is.na(skyRMS_med)){
+        skyRMS_med = 1.0 
+      }
+      if(is.infinite(skyRMS_med)){
+        skyRMS_med = 1.0 
+      }
+      
+      maskpix = sum(JWST_cal_mask!=0, na.rm=TRUE)/Npix
+      objpix = sum(pro_redo$objects_redo!=0, na.rm=TRUE)/Npix
+      goodpix = sum(JWST_cal_mask==0 & pro_redo$objects_redo==0, na.rm=TRUE)/Npix
+      
+      if(file.exists(file_sky)){
+        message('Removing old sky file: ',file_sky)
+        file.remove(file_sky)
+      }
+      
+      Rfits_write_header(keyvalues = list(
+        FILEIM = basename(file_image),
+        PATHIM = dirname(file_image),
+        FILESKY = basename(file_sky),
+        PATHSKY = dirname(file_sky),
+        VERSION = pipe_version,
+        VISIT_ID = obs_info$VISIT_ID[i],
+        OBS_ID = obs_info$OBS_ID[i],
+        EXPOSURE = obs_info$EXPOSURE[i],
+        DETECTOR = obs_info$DETECTOR[i],
+        FILTER = obs_info$FILTER[i],
+        DATE = obs_info$`DATE-OBS`[i],
+        EXPTIME =  obs_info$EFFEXPTM[i],
+        CAL_VER =  obs_info$CAL_VER[i],
+        CRDS_CTX =  obs_info$CRDS_CTX[i],
+        RA = RA_im,
+        DEC = Dec_im,
+        NAXIS1 = NAXIS1,
+        NAXIS2 = NAXIS2,
+        NPIX = Npix,
+        SKY = sky_med,
+        SKYRMS = skyRMS_med,
+        SKYCHI = pro_redo$skyChiSq,
+        MASK = maskpix,
+        OBJ = objpix,
+        GOODPIX = goodpix
+      ), filename=file_sky, create_file=TRUE, overwrite_file=TRUE)
+      Rfits_write_key(filename=file_sky, ext=1, keyname='EXTNAME', keyvalue='INFO', keycomment='extension name')
+      
+      Rfits_write_image(sky_redo$sky, filename=file_sky, create_file=FALSE)
+      Rfits_write_key(filename=file_sky, ext=2, keyname='EXTNAME', keyvalue='SKY', keycomment='extension name')
+      
+      Rfits_write_image(pro_redo$skyRMS, filename=file_sky, create_file=FALSE)
+      Rfits_write_key(filename=file_sky, ext=3, keyname='EXTNAME', keyvalue='SKYRMS', keycomment='extension name')
+      
+      Rfits_write_image(JWST_cal_mask, filename=file_sky, create_file=FALSE)
+      Rfits_write_key(filename=file_sky, ext=4, keyname='EXTNAME', keyvalue='PIXELMASK', keycomment='extension name')
+      
+      Rfits_write_image(pro_redo$objects_redo, filename=file_sky, create_file=FALSE)
+      Rfits_write_key(filename=file_sky, ext=5, keyname='EXTNAME', keyvalue='OBJECTMASK', keycomment='extension name')
+      return(NULL)
+    }else{
+      return(NULL)
     }
     
-    # if(sum(pro_redo$objects_redo == 1)/prod(dim(pro_redo$objects_redo)) > 0.9){ ## Need to at least have 10% sky pixels?
-    #   pro_redo$objects_redo = pro_redo$objects ## polynomial skies way below RMS of the true sky, whole frame is objects. Open clusters for example...
-    # }
-     
-    sky_med = median(sky_redo$sky[JWST_cal_mask == 0 & pro_redo$objects_redo == 0], na.rm=TRUE)
-    skyRMS_med = median(pro_redo$skyRMS[JWST_cal_mask == 0 & pro_redo$objects_redo == 0], na.rm=TRUE)
-    
-    ## Sky statistics being NULL/NA/Inf likely problem with the array slicing above, e.g., if the whole frame has objects 
-    if(is.null(sky_med)){
-       sky_med = 0.0 
-    }
-    if(is.na(sky_med)){
-       sky_med = 0.0 
-    }
-    if(is.infinite(sky_med)){
-       sky_med = 0.0 
-    }
-    
-    if(is.null(skyRMS_med)){
-       skyRMS_med = 1.0 
-    }
-    if(is.na(skyRMS_med)){
-       skyRMS_med = 1.0 
-    }
-    if(is.infinite(skyRMS_med)){
-       skyRMS_med = 1.0 
-    }
-
-    maskpix = sum(JWST_cal_mask!=0, na.rm=TRUE)/Npix
-    objpix = sum(pro_redo$objects_redo!=0, na.rm=TRUE)/Npix
-    goodpix = sum(JWST_cal_mask==0 & pro_redo$objects_redo==0, na.rm=TRUE)/Npix
-    
-    if(file.exists(file_sky)){
-      message('Removing old sky file: ',file_sky)
-      file.remove(file_sky)
-    }
-    
-    Rfits_write_header(keyvalues = list(
-      FILEIM = basename(file_image),
-      PATHIM = dirname(file_image),
-      FILESKY = basename(file_sky),
-      PATHSKY = dirname(file_sky),
-      VERSION = pipe_version,
-      VISIT_ID = obs_info$VISIT_ID[i],
-      OBS_ID = obs_info$OBS_ID[i],
-      EXPOSURE = obs_info$EXPOSURE[i],
-      DETECTOR = obs_info$DETECTOR[i],
-      FILTER = obs_info$FILTER[i],
-      DATE = obs_info$`DATE-OBS`[i],
-      EXPTIME =  obs_info$EFFEXPTM[i],
-      CAL_VER =  obs_info$CAL_VER[i],
-      CRDS_CTX =  obs_info$CRDS_CTX[i],
-      RA = RA_im,
-      DEC = Dec_im,
-      NAXIS1 = NAXIS1,
-      NAXIS2 = NAXIS2,
-      NPIX = Npix,
-      SKY = sky_med,
-      SKYRMS = skyRMS_med,
-      SKYCHI = pro_redo$skyChiSq,
-      MASK = maskpix,
-      OBJ = objpix,
-      GOODPIX = goodpix
-    ), filename=file_sky, create_file=TRUE, overwrite_file=TRUE)
-    Rfits_write_key(filename=file_sky, ext=1, keyname='EXTNAME', keyvalue='INFO', keycomment='extension name')
-    
-    Rfits_write_image(sky_redo$sky, filename=file_sky, create_file=FALSE)
-    Rfits_write_key(filename=file_sky, ext=2, keyname='EXTNAME', keyvalue='SKY', keycomment='extension name')
-    
-    Rfits_write_image(pro_redo$skyRMS, filename=file_sky, create_file=FALSE)
-    Rfits_write_key(filename=file_sky, ext=3, keyname='EXTNAME', keyvalue='SKYRMS', keycomment='extension name')
-    
-    Rfits_write_image(JWST_cal_mask, filename=file_sky, create_file=FALSE)
-    Rfits_write_key(filename=file_sky, ext=4, keyname='EXTNAME', keyvalue='PIXELMASK', keycomment='extension name')
-    
-    Rfits_write_image(pro_redo$objects_redo, filename=file_sky, create_file=FALSE)
-    Rfits_write_key(filename=file_sky, ext=5, keyname='EXTNAME', keyvalue='OBJECTMASK', keycomment='extension name')
-    return(NULL)
   }
   
   if(!is.null(parallel_type)){
@@ -656,7 +666,7 @@ do_super_sky = function(input_args){
   cores = input_args$cores_pro
   do_NIRISS = input_args$do_NIRISS
   parallel_type = input_args$additional_params$parallel_type
-  
+
   sky_ChiSq_cut = 1.1
   good_pix_cut = 0.15
   
@@ -769,6 +779,7 @@ do_apply_super_sky = function(input_args){
   FILT = input_args$FILT
   cores = input_args$cores_pro
   parallel_type = input_args$additional_params$parallel_type
+  skip_completed_files = additional_params$skip_completed_files
   
   sky_info = fread(paste0(sky_pro_dir, "/sky_info.csv"))
   # sky_super_dir = paste0(sky_pro_dir, "/sky_super/")
@@ -789,6 +800,7 @@ do_apply_super_sky = function(input_args){
   sky_info = data.frame(sky_info)
   
   cat('Processing',length(sky_filelist),'files...\n')
+  message("Skip completed files is ", ifelse(skip_completed_files, "ON", "OFF"))
   
   lo_loop = 1
   hi_loop = length(sky_filelist)
@@ -805,111 +817,116 @@ do_apply_super_sky = function(input_args){
       message('File ',i,' of ', hi_loop)
     }
     file_image = paste(sky_info[i,'pathim'], sky_info[i,'fileim'], sep='/')
-    temp_cal = Rfits_read(file_image, pointer=FALSE)
-    temp_cal$DQ$keyvalues$BZERO = 0
-    #safe name (since sometimes the sky file name gets truncated due to 80 character FITS limits)
-    file_sky = sky_info[i,'filesky']
-    file_sky = grep(sky_info[i,'filesky'], sky_filelist, value=TRUE)
-    if(length(file_sky) == 0){
-      stop('Missing file_sky ',i)
-    }
-    
-    file_sky = paste(sky_info[i,'pathsky'], file_sky, sep='/')
-    temp_sky = Rfits_read(file_sky, pointer=FALSE)
-    
-    file_super_sky = paste0(sky_super_dir,'/super_',temp_cal[[1]]$keyvalues$DETECTOR,'_',temp_cal[[1]]$keyvalues$FILTER,'.fits')
-    super_sky = Rfits_read_image(file_super_sky, header=FALSE)
-    
-    obj_idx = temp_sky$PIXELMASK$imDat==0 & temp_sky$OBJECTMASK$imDat==0
-    if(sum(obj_idx) == 0){ ## otherwise the linear model is going to fail
-      obj_idx = temp_sky$PIXELMASK$imDat==0 & temp_cal$SCI$imDat <= quantile(temp_cal$SCI$imDat, probs =  0.5, na.rm = TRUE) ## minimally select stuff less than the median
-    }
-    
-    ## linear model to each pixel 
-    temp_lm = lm(temp_cal$SCI$imDat[obj_idx] ~ super_sky[obj_idx])$coefficients
-    
-    if(is.na(temp_lm[2])){
-      temp_lm[2] = 0
-    }
-    
-    if(temp_lm[2] < 0){ #force to be positive
-      temp_lm[2] = 0
-    }
-    
-    if(temp_lm[2] > 2){ #do not allow extreme values (expect to be near 1)
-      temp_lm[2] = 2
-    }
-    
-    sky_map = super_sky*temp_lm[2] + temp_lm[1]
-    
-    #maybe an extra sky stage here to clean things up per frame?
-    
-    rezero = which(temp_cal$SCI$imDat==0)
-    temp_cal_sky = temp_cal$SCI$imDat - sky_map
-    temp_cal_sky[!(obj_idx)] = NA
-    
-    #pedestal check - basically use the extremes of the frame to find a safe pedestal:
-    
-    pix_buffer = 10+1 ## Ignore first 10 pixels since these are often ratty
-    imdim = dim(temp_cal_sky)
-
-    edge_pix = (pix_buffer):(pix_buffer+4)
-    
-    LHS = median(temp_cal_sky[edge_pix,], na.rm=TRUE)
-    RHS = median(temp_cal_sky[imdim[1]-edge_pix,], na.rm=TRUE)
-    BHS = median(temp_cal_sky[,edge_pix], na.rm=TRUE)
-    THS = median(temp_cal_sky[,imdim[2]-edge_pix], na.rm=TRUE)
-    
-    #corners (with masking, this gives about as many pixels as the edge above):
-    corner_pix = (pix_buffer):(pix_buffer*10)
-    BL = median(temp_cal_sky[corner_pix,corner_pix], na.rm=TRUE)
-    TL = median(temp_cal_sky[corner_pix,imdim[2]-corner_pix], na.rm=TRUE)
-    TR = median(temp_cal_sky[imdim[1]-corner_pix,imdim[2]-corner_pix], na.rm=TRUE)
-    BR = median(temp_cal_sky[imdim[1]-corner_pix,corner_pix], na.rm=TRUE)
-    
-    #centre
-    CC = median( magcutout(temp_cal_sky, box = c(100, 100))$image, na.rm=TRUE)
-    
-    pedestals = c(BL, LHS, TL, THS, TR, RHS, BR, BHS, CC)
-    
-    final_pedestal = quantile(pedestals, 0.5, na.rm=TRUE) #logic being a real issue due to a large object
-    
-    if(!is.finite(final_pedestal)){
-      final_pedestal = 0
-    }
-    
-    sky_map = sky_map + final_pedestal
-    
-    temp_cal$SCI$imDat = temp_cal$SCI$imDat - sky_map
-    
-    if(length(rezero) > 0){
-      temp_cal$SCI$imDat[rezero] = 0
-    }
-    
     file_cal_sky = setcal_sky_remfile(file_image, cal_sky_dir)
     
-    if(file.exists(file_cal_sky)){
-      message('Removing old cal_sky file: ',file_cal_sky)
-      file.remove(file_cal_sky)
-    }
-    
-    file.copy(file_image, file_cal_sky)
-    Rfits_write_pix(temp_cal$SCI$imDat, file_cal_sky, ext=2)
-    Rfits_write_key(file_cal_sky, keyname='SKY_M', keyvalue=temp_lm[2], keycomment='SKY M coef in SKY = M.SuperSky + B + P', ext=2)
-    Rfits_write_key(file_cal_sky, keyname='SKY_B', keyvalue=temp_lm[1], keycomment='SKY B coef in SKY = M.SuperSky + B + P', ext=2)
-    Rfits_write_key(file_cal_sky, keyname='SKY_P', keyvalue=final_pedestal, keycomment='SKY P coef in SKY = M.SuperSky + B + P', ext=2)
-    
-    check_Ndhu = Rfits_nhdu(file_cal_sky)
-    extloc = Rfits_extname_to_ext(file_cal_sky, 'SKY_Super')
-    
-    if(is.na(extloc)){
-      Rfits_write_image(sky_map, file_cal_sky, create_file=FALSE, create_ext=TRUE)
-      Rfits_write_key(filename=file_cal_sky, ext=check_Ndhu+1, keyname='EXTNAME', keyvalue='SKY_Super', keycomment='extension name')
+    if( !(skip_completed_files & file.exists(file_cal_sky)) ){
+      temp_cal = Rfits_read(file_image, pointer=FALSE)
+      temp_cal$DQ$keyvalues$BZERO = 0
+      #safe name (since sometimes the sky file name gets truncated due to 80 character FITS limits)
+      file_sky = sky_info[i,'filesky']
+      file_sky = grep(sky_info[i,'filesky'], sky_filelist, value=TRUE)
+      if(length(file_sky) == 0){
+        stop('Missing file_sky ',i)
+      }
+      
+      file_sky = paste(sky_info[i,'pathsky'], file_sky, sep='/')
+      temp_sky = Rfits_read(file_sky, pointer=FALSE)
+      
+      file_super_sky = paste0(sky_super_dir,'/super_',temp_cal[[1]]$keyvalues$DETECTOR,'_',temp_cal[[1]]$keyvalues$FILTER,'.fits')
+      super_sky = Rfits_read_image(file_super_sky, header=FALSE)
+      
+      obj_idx = temp_sky$PIXELMASK$imDat==0 & temp_sky$OBJECTMASK$imDat==0
+      if(sum(obj_idx) == 0){ ## otherwise the linear model is going to fail
+        obj_idx = temp_sky$PIXELMASK$imDat==0 & temp_cal$SCI$imDat <= quantile(temp_cal$SCI$imDat, probs =  0.5, na.rm = TRUE) ## minimally select stuff less than the median
+      }
+      
+      ## linear model to each pixel 
+      temp_lm = lm(temp_cal$SCI$imDat[obj_idx] ~ super_sky[obj_idx])$coefficients
+      
+      if(is.na(temp_lm[2])){
+        temp_lm[2] = 0
+      }
+      
+      if(temp_lm[2] < 0){ #force to be positive
+        temp_lm[2] = 0
+      }
+      
+      if(temp_lm[2] > 2){ #do not allow extreme values (expect to be near 1)
+        temp_lm[2] = 2
+      }
+      
+      sky_map = super_sky*temp_lm[2] + temp_lm[1]
+      
+      #maybe an extra sky stage here to clean things up per frame?
+      
+      rezero = which(temp_cal$SCI$imDat==0)
+      temp_cal_sky = temp_cal$SCI$imDat - sky_map
+      temp_cal_sky[!(obj_idx)] = NA
+      
+      #pedestal check - basically use the extremes of the frame to find a safe pedestal:
+      
+      pix_buffer = 10+1 ## Ignore first 10 pixels since these are often ratty
+      imdim = dim(temp_cal_sky)
+      
+      edge_pix = (pix_buffer):(pix_buffer+4)
+      
+      LHS = median(temp_cal_sky[edge_pix,], na.rm=TRUE)
+      RHS = median(temp_cal_sky[imdim[1]-edge_pix,], na.rm=TRUE)
+      BHS = median(temp_cal_sky[,edge_pix], na.rm=TRUE)
+      THS = median(temp_cal_sky[,imdim[2]-edge_pix], na.rm=TRUE)
+      
+      #corners (with masking, this gives about as many pixels as the edge above):
+      corner_pix = (pix_buffer):(pix_buffer*10)
+      BL = median(temp_cal_sky[corner_pix,corner_pix], na.rm=TRUE)
+      TL = median(temp_cal_sky[corner_pix,imdim[2]-corner_pix], na.rm=TRUE)
+      TR = median(temp_cal_sky[imdim[1]-corner_pix,imdim[2]-corner_pix], na.rm=TRUE)
+      BR = median(temp_cal_sky[imdim[1]-corner_pix,corner_pix], na.rm=TRUE)
+      
+      #centre
+      CC = median( magcutout(temp_cal_sky, box = c(100, 100))$image, na.rm=TRUE)
+      
+      pedestals = c(BL, LHS, TL, THS, TR, RHS, BR, BHS, CC)
+      
+      final_pedestal = quantile(pedestals, 0.5, na.rm=TRUE) #logic being a real issue due to a large object
+      
+      if(!is.finite(final_pedestal)){
+        final_pedestal = 0
+      }
+      
+      sky_map = sky_map + final_pedestal
+      
+      temp_cal$SCI$imDat = temp_cal$SCI$imDat - sky_map
+      
+      if(length(rezero) > 0){
+        temp_cal$SCI$imDat[rezero] = 0
+      }
+      
+      if(file.exists(file_cal_sky)){
+        message('Removing old cal_sky file: ',file_cal_sky)
+        file.remove(file_cal_sky)
+      }
+      
+      file.copy(file_image, file_cal_sky)
+      Rfits_write_pix(temp_cal$SCI$imDat, file_cal_sky, ext=2)
+      Rfits_write_key(file_cal_sky, keyname='SKY_M', keyvalue=temp_lm[2], keycomment='SKY M coef in SKY = M.SuperSky + B + P', ext=2)
+      Rfits_write_key(file_cal_sky, keyname='SKY_B', keyvalue=temp_lm[1], keycomment='SKY B coef in SKY = M.SuperSky + B + P', ext=2)
+      Rfits_write_key(file_cal_sky, keyname='SKY_P', keyvalue=final_pedestal, keycomment='SKY P coef in SKY = M.SuperSky + B + P', ext=2)
+      
+      check_Ndhu = Rfits_nhdu(file_cal_sky)
+      extloc = Rfits_extname_to_ext(file_cal_sky, 'SKY_Super')
+      
+      if(is.na(extloc)){
+        Rfits_write_image(sky_map, file_cal_sky, create_file=FALSE, create_ext=TRUE)
+        Rfits_write_key(filename=file_cal_sky, ext=check_Ndhu+1, keyname='EXTNAME', keyvalue='SKY_Super', keycomment='extension name')
+      }else{
+        Rfits_write_pix(sky_map, file_cal_sky, ext=extloc)
+      }
+      
+      return(NULL)
     }else{
-      Rfits_write_pix(sky_map, file_cal_sky, ext=extloc)
+      return(NULL)
     }
     
-    return(NULL)
   }
   
   if(!is.null(parallel_type)){
@@ -935,10 +952,12 @@ do_modify_pedestal = function(input_args){
   do_NIRISS = input_args$do_NIRISS
   do_MIRI = input_args$do_MIRI
   parallel_type = input_args$additional_params$parallel_type
+  skip_completed_files = additional_params$skip_completed_files
   
   filelist = load_files(input_args, which_module = "modify_pedestal")
   
   cat('Processing',length(filelist),'files...\n')
+  message("Skip completed files is ", ifelse(skip_completed_files, "ON", "OFF"))
   
   cal_sky_info_ext1 = Rfits_key_scan(filelist = filelist,
                                      keylist = c('VISIT_ID', 'OBS_ID', 'EXPOSURE', 'DETECTOR', 'MODULE', 'CHANNEL', 'FILTER'),
@@ -978,12 +997,16 @@ do_modify_pedestal = function(input_args){
       }
       file_cal_sky_renorm = paste0(cal_sky_renorm_dir,'/',cal_sky_info[i,'file'])
       
-      if(file.exists(file_cal_sky_renorm)){
-        message('Removing old cal_sky file: ',file_cal_sky_renorm)
-        file.remove(file_cal_sky_renorm)
+      if( !(skip_completed_files & file.exists(file_cal_sky_renorm)) ){
+        if(file.exists(file_cal_sky_renorm)){
+          message('Removing old cal_sky file: ',file_cal_sky_renorm)
+          file.remove(file_cal_sky_renorm)
+        }
+        file.copy(cal_sky_info[i,'full'], cal_sky_renorm_dir) #no pedestal adjustment for NIRISS
+        return(NULL)
+      }else{
+        return(NULL)
       }
-      file.copy(cal_sky_info[i,'full'], cal_sky_renorm_dir) #no pedestal adjustment for NIRISS
-      return(NULL)
     }
   }else if(do_MIRI){
     dummy = foreach(i = lo_loop:hi_loop, .packages = c("Rfits", "Rwcs", "ProFound"))%dopar%{
@@ -992,12 +1015,16 @@ do_modify_pedestal = function(input_args){
       }
       file_cal_sky_renorm = paste0(cal_sky_renorm_dir,'/',cal_sky_info[i,'file'])
 
-      if(file.exists(file_cal_sky_renorm)){
-        message('Removing old cal_sky file: ',file_cal_sky_renorm)
-        file.remove(file_cal_sky_renorm)
+      if( !(skip_completed_files & file.exists(file_cal_sky_renorm)) ){
+        if(file.exists(file_cal_sky_renorm)){
+          message('Removing old cal_sky file: ',file_cal_sky_renorm)
+          file.remove(file_cal_sky_renorm)
+        }
+        file.copy(cal_sky_info[i,'full'], cal_sky_renorm_dir) 
+        return(NULL)
+      }else{
+        return(NULL)
       }
-      file.copy(cal_sky_info[i,'full'], cal_sky_renorm_dir) 
-      return(NULL)
     }
   }else{
     dummy = foreach(i = lo_loop:hi_loop, .packages = c("Rfits", "Rwcs", "ProFound"))%dopar%{
@@ -1006,63 +1033,67 @@ do_modify_pedestal = function(input_args){
       }
       file_cal_sky_renorm = paste0(cal_sky_renorm_dir,'/',cal_sky_info[i,'file'])
       
-      if(file.exists(file_cal_sky_renorm)){
-        message('Removing old cal_sky file: ',file_cal_sky_renorm)
-        file.remove(file_cal_sky_renorm)
-      }
-      file.copy(cal_sky_info[i,'full'], cal_sky_renorm_dir)
-      
-      if(cal_sky_info[i,'CHANNEL'] == 'SHORT'){
-        temp_cal_sky = Rfits_read(cal_sky_info[i,'full'])
-        ext_names = names(temp_cal_sky)
-        
-        temp_mask = Rfits_read_image(cal_sky_info[i,'full'], ext = "DQ", header = F)
-        JWST_cal_mask = profoundDilate(temp_mask %% 2 == 1, size=3)
-        
-        pro_current_sky = profoundProFound(temp_cal_sky$SCI[,]$imDat, mask=JWST_cal_mask, sky=0, box=683, redosky = FALSE)
-
-        if(is.null(pro_current_sky$skyChiSq)){
-          pro_current_sky$skyChiSq = 1e6
+      if( !(skip_completed_files & file.exists(file_cal_sky_renorm)) ){
+        if(file.exists(file_cal_sky_renorm)){
+          message('Removing old cal_sky file: ',file_cal_sky_renorm)
+          file.remove(file_cal_sky_renorm)
         }
-        if(is.na(pro_current_sky$skyChiSq)){
-          pro_current_sky$skyChiSq = 1e6
-        }
-        if(is.infinite(pro_current_sky$skyChiSq)){
-          pro_current_sky$skyChiSq = 1e6
-        }
+        file.copy(cal_sky_info[i,'full'], cal_sky_renorm_dir)
         
-        if(pro_current_sky$skyChiSq < 0.9 | pro_current_sky$skyChiSq > 1.1){
-          message('Bad Sky: ',cal_sky_info[i,'file'],'. Current: ',round(pro_current_sky$skyChiSq,2),' Trying to make better sky with ProFound')
-          # if(sum(pro_current_sky$objects) / prod(dim(temp_cal_sky$SCI)) < 0.2){ ## What was this for?
+        if(cal_sky_info[i,'CHANNEL'] == 'SHORT'){
+          temp_cal_sky = Rfits_read(cal_sky_info[i,'full'])
+          ext_names = names(temp_cal_sky)
           
-          pro_new_sky = profoundProFound(temp_cal_sky$SCI[,]$imDat, mask=JWST_cal_mask, box=683, roughpedestal = TRUE)
+          temp_mask = Rfits_read_image(cal_sky_info[i,'full'], ext = "DQ", header = F)
+          JWST_cal_mask = profoundDilate(temp_mask %% 2 == 1, size=3)
           
-          if(is.null(pro_new_sky$skyChiSq)){
-            pro_new_sky$skyChiSq = 1e6
+          pro_current_sky = profoundProFound(temp_cal_sky$SCI[,]$imDat, mask=JWST_cal_mask, sky=0, box=683, redosky = FALSE)
+          
+          if(is.null(pro_current_sky$skyChiSq)){
+            pro_current_sky$skyChiSq = 1e6
           }
-          if(is.na(pro_new_sky$skyChiSq)){
-            pro_new_sky$skyChiSq = 1e6
+          if(is.na(pro_current_sky$skyChiSq)){
+            pro_current_sky$skyChiSq = 1e6
           }
-          if(is.infinite(pro_new_sky$skyChiSq)){
-            pro_new_sky$skyChiSq = 1e6
+          if(is.infinite(pro_current_sky$skyChiSq)){
+            pro_current_sky$skyChiSq = 1e6
           }
           
-          if(pro_new_sky$skyChiSq > 0.9 & pro_new_sky$skyChiSq < 1.1){
-            message('Using better ProFound Sky: ',cal_sky_info[i,'file'],' Old: ',round(pro_current_sky$skyChiSq,2),' New: ',round(pro_new_sky$skyChiSq,2))
-            replace_SCI = temp_cal_sky$SCI[,]$imDat - pro_new_sky$sky
-            replace_SKY_Super = temp_cal_sky$SKY_Super[,]$imDat + pro_new_sky$sky
-            replace_SKY_P = temp_cal_sky$SCI$keyvalues$SKY_P + mean(pro_new_sky$sky, na.rm=TRUE)
+          if(pro_current_sky$skyChiSq < 0.9 | pro_current_sky$skyChiSq > 1.1){
+            message('Bad Sky: ',cal_sky_info[i,'file'],'. Current: ',round(pro_current_sky$skyChiSq,2),' Trying to make better sky with ProFound')
+            # if(sum(pro_current_sky$objects) / prod(dim(temp_cal_sky$SCI)) < 0.2){ ## What was this for?
             
-            Rfits_write_pix(replace_SCI, file_cal_sky_renorm, ext=which(ext_names == 'SCI')[1])
-            Rfits_write_pix(replace_SKY_Super, file_cal_sky_renorm, ext=which(ext_names == 'SKY_Super'))
-            Rfits_write_key(file_cal_sky_renorm, keyname='SKY_P', keyvalue=replace_SKY_P, keycomment='SKY P coef in SKY = M.SuperSky + B + P', ext=2)
-            Rfits_write_key(file_cal_sky_renorm, keyname='SKY_CHI', keyvalue=pro_new_sky$skyChiSq, keycomment='SKY Chi-Sq', ext=2)
-          }else{
-            Rfits_write_key(file_cal_sky_renorm, keyname='SKY_CHI', keyvalue=pro_current_sky$skyChiSq, keycomment='SKY Chi-Sq', ext=2)
+            pro_new_sky = profoundProFound(temp_cal_sky$SCI[,]$imDat, mask=JWST_cal_mask, box=683, roughpedestal = TRUE)
+            
+            if(is.null(pro_new_sky$skyChiSq)){
+              pro_new_sky$skyChiSq = 1e6
+            }
+            if(is.na(pro_new_sky$skyChiSq)){
+              pro_new_sky$skyChiSq = 1e6
+            }
+            if(is.infinite(pro_new_sky$skyChiSq)){
+              pro_new_sky$skyChiSq = 1e6
+            }
+            
+            if(pro_new_sky$skyChiSq > 0.9 & pro_new_sky$skyChiSq < 1.1){
+              message('Using better ProFound Sky: ',cal_sky_info[i,'file'],' Old: ',round(pro_current_sky$skyChiSq,2),' New: ',round(pro_new_sky$skyChiSq,2))
+              replace_SCI = temp_cal_sky$SCI[,]$imDat - pro_new_sky$sky
+              replace_SKY_Super = temp_cal_sky$SKY_Super[,]$imDat + pro_new_sky$sky
+              replace_SKY_P = temp_cal_sky$SCI$keyvalues$SKY_P + mean(pro_new_sky$sky, na.rm=TRUE)
+              
+              Rfits_write_pix(replace_SCI, file_cal_sky_renorm, ext=which(ext_names == 'SCI')[1])
+              Rfits_write_pix(replace_SKY_Super, file_cal_sky_renorm, ext=which(ext_names == 'SKY_Super'))
+              Rfits_write_key(file_cal_sky_renorm, keyname='SKY_P', keyvalue=replace_SKY_P, keycomment='SKY P coef in SKY = M.SuperSky + B + P', ext=2)
+              Rfits_write_key(file_cal_sky_renorm, keyname='SKY_CHI', keyvalue=pro_new_sky$skyChiSq, keycomment='SKY Chi-Sq', ext=2)
+            }else{
+              Rfits_write_key(file_cal_sky_renorm, keyname='SKY_CHI', keyvalue=pro_current_sky$skyChiSq, keycomment='SKY Chi-Sq', ext=2)
+            }
           }
         }
+        return(NULL)
+      }else{
+        return(NULL)
       }
-      return(NULL)
     }
   }
   
@@ -1132,6 +1163,7 @@ do_gen_stack = function(input_args){
   cores = input_args$cores_stack
   tasks = input_args$tasks_stack
   
+  skip_completed_files = additional_params$skip_completed_files
   parallel_type = input_args$additional_params$parallel_type
   
   ref_cat = input_args$additional_params$ref_cat
@@ -1170,6 +1202,7 @@ do_gen_stack = function(input_args){
   unique_visits = unique(orig_cal_sky_info$VISIT_ID)
   
   message("Now running stack!")
+  message("Skip completed files is ", ifelse(skip_completed_files, "ON", "OFF"))
   
   temp_vid = VID
   VID_list = grep(temp_vid, unique_visits, value = T)
@@ -1267,224 +1300,227 @@ do_gen_stack = function(input_args){
    dummy = foreach(i = lo_loop:hi_loop, .packages = c('Rwcs', 'Rfits', 'ProPane', 'ProFound'))%dopar%{
       message('Stacking ', i,' of ',hi_loop)
       for(j in module_list){
-        message('  Processing ',stack_grid[i,'VISIT_ID'],' ',stack_grid[i,'FILTER'], ' ', j)
-        
-        if(j == 'MIRIMAGE'){
-          input_info = cal_sky_info[cal_sky_info[['VISIT_ID']]==stack_grid[i,'VISIT_ID'] & cal_sky_info[['FILTER']]==stack_grid[i,'FILTER'] & grepl('MIRIMAGE', cal_sky_info[['DETECTOR']]),]
-          CRVAL1 = module_MIRIMAGE[module_MIRIMAGE[['VISIT_ID']] == stack_grid[i,'VISIT_ID'], 'CRVAL1']
-          CRVAL2 = module_MIRIMAGE[module_MIRIMAGE[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CRVAL2']
-          CD1_1 = module_MIRIMAGE[module_MIRIMAGE[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CD1_1']
-          CD1_2 = module_MIRIMAGE[module_MIRIMAGE[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CD1_2']
-          NAXIS = NAXIS_long
-          CRPIX = NAXIS_long/2.0
-        }
-        
-        if(j == 'NIS'){
-          input_info = cal_sky_info[cal_sky_info[['VISIT_ID']]==stack_grid[i,'VISIT_ID'] & cal_sky_info[['FILTER']]==stack_grid[i,'FILTER'] & grepl('NIS', cal_sky_info[['DETECTOR']]),]
-          CRVAL1 = module_NIS[module_NIS[['VISIT_ID']] == stack_grid[i,'VISIT_ID'], 'CRVAL1']
-          CRVAL2 = module_NIS[module_NIS[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CRVAL2']
-          CD1_1 = module_NIS[module_NIS[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CD1_1']
-          CD1_2 = module_NIS[module_NIS[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CD1_2']
-          NAXIS = NAXIS_long
-          CRPIX = NAXIS_long/2.0
-        }
-        
-        if(j == 'NRCA_short'){
-          input_info = cal_sky_info[cal_sky_info[['VISIT_ID']]==stack_grid[i,'VISIT_ID'] & cal_sky_info[['FILTER']]==stack_grid[i,'FILTER'] & grepl('NRCA', cal_sky_info[['DETECTOR']]),]
-          CRVAL1 = module_A_WCS_short[module_A_WCS_short[['VISIT_ID']] == stack_grid[i,'VISIT_ID'], 'CRVAL1']
-          CRVAL2 = module_A_WCS_short[module_A_WCS_short[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CRVAL2']
-          CD1_1 = module_A_WCS_short[module_A_WCS_short[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CD1_1']
-          CD1_2 = module_A_WCS_short[module_A_WCS_short[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CD1_2']
-          NAXIS = NAXIS_short
-          CRPIX = NAXIS_short/2.0
-        }
-        
-        if(j == 'NRCB_short'){
-          input_info = cal_sky_info[cal_sky_info[['VISIT_ID']]==stack_grid[i,'VISIT_ID'] & cal_sky_info[['FILTER']]==stack_grid[i,'FILTER'] & grepl('NRCB', cal_sky_info[['DETECTOR']]),]
-          CRVAL1 = module_B_WCS_short[module_B_WCS_short[['VISIT_ID']] == stack_grid[i,'VISIT_ID'], 'CRVAL1']
-          CRVAL2 = module_B_WCS_short[module_B_WCS_short[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CRVAL2']
-          CD1_1 = module_B_WCS_short[module_B_WCS_short[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CD1_1']
-          CD1_2 = module_B_WCS_short[module_B_WCS_short[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CD1_2']
-          NAXIS = NAXIS_short
-          CRPIX = NAXIS_short/2.0
-        }
-        
-        if(j == 'NRCA_long'){
-          input_info = cal_sky_info[cal_sky_info[['VISIT_ID']]==stack_grid[i,'VISIT_ID'] & cal_sky_info[['FILTER']]==stack_grid[i,'FILTER'] & grepl('NRCA', cal_sky_info[['DETECTOR']]),]
-          CRVAL1 = module_A_WCS_long[module_A_WCS_long[['VISIT_ID']] == stack_grid[i,'VISIT_ID'], 'CRVAL1']
-          CRVAL2 = module_A_WCS_long[module_A_WCS_long[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CRVAL2']
-          CD1_1 = module_A_WCS_long[module_A_WCS_long[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CD1_1']
-          CD1_2 = module_A_WCS_long[module_A_WCS_long[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CD1_2']
-          NAXIS = NAXIS_long
-          CRPIX = NAXIS_long/2.0
-        }
-        
-        if(j == 'NRCB_long'){
-          input_info = cal_sky_info[cal_sky_info[['VISIT_ID']]==stack_grid[i,'VISIT_ID'] & cal_sky_info[['FILTER']]==stack_grid[i,'FILTER'] & grepl('NRCB', cal_sky_info[['DETECTOR']]),]
-          CRVAL1 = module_B_WCS_long[module_B_WCS_long[['VISIT_ID']] == stack_grid[i,'VISIT_ID'], 'CRVAL1']
-          CRVAL2 = module_B_WCS_long[module_B_WCS_long[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CRVAL2']
-          CD1_1 = module_B_WCS_long[module_B_WCS_long[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CD1_1']
-          CD1_2 = module_B_WCS_long[module_B_WCS_long[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CD1_2']
-          NAXIS = NAXIS_long
-          CRPIX = NAXIS_long/2.0
-        }
-        
-        image_list = {}
-        inVar_list = {}
-        
-        for(k in 1:dim(input_info)[1]){
-          temp_image = Rfits_read_image(input_info[k,'full'], ext=2)
+        if( !(skip_completed_files & file.exists(paste0(invar_dir, '/stack_',stack_grid[i,'VISIT_ID'],'_',stack_grid[i,'FILTER'],'_',j,'.fits'))) ){
+          message('  Processing ',stack_grid[i,'VISIT_ID'],' ',stack_grid[i,'FILTER'], ' ', j)
           
-          temp_mask = Rfits_read_image(input_info[k,'full'], ext=4, header=FALSE)
-          
-          temp_image = propaneBadPix(
-            image = temp_image,
-            patch = T
-          )
-          
-          JWST_cal_mask = profoundDilate(temp_mask %% 2 == 1, size=3)
-          temp_image$imDat[JWST_cal_mask==1] = NA
-          
-          if(do_tweak){
-            pro_test = suppressMessages(profoundProFound(
-              image = temp_image, 
-              mask = JWST_cal_mask == 1,
-              sky = 0,
-              redosky = F,
-              pixcut = 10,
-              skycut = 3.0,
-              cliptol = 100,
-              tolerance = 1,
-              iters = 0,
-              redosegim = F,
-              box = dim(temp_image)[1]/10.0,
-              rem_mask = T
-            ))
-            
-            match_cat_idx = coordmatch(
-              coordref = ref_cat[, c("RA", "Dec")],
-              coordcompare = pro_test$segstats[,c("RAmax", "Decmax")],
-              rad = 2.0
-            )
-            tweak_solution = suppressMessages(propaneTweakCat(
-              cat_ref = ref_cat[match_cat_idx$bestmatch$refID, c("RA", "Dec")], 
-              cat_pre_fix = pro_test$segstats[match_cat_idx$bestmatch$compareID,c("RAmax", "Decmax")], 
-              mode = "coord", keyvalues_pre_fix = temp_image$keyvalues, delta_max = c(100, 100)
-            ))
-            temp_image = propaneWCSmod(
-              temp_image, 
-              delta_x = tweak_solution$par[1], 
-              delta_y = tweak_solution$par[2],
-              delta_rot = tweak_solution$par[3]
-            )
+          if(j == 'MIRIMAGE'){
+            input_info = cal_sky_info[cal_sky_info[['VISIT_ID']]==stack_grid[i,'VISIT_ID'] & cal_sky_info[['FILTER']]==stack_grid[i,'FILTER'] & grepl('MIRIMAGE', cal_sky_info[['DETECTOR']]),]
+            CRVAL1 = module_MIRIMAGE[module_MIRIMAGE[['VISIT_ID']] == stack_grid[i,'VISIT_ID'], 'CRVAL1']
+            CRVAL2 = module_MIRIMAGE[module_MIRIMAGE[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CRVAL2']
+            CD1_1 = module_MIRIMAGE[module_MIRIMAGE[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CD1_1']
+            CD1_2 = module_MIRIMAGE[module_MIRIMAGE[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CD1_2']
+            NAXIS = NAXIS_long
+            CRPIX = NAXIS_long/2.0
           }
           
-          rm(temp_mask)
-          rm(JWST_cal_mask)
-          image_list = c(image_list, list(temp_image))
+          if(j == 'NIS'){
+            input_info = cal_sky_info[cal_sky_info[['VISIT_ID']]==stack_grid[i,'VISIT_ID'] & cal_sky_info[['FILTER']]==stack_grid[i,'FILTER'] & grepl('NIS', cal_sky_info[['DETECTOR']]),]
+            CRVAL1 = module_NIS[module_NIS[['VISIT_ID']] == stack_grid[i,'VISIT_ID'], 'CRVAL1']
+            CRVAL2 = module_NIS[module_NIS[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CRVAL2']
+            CD1_1 = module_NIS[module_NIS[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CD1_1']
+            CD1_2 = module_NIS[module_NIS[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CD1_2']
+            NAXIS = NAXIS_long
+            CRPIX = NAXIS_long/2.0
+          }
           
-          sky_file = paste0(sky_frames_dir, sub('_rem', '', input_info[k,'stub']),'_',input_info[k,'FILTER'],'.fits')
-          inVar_list = c(inVar_list, Rfits::Rfits_read_key(sky_file, 'SKYRMS')^-2)
+          if(j == 'NRCA_short'){
+            input_info = cal_sky_info[cal_sky_info[['VISIT_ID']]==stack_grid[i,'VISIT_ID'] & cal_sky_info[['FILTER']]==stack_grid[i,'FILTER'] & grepl('NRCA', cal_sky_info[['DETECTOR']]),]
+            CRVAL1 = module_A_WCS_short[module_A_WCS_short[['VISIT_ID']] == stack_grid[i,'VISIT_ID'], 'CRVAL1']
+            CRVAL2 = module_A_WCS_short[module_A_WCS_short[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CRVAL2']
+            CD1_1 = module_A_WCS_short[module_A_WCS_short[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CD1_1']
+            CD1_2 = module_A_WCS_short[module_A_WCS_short[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CD1_2']
+            NAXIS = NAXIS_short
+            CRPIX = NAXIS_short/2.0
+          }
+          
+          if(j == 'NRCB_short'){
+            input_info = cal_sky_info[cal_sky_info[['VISIT_ID']]==stack_grid[i,'VISIT_ID'] & cal_sky_info[['FILTER']]==stack_grid[i,'FILTER'] & grepl('NRCB', cal_sky_info[['DETECTOR']]),]
+            CRVAL1 = module_B_WCS_short[module_B_WCS_short[['VISIT_ID']] == stack_grid[i,'VISIT_ID'], 'CRVAL1']
+            CRVAL2 = module_B_WCS_short[module_B_WCS_short[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CRVAL2']
+            CD1_1 = module_B_WCS_short[module_B_WCS_short[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CD1_1']
+            CD1_2 = module_B_WCS_short[module_B_WCS_short[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CD1_2']
+            NAXIS = NAXIS_short
+            CRPIX = NAXIS_short/2.0
+          }
+          
+          if(j == 'NRCA_long'){
+            input_info = cal_sky_info[cal_sky_info[['VISIT_ID']]==stack_grid[i,'VISIT_ID'] & cal_sky_info[['FILTER']]==stack_grid[i,'FILTER'] & grepl('NRCA', cal_sky_info[['DETECTOR']]),]
+            CRVAL1 = module_A_WCS_long[module_A_WCS_long[['VISIT_ID']] == stack_grid[i,'VISIT_ID'], 'CRVAL1']
+            CRVAL2 = module_A_WCS_long[module_A_WCS_long[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CRVAL2']
+            CD1_1 = module_A_WCS_long[module_A_WCS_long[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CD1_1']
+            CD1_2 = module_A_WCS_long[module_A_WCS_long[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CD1_2']
+            NAXIS = NAXIS_long
+            CRPIX = NAXIS_long/2.0
+          }
+          
+          if(j == 'NRCB_long'){
+            input_info = cal_sky_info[cal_sky_info[['VISIT_ID']]==stack_grid[i,'VISIT_ID'] & cal_sky_info[['FILTER']]==stack_grid[i,'FILTER'] & grepl('NRCB', cal_sky_info[['DETECTOR']]),]
+            CRVAL1 = module_B_WCS_long[module_B_WCS_long[['VISIT_ID']] == stack_grid[i,'VISIT_ID'], 'CRVAL1']
+            CRVAL2 = module_B_WCS_long[module_B_WCS_long[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CRVAL2']
+            CD1_1 = module_B_WCS_long[module_B_WCS_long[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CD1_1']
+            CD1_2 = module_B_WCS_long[module_B_WCS_long[['VISIT_ID']]  == stack_grid[i,'VISIT_ID'], 'CD1_2']
+            NAXIS = NAXIS_long
+            CRPIX = NAXIS_long/2.0
+          }
+          
+          image_list = {}
+          inVar_list = {}
+          
+          for(k in 1:dim(input_info)[1]){
+            temp_image = Rfits_read_image(input_info[k,'full'], ext=2)
+            
+            temp_mask = Rfits_read_image(input_info[k,'full'], ext=4, header=FALSE)
+            
+            temp_image = propaneBadPix(
+              image = temp_image,
+              patch = T
+            )
+            
+            JWST_cal_mask = profoundDilate(temp_mask %% 2 == 1, size=3)
+            temp_image$imDat[JWST_cal_mask==1] = NA
+            
+            if(do_tweak){
+              pro_test = suppressMessages(profoundProFound(
+                image = temp_image, 
+                mask = JWST_cal_mask == 1,
+                sky = 0,
+                redosky = F,
+                pixcut = 10,
+                skycut = 3.0,
+                cliptol = 100,
+                tolerance = 1,
+                iters = 0,
+                redosegim = F,
+                box = dim(temp_image)[1]/10.0,
+                rem_mask = T
+              ))
+              
+              match_cat_idx = coordmatch(
+                coordref = ref_cat[, c("RA", "Dec")],
+                coordcompare = pro_test$segstats[,c("RAmax", "Decmax")],
+                rad = 2.0
+              )
+              tweak_solution = suppressMessages(propaneTweakCat(
+                cat_ref = ref_cat[match_cat_idx$bestmatch$refID, c("RA", "Dec")], 
+                cat_pre_fix = pro_test$segstats[match_cat_idx$bestmatch$compareID,c("RAmax", "Decmax")], 
+                mode = "coord", keyvalues_pre_fix = temp_image$keyvalues, delta_max = c(100, 100)
+              ))
+              temp_image = propaneWCSmod(
+                temp_image, 
+                delta_x = tweak_solution$par[1], 
+                delta_y = tweak_solution$par[2],
+                delta_rot = tweak_solution$par[3]
+              )
+            }
+            
+            rm(temp_mask)
+            rm(JWST_cal_mask)
+            image_list = c(image_list, list(temp_image))
+            
+            sky_file = paste0(sky_frames_dir, sub('_rem', '', input_info[k,'stub']),'_',input_info[k,'FILTER'],'.fits')
+            inVar_list = c(inVar_list, Rfits::Rfits_read_key(sky_file, 'SKYRMS')^-2)
+          }
+          
+          temp_file = paste0(invar_dir, '/temp_list_',i,'.fits')
+          Rfits_write(image_list, temp_file)
+          rm(image_list)
+          image_list_point = Rfits_read(temp_file, pointer=TRUE)
+          
+          dump_stub = paste0(dump_dir_stub, stack_grid[i,'VISIT_ID'], "/", stack_grid[i,'FILTER'], "/", j, "/")
+          if(dir.exists(dump_stub)){
+            unlink(dump_stub, recursive = T)
+          }
+          dir.create(dump_stub, recursive = T)
+          
+          temp_proj = propaneGenWCS(
+            image_list = image_list_point,
+            CRVAL1 = as.numeric(CRVAL1),
+            CRVAL2 = as.numeric(CRVAL2),
+            CRPIX1 = as.numeric(CRPIX),
+            CRPIX2 = as.numeric(CRPIX),
+            CD1_1 = as.numeric(CD1_1),
+            CD1_2 = as.numeric(CD1_2),
+            CD2_1 = as.numeric(CD1_2),
+            CD2_2 = -as.numeric(CD1_1),
+            NAXIS1 = as.numeric(NAXIS),
+            NAXIS2 = as.numeric(NAXIS)
+          )
+          
+          temp_proj$DATE_BEG = as.character(min(as.POSIXlt.Date(input_info[["DATE.OBS"]]), na.rm=TRUE))
+          temp_proj$DATE_END = as.character(max(as.POSIXlt.Date(input_info[["DATE.OBS"]]), na.rm=TRUE))
+          
+          output_stack = propaneStackWarpInVar(
+            image_list = image_list_point,
+            inVar_list = inVar_list,
+            exp_list = input_info$EFFEXPTM,
+            magzero_in = input_info$MAGZERO_FIX,
+            magzero_out = magzero,
+            keyvalues_out = temp_proj,
+            cores = cores, 
+            direction = 'backward',
+            doclip = doclip,
+            clip_tol = clip_tol,
+            clip_dilate = clip_dilate,
+            clip_sigma = clip_sigma,
+            keep_extreme_pix = FALSE,
+            dump_frames = TRUE,
+            dump_dir = dump_stub,
+            multitype="cluster" ## Just keep this default since this parallelisation occurs in the ProPane package (and the underlying C libraries)
+          )
+          
+          output_stack$image$keyvalues$CLIP_MIN = clip_tol[1]
+          output_stack$image$keyvalues$CLIP_MAX = clip_tol[2]
+          output_stack$image$keyvalues$CLIP_DIL = clip_dilate
+          
+          exp_min = min(output_stack$exp$imDat[output_stack$weight$imDat > 0], na.rm=TRUE)
+          exp_max = max(output_stack$exp$imDat[output_stack$weight$imDat > 0], na.rm=TRUE)
+          
+          mask_frc = sum(output_stack$weight$imDat==0 & output_stack$exp$imDat >= exp_min, na.rm=TRUE) / length(which(output_stack$weight$imDat > 0))
+          clip_frc = sum(output_stack$clip$imDat>0, na.rm=TRUE) / length(which(output_stack$weight$imDat > 0))
+          
+          output_stack$image$keyvalues$CLIP_FRC = clip_frc
+          output_stack$image$keyvalues$MASK_FRC = mask_frc
+          output_stack$image$keyvalues$EXP_MIN = exp_min
+          output_stack$image$keyvalues$EXP_MAX = exp_max
+          output_stack$image$keyvalues$MAGZERO = magzero
+          output_stack$image$keyvalues$BUNIT = "microJy"
+          
+          rms_min = 1/sqrt(max(output_stack$inVar$imDat[output_stack$weight$imDat > 0], na.rm=TRUE))
+          rms_max = 1/sqrt(min(output_stack$inVar$imDat[output_stack$weight$imDat > 0], na.rm=TRUE))
+          
+          output_stack$image$keyvalues$RMS_MIN = rms_min
+          output_stack$image$keyvalues$RMS_MAX = rms_max
+          
+          output_stack = c(output_stack, list(info = input_info[,c(1,5:20)]))
+          
+          output_stack$image$keynames = unique(names(output_stack$image$keyvalues))
+          output_stack$image$keycomments = rep(list(''), length(unique(names(output_stack$image$keyvalues))))
+          names(output_stack$image$keycomments) = output_stack$image$keynames
+          
+          median_stack = propaneStackWarpMed(dirlist = dump_stub,
+                                             pattern = glob2rx('*image_warp*'), 
+                                             keyvalues_out = output_stack$image$keyvalues, 
+                                             cores = cores,
+                                             multitype = "cluster")
+          
+          file.remove(temp_file)
+          
+          filestub = paste0(invar_dir, '/stack_',stack_grid[i,'VISIT_ID'],'_',stack_grid[i,'FILTER'],'_',j)
+          
+          Rfits_write(data = output_stack,
+                      filename = paste0(filestub,'.fits')
+          )
+          
+          filestub_med = paste0(median_dir, '/med_',stack_grid[i,'VISIT_ID'],'_',stack_grid[i,'FILTER'],'_',j)
+          
+          Rfits_write(data = median_stack,
+                      filename = paste0(filestub_med,'.fits')
+          )
+          gc()
         }
-        
-        temp_file = paste0(invar_dir, '/temp_list_',i,'.fits')
-        Rfits_write(image_list, temp_file)
-        rm(image_list)
-        image_list_point = Rfits_read(temp_file, pointer=TRUE)
-        
-        dump_stub = paste0(dump_dir_stub, stack_grid[i,'VISIT_ID'], "/", stack_grid[i,'FILTER'], "/", j, "/")
-        if(dir.exists(dump_stub)){
-          unlink(dump_stub, recursive = T)
-        }
-        dir.create(dump_stub, recursive = T)
-        
-        temp_proj = propaneGenWCS(
-          image_list = image_list_point,
-          CRVAL1 = as.numeric(CRVAL1),
-          CRVAL2 = as.numeric(CRVAL2),
-          CRPIX1 = as.numeric(CRPIX),
-          CRPIX2 = as.numeric(CRPIX),
-          CD1_1 = as.numeric(CD1_1),
-          CD1_2 = as.numeric(CD1_2),
-          CD2_1 = as.numeric(CD1_2),
-          CD2_2 = -as.numeric(CD1_1),
-          NAXIS1 = as.numeric(NAXIS),
-          NAXIS2 = as.numeric(NAXIS)
-        )
-
-        temp_proj$DATE_BEG = as.character(min(as.POSIXlt.Date(input_info[["DATE.OBS"]]), na.rm=TRUE))
-        temp_proj$DATE_END = as.character(max(as.POSIXlt.Date(input_info[["DATE.OBS"]]), na.rm=TRUE))
-        
-        output_stack = propaneStackWarpInVar(
-          image_list = image_list_point,
-          inVar_list = inVar_list,
-          exp_list = input_info$EFFEXPTM,
-          magzero_in = input_info$MAGZERO_FIX,
-          magzero_out = magzero,
-          keyvalues_out = temp_proj,
-          cores = cores, 
-          direction = 'backward',
-          doclip = doclip,
-          clip_tol = clip_tol,
-          clip_dilate = clip_dilate,
-          clip_sigma = clip_sigma,
-          keep_extreme_pix = FALSE,
-          dump_frames = TRUE,
-          dump_dir = dump_stub,
-          multitype="cluster" ## Just keep this default since this parallelisation occurs in the ProPane package (and the underlying C libraries)
-        )
-
-        output_stack$image$keyvalues$CLIP_MIN = clip_tol[1]
-        output_stack$image$keyvalues$CLIP_MAX = clip_tol[2]
-        output_stack$image$keyvalues$CLIP_DIL = clip_dilate
-        
-        exp_min = min(output_stack$exp$imDat[output_stack$weight$imDat > 0], na.rm=TRUE)
-        exp_max = max(output_stack$exp$imDat[output_stack$weight$imDat > 0], na.rm=TRUE)
-        
-        mask_frc = sum(output_stack$weight$imDat==0 & output_stack$exp$imDat >= exp_min, na.rm=TRUE) / length(which(output_stack$weight$imDat > 0))
-        clip_frc = sum(output_stack$clip$imDat>0, na.rm=TRUE) / length(which(output_stack$weight$imDat > 0))
-        
-        output_stack$image$keyvalues$CLIP_FRC = clip_frc
-        output_stack$image$keyvalues$MASK_FRC = mask_frc
-        output_stack$image$keyvalues$EXP_MIN = exp_min
-        output_stack$image$keyvalues$EXP_MAX = exp_max
-        output_stack$image$keyvalues$MAGZERO = magzero
-        output_stack$image$keyvalues$BUNIT = "microJy"
-        
-        rms_min = 1/sqrt(max(output_stack$inVar$imDat[output_stack$weight$imDat > 0], na.rm=TRUE))
-        rms_max = 1/sqrt(min(output_stack$inVar$imDat[output_stack$weight$imDat > 0], na.rm=TRUE))
-        
-        output_stack$image$keyvalues$RMS_MIN = rms_min
-        output_stack$image$keyvalues$RMS_MAX = rms_max
-        
-        output_stack = c(output_stack, list(info = input_info[,c(1,5:20)]))
-        
-        output_stack$image$keynames = unique(names(output_stack$image$keyvalues))
-        output_stack$image$keycomments = rep(list(''), length(unique(names(output_stack$image$keyvalues))))
-        names(output_stack$image$keycomments) = output_stack$image$keynames
-        
-        median_stack = propaneStackWarpMed(dirlist = dump_stub,
-                                           pattern = glob2rx('*image_warp*'), 
-                                           keyvalues_out = output_stack$image$keyvalues, 
-                                           cores = cores,
-                                           multitype = "cluster")
-        
-        file.remove(temp_file)
-        
-        filestub = paste0(invar_dir, '/stack_',stack_grid[i,'VISIT_ID'],'_',stack_grid[i,'FILTER'],'_',j)
-        
-        Rfits_write(data = output_stack,
-                    filename = paste0(filestub,'.fits')
-        )
-        
-        filestub_med = paste0(median_dir, '/med_',stack_grid[i,'VISIT_ID'],'_',stack_grid[i,'FILTER'],'_',j)
-        
-        Rfits_write(data = median_stack,
-                    filename = paste0(filestub_med,'.fits')
-        )
-        gc()
+        return(NULL)
       }
-     return(NULL)
+
     }
    if(!is.null(parallel_type)){
      stopCluster(cl)
@@ -1507,8 +1543,10 @@ do_wisp_rem = function(input_args){
   median_dir = input_args$median_dir
   cores = input_args$cores_pro
   additional_params  = input_args$additional_params
-  parallel_type = input_args$additional_params$parallel_type
   SIGMA_LO = input_args$SIGMA_LO
+  
+  skip_completed_files = additional_params$skip_completed_files
+  parallel_type = additional_params$parallel_type
   
   if(is.null(SIGMA_LO)){
     message("No smoothing on wisp removal")
@@ -1534,43 +1572,47 @@ do_wisp_rem = function(input_args){
   mod_visit_grid = info_wisp[,c("stub", "MODULE", "VISIT_ID", "CRVAL1", "CRVAL2", "DETECTOR")]
   
   cat('Processing',dim(info_wisp)[1],'files\n')
+  message("Skip completed files is ", ifelse(skip_completed_files, "ON", "OFF"))
+  
+  idx_wisp_skip = !(unname(sapply( info_wisp$full, function(x){any(na.omit(Rfits_extnames(x)) == "SCI_ORIG")} )) & skip_completed_files)
   
   ref_im_list = {}
   for(ii in 1:dim(mod_visit_grid)[1]){
-    
-    ## Look for long channel in the same VID
-    ref_files = list.files(
-      median_dir, 
-      pattern = glob2rx(paste0(
-        "*", mod_visit_grid$VISIT_ID[ii], "*", mod_visit_grid$MODULE[ii], "*", "short", "*.fits"
-      )),
-      full.names = T)
-    ref_files = ref_files[!grepl("F150W2|F070W|F090W|F115W|F150W|F200W|F140M|F162M|F182M|F210M|F164N|F187N|F212N", ref_files)] ## Remove the short wavelength filters
-    
-    if(length(ref_files) == 0){
-      ## If no long channel exists, then perform a spatial search and use any overlapping long channel for Wisp Rem
-      ref_files = propaneFrameFinder(
-        dirlist = median_dir, 
-        RAcen = mod_visit_grid$CRVAL1[ii],
-        Deccen = mod_visit_grid$CRVAL2[ii],
-        rad = 0.1/3600, ## match within 0.1 asec
-        plot = FALSE, 
-        cores = cores
-      )$full ## Now do a frame finder to try and find long channel NOT in VIISITID (but could be in PROGRAM)
-      ref_files = ref_files[grepl("short.+fits$", ref_files)]
+    if(idx_wisp_skip[ii]){
+      ## Look for long channel in the same VID
+      ref_files = list.files(
+        median_dir, 
+        pattern = glob2rx(paste0(
+          "*", mod_visit_grid$VISIT_ID[ii], "*", mod_visit_grid$MODULE[ii], "*", "short", "*.fits"
+        )),
+        full.names = T)
+      ref_files = ref_files[!grepl("F150W2|F070W|F090W|F115W|F150W|F200W|F140M|F162M|F182M|F210M|F164N|F187N|F212N", ref_files)] ## Remove the short wavelength filters
+      
+      if(length(ref_files) == 0){
+        ## If no long channel exists, then perform a spatial search and use any overlapping long channel for Wisp Rem
+        ref_files = propaneFrameFinder(
+          dirlist = median_dir, 
+          RAcen = mod_visit_grid$CRVAL1[ii],
+          Deccen = mod_visit_grid$CRVAL2[ii],
+          rad = 0.1/3600, ## match within 0.1 asec
+          plot = FALSE, 
+          cores = cores
+        )$full ## Now do a frame finder to try and find long channel NOT in VIISITID (but could be in PROGRAM)
+        ref_files = ref_files[grepl("short.+fits$", ref_files)]
+      }
+      
+      filter_long = c(
+        str_match(ref_files, "F\\s*(.*?)\\s*[WMN]")[,2]
+      )
+      
+      filter_long[is.na(filter_long)] = -1
+      long_num = max(filter_long, na.rm = T)
+      
+      ref_file_long = ref_files[ which(grepl(long_num, ref_files))[1] ] #Get the longest filter
+      
+      ref_im_list = c(ref_im_list, list(Rfits_point(ref_file_long))) ## Allow loop in wisp rem to read long wavelength reference
+      message(paste("Loading reference for:", paste0(mod_visit_grid$VISIT_ID[ii]), mod_visit_grid$DETECTOR[ii], mod_visit_grid$stub[ii] ))
     }
-    
-    filter_long = c(
-      str_match(ref_files, "F\\s*(.*?)\\s*[WMN]")[,2]
-    )
-
-    filter_long[is.na(filter_long)] = -1
-    long_num = max(filter_long, na.rm = T)
-    
-    ref_file_long = ref_files[ which(grepl(long_num, ref_files))[1] ] #Get the longest filter
-
-    ref_im_list = c(ref_im_list, list(Rfits_point(ref_file_long))) ## Allow loop in wisp rem to read long wavelength reference
-    message(paste("Loading reference for:", paste0(mod_visit_grid$VISIT_ID[ii]), mod_visit_grid$DETECTOR[ii], mod_visit_grid$stub[ii] ))
   }
   
   if(is.null(parallel_type)){
@@ -1581,54 +1623,58 @@ do_wisp_rem = function(input_args){
   }
   
   temp = foreach(ii = 1:dim(info_wisp)[1], .errorhandling = "pass", .packages = c("Rwcs", "Rfits", "ProPane", "ProFound"))%dopar%{
-    ## copy original data to directory where we keep the wisps
-    vid = paste0(info_wisp$VISIT_ID[ii])
-    modl = paste0("NRC", info_wisp$MODULE[ii])
-    
-    # file.copy(info_wisp$full[ii], paste0(keep_wisp_stub, "/", vid, "/", info_wisp$file[ii]), overwrite = T)
-    wisp_frame = Rfits_read_image(info_wisp$full[ii], ext = 2)
-    
-    check_Nhdu = Rfits_nhdu(info_wisp$full[ii])
-    extloc = Rfits_extname_to_ext(info_wisp$full[ii], 'SCI_ORIG')
-    
-    if(is.na(extloc)){ ## only make the SCI_ORIG if it doesn't already exist, otherwise we risk overwriting with something that isn't the original science frame!
-      Rfits_write_image(wisp_frame, filename=info_wisp$full[ii], create_file=FALSE)
-      Rfits_write_key(filename=info_wisp$full[ii], ext=check_Nhdu+1, keyname='EXTNAME', keyvalue='SCI_ORIG', keycomment='No wisp corr')
-    }
-    
-    # Rfits_write_image(data = wisp_frame, paste0(keep_wisp_stub, "/", vid, "/", info_wisp$file[ii]))
-    
-    ref_im = ref_im_list[[ii]] ## read in long wavelength reference 
-    
-    if(any( (vid == additional_params$ID_vlarge$VISIT_ID & modl == additional_params$ID_vlarge$MODULE) | 
-            (vid == additional_params$ID_large$VISIT_ID & modl == additional_params$ID_large$MODULE)) ){
-      sigma_lo = NULL
+    if(idx_wisp_skip[ii]){
+      ## copy original data to directory where we keep the wisps
+      vid = paste0(info_wisp$VISIT_ID[ii])
+      modl = paste0("NRC", info_wisp$MODULE[ii])
+      
+      # file.copy(info_wisp$full[ii], paste0(keep_wisp_stub, "/", vid, "/", info_wisp$file[ii]), overwrite = T)
+      wisp_frame = Rfits_read_image(info_wisp$full[ii], ext = 2)
+      
+      check_Nhdu = Rfits_nhdu(info_wisp$full[ii])
+      extloc = Rfits_extname_to_ext(info_wisp$full[ii], 'SCI_ORIG')
+      
+      if(is.na(extloc)){ ## only make the SCI_ORIG if it doesn't already exist, otherwise we risk overwriting with something that isn't the original science frame!
+        Rfits_write_image(wisp_frame, filename=info_wisp$full[ii], create_file=FALSE)
+        Rfits_write_key(filename=info_wisp$full[ii], ext=check_Nhdu+1, keyname='EXTNAME', keyvalue='SCI_ORIG', keycomment='No wisp corr')
+      }
+      
+      # Rfits_write_image(data = wisp_frame, paste0(keep_wisp_stub, "/", vid, "/", info_wisp$file[ii]))
+      
+      ref_im = ref_im_list[[ii]] ## read in long wavelength reference 
+      
+      if(any( (vid == additional_params$ID_vlarge$VISIT_ID & modl == additional_params$ID_vlarge$MODULE) | 
+              (vid == additional_params$ID_large$VISIT_ID & modl == additional_params$ID_large$MODULE)) ){
+        sigma_lo = NULL
+      }else{
+        sigma_lo = SIGMA_LO
+      }
+      poly = NULL    
+      
+      wisp_fix = wispFixer(wisp_im = wisp_frame, ref_im = ref_im, poly = poly, sigma_lo = sigma_lo)
+      Rfits_write_pix(data = wisp_fix$wisp_fix$imDat, filename = info_wisp$full[ii], ext = 2)
+      
+      check_Nhdu = Rfits_nhdu(info_wisp$full[ii])
+      extloc = Rfits_extname_to_ext(info_wisp$full[ii], 'REF_WISP_WARP')
+      if(is.na(extloc)){ 
+        Rfits_write_image(wisp_fix$ref_im_warp, filename=info_wisp$full[ii], create_file=FALSE)
+        Rfits_write_key(filename=info_wisp$full[ii], ext=check_Nhdu+1, keyname='EXTNAME', keyvalue='REF_WISP_WARP', keycomment='Reference long wavelength for wisp corr')
+      }else{
+        Rfits_write_pix(wisp_fix$ref_im_warp$imDat, filename = info_wisp$full[ii], ext = extloc)
+      }
+      
+      check_Nhdu = Rfits_nhdu(info_wisp$full[ii])
+      extloc = Rfits_extname_to_ext(info_wisp$full[ii], 'WISP_TEMPLATE')
+      if(is.na(extloc)){
+        Rfits_write_image(wisp_fix$wisp_template, filename=info_wisp$full[ii], create_file=FALSE)
+        Rfits_write_key(filename=info_wisp$full[ii], ext=check_Nhdu+1, keyname='EXTNAME', keyvalue='WISP_TEMPLATE', keycomment='Wisp template')
+      }else{
+        Rfits_write_pix(wisp_fix$wisp_template, filename = info_wisp$full[ii], ext = extloc)
+      }
+      return(NULL)
     }else{
-      sigma_lo = SIGMA_LO
+      return(NULL)
     }
-    poly = NULL    
-    
-    wisp_fix = wispFixer(wisp_im = wisp_frame, ref_im = ref_im, poly = poly, sigma_lo = sigma_lo)
-    Rfits_write_pix(data = wisp_fix$wisp_fix$imDat, filename = info_wisp$full[ii], ext = 2)
-    
-    check_Nhdu = Rfits_nhdu(info_wisp$full[ii])
-    extloc = Rfits_extname_to_ext(info_wisp$full[ii], 'REF_WISP_WARP')
-    if(is.na(extloc)){ 
-      Rfits_write_image(wisp_fix$ref_im_warp, filename=info_wisp$full[ii], create_file=FALSE)
-      Rfits_write_key(filename=info_wisp$full[ii], ext=check_Nhdu+1, keyname='EXTNAME', keyvalue='REF_WISP_WARP', keycomment='Reference long wavelength for wisp corr')
-    }else{
-      Rfits_write_pix(wisp_fix$ref_im_warp$imDat, filename = info_wisp$full[ii], ext = extloc)
-    }
-    
-    check_Nhdu = Rfits_nhdu(info_wisp$full[ii])
-    extloc = Rfits_extname_to_ext(info_wisp$full[ii], 'WISP_TEMPLATE')
-    if(is.na(extloc)){
-      Rfits_write_image(wisp_fix$wisp_template, filename=info_wisp$full[ii], create_file=FALSE)
-      Rfits_write_key(filename=info_wisp$full[ii], ext=check_Nhdu+1, keyname='EXTNAME', keyvalue='WISP_TEMPLATE', keycomment='Wisp template')
-    }else{
-      Rfits_write_pix(wisp_fix$wisp_template, filename = info_wisp$full[ii], ext = extloc)
-    }
-    return(NULL)
   }
   
   if(!is.null(parallel_type)){
@@ -1654,6 +1700,7 @@ do_patch = function(input_args){
   cores = input_args$cores_stack
   do_NIRISS = input_args$do_NIRISS
   do_MIRI = input_args$do_MIRI
+  skip_completed_files = additional_params$skip_completed_files
   parallel_type = input_args$additional_params$parallel_type
   
   patch_stub = patch_dir
@@ -1683,62 +1730,70 @@ do_patch = function(input_args){
       }
       
       dummy = foreach(i = 1:length(invar_files))%dopar%{
+        
         message(paste0("Patching: ", invar_files[i]))
-        load_invar = Rfits_read(invar_files[i], pointer=FALSE)
-        load_median = Rfits_read(median_files[i], pointer=FALSE)
+        info_load_invar = Rfits_read(invar_files[i], pointer=TRUE)
+        info_temp = info_load_invar$image
         
-        temp = load_invar$image
+        fstub = str_remove( str_remove(string = info_temp$filename, pattern = dirname(info_temp$filename)), ".+stack" )
         
-        fstub = str_remove( str_remove(string = temp$filename, pattern = dirname(temp$filename)), ".+stack" )
-        
-        med_patch=propanePatch(image_inVar = temp, 
-                               image_med = load_median$image)
-        
-        ## compute the bounding box
-        edge_mask = matrix(0L, nrow = dim(temp)[1], ncol = dim(temp)[2])
-        rough_mask = is.na(temp$imDat)
-        mask_label = as.matrix(imager::label(imager::as.cimg(rough_mask)))
-        tally_pixels = tabulate(mask_label)
-        sel = which(tally_pixels > 0)
-        mask_loc = which(matrix(mask_label %in% sel, dim(temp)[1], dim(temp)[2]), arr.ind=TRUE)
-        edge_mask[mask_loc] = 1
-        edge_mask = 1- edge_mask
-        
-        big_NA_mask = matrix(0L, nrow = dim(temp)[1], ncol = dim(temp)[2])
-        rough_mask = is.na(temp$imDat)
-        mask_label = as.matrix(imager::label(imager::as.cimg(rough_mask)))
-        tally_pixels = tabulate(mask_label)
-        sel = which(tally_pixels > 150 & tally_pixels < max(tally_pixels))
-        mask_loc = which(matrix(mask_label %in% sel, dim(temp)[1], dim(temp)[2]), arr.ind=TRUE)
-        big_NA_mask[mask_loc] = 1
-        # magimage(big_NA_mask)
-        
-        propane_mask_fix = propanePatchPix(
-          image = med_patch$image, 
-          mask = (edge_mask + big_NA_mask) == 1,
-        )
-        
-        patch_mask = temp - propane_mask_fix
-
-        patch = list()
-
-        patch$image = propane_mask_fix
-        patch$patch = patch_mask
-        patch$inVar = load_invar$inVar
-        patch$weight = load_invar$weight
-        
-        patch$image$keyvalues$EXTNAME = "image"
-        patch$patch$keyvalues$EXTNAME = "patch"
-        patch$inVar$keyvalues$EXTNAME = "inVar"
-        patch$weight$keyvalues$EXTNAME = "weight"
-
-        class(patch) = "Rfits_list"
-
-        Rfits_write_all(
-          data = patch, 
-          filename = paste0(patch_stub, "patch", fstub)
-        )
-        return(NULL)
+        if( !(skip_completed_files & file.exists(paste0(patch_stub, "patch", fstub))) ){
+          
+          load_invar = Rfits_read(invar_files[i], pointer=FALSE)
+          load_median = Rfits_read(median_files[i], pointer=FALSE)
+          temp = load_invar$image
+          
+          med_patch=propanePatch(image_inVar = temp, 
+                                 image_med = load_median$image)
+          
+          ## compute the bounding box
+          edge_mask = matrix(0L, nrow = dim(temp)[1], ncol = dim(temp)[2])
+          rough_mask = is.na(temp$imDat)
+          mask_label = as.matrix(imager::label(imager::as.cimg(rough_mask)))
+          tally_pixels = tabulate(mask_label)
+          sel = which(tally_pixels > 0)
+          mask_loc = which(matrix(mask_label %in% sel, dim(temp)[1], dim(temp)[2]), arr.ind=TRUE)
+          edge_mask[mask_loc] = 1
+          edge_mask = 1- edge_mask
+          
+          big_NA_mask = matrix(0L, nrow = dim(temp)[1], ncol = dim(temp)[2])
+          rough_mask = is.na(temp$imDat)
+          mask_label = as.matrix(imager::label(imager::as.cimg(rough_mask)))
+          tally_pixels = tabulate(mask_label)
+          sel = which(tally_pixels > 150 & tally_pixels < max(tally_pixels))
+          mask_loc = which(matrix(mask_label %in% sel, dim(temp)[1], dim(temp)[2]), arr.ind=TRUE)
+          big_NA_mask[mask_loc] = 1
+          # magimage(big_NA_mask)
+          
+          propane_mask_fix = propanePatchPix(
+            image = med_patch$image, 
+            mask = (edge_mask + big_NA_mask) == 1,
+          )
+          
+          patch_mask = temp - propane_mask_fix
+          
+          patch = list()
+          
+          patch$image = propane_mask_fix
+          patch$patch = patch_mask
+          patch$inVar = load_invar$inVar
+          patch$weight = load_invar$weight
+          
+          patch$image$keyvalues$EXTNAME = "image"
+          patch$patch$keyvalues$EXTNAME = "patch"
+          patch$inVar$keyvalues$EXTNAME = "inVar"
+          patch$weight$keyvalues$EXTNAME = "weight"
+          
+          class(patch) = "Rfits_list"
+          
+          Rfits_write_all(
+            data = patch, 
+            filename = paste0(patch_stub, "patch", fstub)
+          )
+          return(NULL)
+        }else{
+          return(NULL)
+        }
       }
       
       if(!is.null(parallel_type)){
