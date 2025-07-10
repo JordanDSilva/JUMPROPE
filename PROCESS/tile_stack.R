@@ -11,6 +11,8 @@ library(data.table)
 library(stringr)
 library(Cairo)
 
+## -- START OF EDIT --
+
 ## User defined inputs here
 ref_cat = fread("put astrometric catalogue here") #example for HST catalogue in EGS field
 
@@ -36,33 +38,60 @@ input_args = list(
   cores = 1 ## If NULL then use half the number of cores in the system
 ) 
 
+## supply exact directories 
+additional_args = list(
+  ## Must include
+  mosaic_dir = NULL, ## Where to put the mosaics
+  dump_dir = NULL, ## Used for median stacking
+  cal_sky_info_stub = NULL, ## Output of step 7 in zork process e.g., Pro1of/cal_sky_info.csv
+  
+  ## Stuff for mosaicking the ProPane'd inverse-variance stacks
+  patch_dir = NULL, ## Patched propane stacks per 10 digit ID
+  
+  ## Stuff for mosaicking from the cal files
+  cal_sky_renorm_dir = NULL, ## Cal sky renorm files 
+  sky_frames_dir = NULL ## Sky files for the inverse-variance maps
+)
 
+## -- END OF EDIT --
+
+input_args$additional_args = additional_args
 deep_stacker = function(input_args){
   
   ## Find aligning frames in search radius, align with ProPaneTweakCat and stack with ProPane
   
-  inVar_dir = paste0(input_args$ref_dir, "/InVar_Stacks")
-  median_dir = paste0(input_args$ref_dir, "/Median_Stacks")
-  patch_dir = paste0(input_args$ref_dir, "/Patch_Stacks")
-  dump_dir = paste0(input_args$ref_dir, "/dump")
-  cal_sky_renorm_dir = paste0(input_args$ref_dir, "/Pro1oF/cal_sky_renorm/")
-  sky_frames_dir = paste0(input_args$ref_dir, "/sky_pro/sky_frames/")
+  additional_args = input_args$additional_args
+  if( !is.null(input_args$ref_dir) & !input_args$calstack ){
+    patch_dir = paste0(input_args$ref_dir, "/Patch_Stacks")
+    dump_dir = paste0(input_args$ref_dir, "/dump")
+    cal_sky_info = fread(paste0(input_args$ref_dir, "/Pro1oF/cal_sky_info.csv"))
+    mosaic_dir = paste0(input_args$ref_dir, "/Mosaic_Stacks/")
+  }else if ( !is.null(input_args$ref_dir) & input_args$calstack ){
+    cal_sky_renorm_dir = paste0(input_args$ref_dir, "/Pro1oF/cal_sky_renorm/")
+    sky_frames_dir = paste0(input_args$ref_dir, "/sky_pro/sky_frames/")
+    dump_dir = paste0(input_args$ref_dir, "/dump")
+    cal_sky_info = fread(paste0(input_args$ref_dir, "/Pro1oF/cal_sky_info.csv"))
+    mosaic_dir = paste0(input_args$ref_dir, "/Mosaic_Stacks/")
+  }else if ( is.null(input_args$ref_dir) & !input_args$calstack ){
+    patch_dir = additional_args$patch_dir
+    dump_dir = additional_args$dump_dir
+    cal_sky_info = fread(additional_args$cal_sky_info_stub)
+    mosaic_dir = additional_args$mosaic_dir
+  }else if ( is.null(input_args$ref_dir) & input_args$calstack ){
+    cal_sky_renorm_dir = additional_args$cal_sky_renorm_dir
+    sky_frames_dir = additional_args$sky_frames_dir
+    dump_dir = additional_args$dump_dir
+    cal_sky_info = fread(additional_args$cal_sky_info_stub)
+    mosaic_dir = additional_args$mosaic_dir
+  }
   
-  mosaic_dir = paste0(input_args$ref_dir, "/Mosaic_Stacks/")
   mosaic_invar = paste0(mosaic_dir, "/inVar/")
   mosaic_med = paste0(mosaic_dir, "/Median/")
   mosaic_patch = paste0(mosaic_dir, "/Patch/")
-  
   dir.create(mosaic_dir, recursive = T)
   dir.create(mosaic_invar, recursive = T)
   dir.create(mosaic_med, recursive = T)
   dir.create(mosaic_patch, recursive = T)
-  
-  cal_sky_info = fread(
-   paste0(
-     input_args$ref_dir, "/Pro1oF/cal_sky_info.csv"
-   )
-  )
 
   VIDS = paste0(cal_sky_info$VISIT_ID)
   
@@ -81,19 +110,15 @@ deep_stacker = function(input_args){
     ## Pull the files form the cal_sky_renorm directory. Must have the cal_sky_info.csv
     
     list_files = cal_sky_info$full[
-      grepl(program_id, cal_sky_info$VISIT_ID)
+      grepl(paste0("^",program_id), cal_sky_info$VISIT_ID)
     ]
     list_files_names = cal_sky_info$stub[
-      grepl(program_id, cal_sky_info$VISIT_ID)
+      grepl(paste0("^",program_id), cal_sky_info$VISIT_ID)
     ]
-    files_pids = substr(list_files_names, 4, 4+9) ## just get the pid
-    not_pid_idx = sapply(files_pids, function(x)grepl(x, program_id, fixed = T))
-    if(is.null(input_args$program_id)){
-      not_pid_idx = 1:length(list_files)
-    }
+    
     message("Searching for frames in ", input_args$RA, " ", input_args$Dec, " rad=", search_rad, "deg")
     find_frames = propaneFrameFinder(
-      filelist = list_files[not_pid_idx],
+      filelist = list_files,
       RAcen = input_args$RA,
       Deccen = input_args$Dec,
       rad = search_rad,
@@ -113,26 +138,19 @@ deep_stacker = function(input_args){
     ## Pull the files form the stack_patch directory
     list_files = list.files(
       path = patch_dir, 
-      pattern = glob2rx(paste0("*patch*", input_args$program_id, "*.fits")),
+      pattern = paste0("^.*?patch_.*?(", input_args$program_id, ").*\\.fits$"),
       full.names = T
     )
     
     list_files_names = list.files(
       path = patch_dir, 
-      pattern = glob2rx(paste0("*patch*", input_args$program_id, "*.fits")),
+      pattern = paste0("^.*?patch_.*?(", input_args$program_id, ").*\\.fits$"),
       full.names = F
     )
     
-    files_pids = substr(list_files_names, 1+12, 4+12) ## just get the pid
-    
-    not_pid_idx = sapply(files_pids, function(x)grepl(x, program_id, fixed = T))
-    if(is.null(input_args$program_id)){
-      not_pid_idx = 1:length(list_files)
-    }
-    
     message("Searching for frames in ", input_args$RA, " ", input_args$Dec, " rad=", search_rad, "deg")
     find_frames = propaneFrameFinder(
-      filelist = list_files[not_pid_idx],
+      filelist = list_files,
       RAcen = input_args$RA,
       Deccen = input_args$Dec,
       rad = search_rad,
@@ -183,8 +201,8 @@ deep_stacker = function(input_args){
 
         image_list = lapply(1:dim(file_info_filt)[1], function(kk){
           ## Same masking as in gen_stack
-          temp_image = Rfits_read_image(file_info_filt[k,full], ext=2)
-          temp_mask = Rfits_read_image(file_info_filt[k,full], ext=4, header=FALSE)
+          temp_image = Rfits_read_image(file_info_filt[kk,'full'], ext=2)
+          temp_mask = Rfits_read_image(file_info_filt[kk,'full'], ext=4, header=FALSE)
           temp_image = propaneBadPix(
             image = temp_image,
             patch = T
@@ -323,7 +341,7 @@ deep_stacker = function(input_args){
       
       Rfits_write(
         deep_frame,
-        paste0(mosaic_invar, "/stack_", input_args$super_name, "_", UNIQUE_FILTERS[i], "_", grid_size, ".fits")
+        paste0(mosaic_invar, "/stack_", input_args$super_name, "_", UNIQUE_FILTERS[i], ifelse(grid_size == "", ".fits", paste0("_", grid_size, ".fits")))
       )
       
       med_stack = propaneStackWarpMed(
@@ -336,7 +354,7 @@ deep_stacker = function(input_args){
       
       Rfits_write(
         med_stack,
-        paste0(mosaic_med, "/med_", input_args$super_name, "_", UNIQUE_FILTERS[i], "_", grid_size, ".fits"),
+        paste0(mosaic_med, "/med_", input_args$super_name, "_", UNIQUE_FILTERS[i], ifelse(grid_size == "", ".fits", paste0("_", grid_size, ".fits")))
       )
       
       patch_stack = propanePatch(
@@ -348,7 +366,7 @@ deep_stacker = function(input_args){
       
       Rfits_write(
         temp,
-        paste0(mosaic_patch, "/patch_", input_args$super_name, "_", UNIQUE_FILTERS[i], "_", grid_size, ".fits")
+        paste0(mosaic_patch, "/patch_", input_args$super_name, "_", UNIQUE_FILTERS[i], ifelse(grid_size == "", ".fits", paste0("_", grid_size, ".fits")))
       )
       
       rm(deep_frame)
@@ -363,4 +381,3 @@ deep_stacker = function(input_args){
 }
 
 deep_stacker(input_args = input_args)
-
