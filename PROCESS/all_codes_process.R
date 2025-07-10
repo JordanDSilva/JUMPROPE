@@ -16,7 +16,7 @@ library(celestial)
 library(matrixStats)
 library(checkmate)
 
-pipe_version = "1.4.1" 
+pipe_version = "1.4.2" 
 
 load_files = function(input_args, which_module, sky_info = NULL){
   ## Load the correct files for what ever task
@@ -1205,14 +1205,9 @@ do_gen_stack = function(input_args){
   message("Skip completed files is ", ifelse(skip_completed_files, "ON", "OFF"))
   
   temp_vid = VID
-  VID_list = grep(temp_vid, unique_visits, value = T)
-  if(temp_vid == ""){
-    not_pid_idx = 1:length(VID_list)
-  }else{
-    not_pid_idx = sapply(substr(VID_list,1,4), function(x) grepl(x, VID, fixed = T)) ## make sure PID is not embedded in string of VID
-  }
-  
-  for(VID in VID_list[not_pid_idx]){
+  VID_list = grep(paste0("^",temp_vid), unique_visits, value = T)
+
+  for(VID in VID_list){
     if(do_NIRISS){
       cal_sky_info = orig_cal_sky_info[grepl(VID, orig_cal_sky_info$VISIT_ID) & grepl("NIS", orig_cal_sky_info$DETECTOR),]
     }else if(do_MIRI){
