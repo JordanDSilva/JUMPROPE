@@ -1605,20 +1605,24 @@ do_wisp_rem = function(input_args){
         str_match(ref_files, "F\\s*(.*?)\\s*[WMN]")[,2]
       )
       
-      filter_long[is.na(filter_long)] = -1
-      long_num = max(filter_long, na.rm = T)
-      
-      ref_file_long = ref_files[ which(grepl(long_num, ref_files))[1] ] #Get the longest filter
-      
-      ref_im_list = c(ref_im_list, list(Rfits_point(ref_file_long))) ## Allow loop in wisp rem to read long wavelength reference
-      message(paste("Loading reference for:", paste0(mod_visit_grid$VISIT_ID[ii]), mod_visit_grid$DETECTOR[ii], mod_visit_grid$stub[ii] ))
+      if(length(filter_long) == 0){
+        message("No overlapping long wavelength for wisp correction")
+        load_ref = NULL
+      }else{
+        message(paste("Loading reference for:", paste0(mod_visit_grid$VISIT_ID[ii]), mod_visit_grid$DETECTOR[ii], mod_visit_grid$stub[ii] ))
+        filter_long[is.na(filter_long)] = -1
+        long_num = max(filter_long, na.rm = T)
+        ref_file_long = ref_files[ which(grepl(long_num, ref_files))[1] ] #Get the longest filter
+        load_ref = list(Rfits_point(ref_file_long))
+      }
+      ref_im_list = c(ref_im_list, load_ref) ## Allow loop in wisp rem to read long wavelength reference
     }
   }
   
   if(is.null(parallel_type)){
     registerDoParallel(cores = cores)
   }else{
-    cl <- makeCluster(spec = cores, type = 'PSOCK')
+    cl <- makeCluster(spec = cores, type = parallel_type)
     registerDoParallel(cl)
   }
   
@@ -1628,50 +1632,51 @@ do_wisp_rem = function(input_args){
       vid = paste0(info_wisp$VISIT_ID[ii])
       modl = paste0("NRC", info_wisp$MODULE[ii])
       
-      # file.copy(info_wisp$full[ii], paste0(keep_wisp_stub, "/", vid, "/", info_wisp$file[ii]), overwrite = T)
-      wisp_frame = Rfits_read_image(info_wisp$full[ii], ext = 2)
-      
-      check_Nhdu = Rfits_nhdu(info_wisp$full[ii])
-      extloc = Rfits_extname_to_ext(info_wisp$full[ii], 'SCI_ORIG')
-      
-      if(is.na(extloc)){ ## only make the SCI_ORIG if it doesn't already exist, otherwise we risk overwriting with something that isn't the original science frame!
-        Rfits_write_image(wisp_frame, filename=info_wisp$full[ii], create_file=FALSE)
-        Rfits_write_key(filename=info_wisp$full[ii], ext=check_Nhdu+1, keyname='EXTNAME', keyvalue='SCI_ORIG', keycomment='No wisp corr')
-      }
-      
-      # Rfits_write_image(data = wisp_frame, paste0(keep_wisp_stub, "/", vid, "/", info_wisp$file[ii]))
-      
       ref_im = ref_im_list[[ii]] ## read in long wavelength reference 
-      
-      if(any( (vid == additional_params$ID_vlarge$VISIT_ID & modl == additional_params$ID_vlarge$MODULE) | 
-              (vid == additional_params$ID_large$VISIT_ID & modl == additional_params$ID_large$MODULE)) ){
-        sigma_lo = NULL
+      if(is.null(ref_im)){
+        message("No long wavelength - skipping...")
+        return(NULL)
       }else{
-        sigma_lo = SIGMA_LO
+        wisp_frame = Rfits_read_image(info_wisp$full[ii], ext = 2)
+        
+        check_Nhdu = Rfits_nhdu(info_wisp$full[ii])
+        extloc = Rfits_extname_to_ext(info_wisp$full[ii], 'SCI_ORIG')
+        
+        if(is.na(extloc)){ ## only make the SCI_ORIG if it doesn't already exist, otherwise we risk overwriting with something that isn't the original science frame!
+          Rfits_write_image(wisp_frame, filename=info_wisp$full[ii], create_file=FALSE)
+          Rfits_write_key(filename=info_wisp$full[ii], ext=check_Nhdu+1, keyname='EXTNAME', keyvalue='SCI_ORIG', keycomment='No wisp corr')
+        }
+        
+        if(any( (vid == additional_params$ID_vlarge$VISIT_ID & modl == additional_params$ID_vlarge$MODULE) | 
+                (vid == additional_params$ID_large$VISIT_ID & modl == additional_params$ID_large$MODULE)) ){
+          sigma_lo = NULL
+        }else{
+          sigma_lo = SIGMA_LO
+        }
+        poly = NULL    
+        
+        wisp_fix = wispFixer(wisp_im = wisp_frame, ref_im = ref_im, poly = poly, sigma_lo = sigma_lo)
+        Rfits_write_pix(data = wisp_fix$wisp_fix$imDat, filename = info_wisp$full[ii], ext = 2)
+        
+        check_Nhdu = Rfits_nhdu(info_wisp$full[ii])
+        extloc = Rfits_extname_to_ext(info_wisp$full[ii], 'REF_WISP_WARP')
+        if(is.na(extloc)){ 
+          Rfits_write_image(wisp_fix$ref_im_warp, filename=info_wisp$full[ii], create_file=FALSE)
+          Rfits_write_key(filename=info_wisp$full[ii], ext=check_Nhdu+1, keyname='EXTNAME', keyvalue='REF_WISP_WARP', keycomment='Reference long wavelength for wisp corr')
+        }else{
+          Rfits_write_pix(wisp_fix$ref_im_warp$imDat, filename = info_wisp$full[ii], ext = extloc)
+        }
+        
+        check_Nhdu = Rfits_nhdu(info_wisp$full[ii])
+        extloc = Rfits_extname_to_ext(info_wisp$full[ii], 'WISP_TEMPLATE')
+        if(is.na(extloc)){
+          Rfits_write_image(wisp_fix$wisp_template, filename=info_wisp$full[ii], create_file=FALSE)
+          Rfits_write_key(filename=info_wisp$full[ii], ext=check_Nhdu+1, keyname='EXTNAME', keyvalue='WISP_TEMPLATE', keycomment='Wisp template')
+        }else{
+          Rfits_write_pix(wisp_fix$wisp_template, filename = info_wisp$full[ii], ext = extloc)
+        }
+        return(NULL)
       }
-      poly = NULL    
-      
-      wisp_fix = wispFixer(wisp_im = wisp_frame, ref_im = ref_im, poly = poly, sigma_lo = sigma_lo)
-      Rfits_write_pix(data = wisp_fix$wisp_fix$imDat, filename = info_wisp$full[ii], ext = 2)
-      
-      check_Nhdu = Rfits_nhdu(info_wisp$full[ii])
-      extloc = Rfits_extname_to_ext(info_wisp$full[ii], 'REF_WISP_WARP')
-      if(is.na(extloc)){ 
-        Rfits_write_image(wisp_fix$ref_im_warp, filename=info_wisp$full[ii], create_file=FALSE)
-        Rfits_write_key(filename=info_wisp$full[ii], ext=check_Nhdu+1, keyname='EXTNAME', keyvalue='REF_WISP_WARP', keycomment='Reference long wavelength for wisp corr')
-      }else{
-        Rfits_write_pix(wisp_fix$ref_im_warp$imDat, filename = info_wisp$full[ii], ext = extloc)
-      }
-      
-      check_Nhdu = Rfits_nhdu(info_wisp$full[ii])
-      extloc = Rfits_extname_to_ext(info_wisp$full[ii], 'WISP_TEMPLATE')
-      if(is.na(extloc)){
-        Rfits_write_image(wisp_fix$wisp_template, filename=info_wisp$full[ii], create_file=FALSE)
-        Rfits_write_key(filename=info_wisp$full[ii], ext=check_Nhdu+1, keyname='EXTNAME', keyvalue='WISP_TEMPLATE', keycomment='Wisp template')
-      }else{
-        Rfits_write_pix(wisp_fix$wisp_template, filename = info_wisp$full[ii], ext = extloc)
-      }
-      return(NULL)
     }else{
       return(NULL)
     }
@@ -1953,7 +1958,7 @@ do_wisp_reverse = function(input_args){
   
   filelist_all = input_args$filelist ## raw CAL files - straight from the calibration pipeline
   VID = input_args$VID
-  cores = input_args$cores
+  cores = input_args$cores_pro
   do_claws = input_args$additional_params$do_claws
   parallel_type = input_args$additional_params$parallel_type
   
@@ -1996,6 +2001,7 @@ do_wisp_reverse = function(input_args){
   }
   
   temp = foreach(ii = 1:dim(info_wisp)[1], .errorhandling = "stop")%dopar%{
+    message(ii)
     ## copy original data to directory where we keep the wisps
     vid = paste0(info_wisp$VID[ii])
     modl = paste0("NRC", info_wisp$MODULE[ii])
