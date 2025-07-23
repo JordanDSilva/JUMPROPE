@@ -16,7 +16,7 @@ library(celestial)
 library(matrixStats)
 library(checkmate)
 
-pipe_version = "1.4.2" 
+pipe_version = "1.4.3" 
 
 load_files = function(input_args, which_module, sky_info = NULL){
   ## Load the correct files for what ever task
@@ -1996,7 +1996,6 @@ do_wisp_reverse = function(input_args){
   }
   
   temp = foreach(ii = 1:dim(info_wisp)[1], .errorhandling = "stop")%dopar%{
-    message(ii)
     ## copy original data to directory where we keep the wisps
     vid = paste0(info_wisp$VID[ii])
     modl = paste0("NRC", info_wisp$MODULE[ii])
