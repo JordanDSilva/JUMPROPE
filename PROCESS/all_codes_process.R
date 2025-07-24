@@ -200,7 +200,7 @@ do_1of = function(input_args){
   if(is.null(parallel_type)){
     registerDoParallel(cores = cores)
   }else{
-    cl <- makeCluster(spec = cores, type = parallel_type)
+    cl <- makeCluster(spec = cores, type = parallel_type, outfile = "")
     registerDoParallel(cl)
   }
 
@@ -372,7 +372,7 @@ do_cal_process = function(input_args, filelist = NULL){
   if(is.null(parallel_type)){
     registerDoParallel(cores = cores)
   }else{
-    cl <- makeCluster(spec = cores, type = parallel_type)
+    cl <- makeCluster(spec = cores, type = parallel_type, outfile = "")
     registerDoParallel(cl)
   }
   
@@ -697,7 +697,7 @@ do_super_sky = function(input_args){
   if(is.null(parallel_type)){
     registerDoParallel(cores = cores)
   }else{
-    cl <- makeCluster(spec = cores, type = parallel_type)
+    cl <- makeCluster(spec = cores, type = parallel_type, outfile = "")
     registerDoParallel(cl)
   }  
   
@@ -808,7 +808,7 @@ do_apply_super_sky = function(input_args){
   if(is.null(parallel_type)){
     registerDoParallel(cores = cores)
   }else{
-    cl <- makeCluster(spec = cores, type = parallel_type)
+    cl <- makeCluster(spec = cores, type = parallel_type, outfile = "")
     registerDoParallel(cl)
   }  
   
@@ -986,7 +986,7 @@ do_modify_pedestal = function(input_args){
   if(is.null(parallel_type)){
     registerDoParallel(cores = cores)
   }else{
-    cl <- makeCluster(spec = cores, type = parallel_type)
+    cl <- makeCluster(spec = cores, type = parallel_type, outfile = "")
     registerDoParallel(cl)
   } 
   
@@ -1288,7 +1288,7 @@ do_gen_stack = function(input_args){
     if(is.null(parallel_type)){
       registerDoParallel(cores = tasks)
     }else{
-      cl <- makeCluster(spec = tasks, type = parallel_type)
+      cl <- makeCluster(spec = tasks, type = parallel_type, outfile = "")
       registerDoParallel(cl)
     }
     
@@ -1616,7 +1616,7 @@ do_wisp_rem = function(input_args){
   if(is.null(parallel_type)){
     registerDoParallel(cores = cores)
   }else{
-    cl <- makeCluster(spec = cores, type = parallel_type)
+    cl <- makeCluster(spec = cores, type = parallel_type, outfile = "")
     registerDoParallel(cl)
   }
   
@@ -1724,7 +1724,7 @@ do_patch = function(input_args){
       if(is.null(parallel_type)){
         registerDoParallel(cores = cores)
       }else{
-        cl <- makeCluster(spec = cores, type = parallel_type)
+        cl <- makeCluster(spec = cores, type = parallel_type, outfile = "")
         registerDoParallel(cl)
       }
       
@@ -1990,7 +1990,7 @@ do_wisp_reverse = function(input_args){
   if(is.null(parallel_type)){
     registerDoParallel(cores = cores)
   }else{
-    cl <- makeCluster(spec = cores, type = parallel_type)
+    cl <- makeCluster(spec = cores, type = parallel_type, outfile = "")
     registerDoParallel(cl)
   }
   
