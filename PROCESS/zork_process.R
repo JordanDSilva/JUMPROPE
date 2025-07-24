@@ -80,6 +80,11 @@ zork = function(){
   } else if (length(args)==2) {
     VID = toString(args[1])
     FILT = toString(args[2])
+    if(FILT == "short"){
+      FILT = "F070W|F090W|F115W|F150W|F200W|F140M|F162M|F182M|F210M|F164N|F187N|F212N"
+    }else if(FILT == "long"){
+      FILT = "F277W|F356W|F444W|F250M|F300M|F335M|F360M|F410M|F430M|F460M|F480M|F323N|F405N|F466N|F470N"
+    }
   } else {
     message(paste0("Error Nargs wrong: ", length(args)))
     q()
@@ -119,7 +124,6 @@ zork = function(){
   if(do_NIRISS){
       FILT = "CLEAR|NIS"
     }
-  
   
   cal_sky_info_save_dir = paste0(ref_dir, "/Pro1oF/")
   Pro1oF_dir = paste0(ref_dir, "/Pro1oF/cal/")

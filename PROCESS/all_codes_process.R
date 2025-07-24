@@ -16,7 +16,7 @@ library(celestial)
 library(matrixStats)
 library(checkmate)
 
-pipe_version = "1.4.3" 
+pipe_version = "1.4.4" 
 
 load_files = function(input_args, which_module, sky_info = NULL){
   ## Load the correct files for what ever task
@@ -1293,7 +1293,7 @@ do_gen_stack = function(input_args){
     }
     
    dummy = foreach(i = lo_loop:hi_loop, .packages = c('Rwcs', 'Rfits', 'ProPane', 'ProFound'))%dopar%{
-      message('Stacking ', i,' of ',hi_loop)
+     message('Stacking ', i,' of ',hi_loop)
       for(j in module_list){
         if( !(skip_completed_files & file.exists(paste0(invar_dir, '/stack_',stack_grid[i,'VISIT_ID'],'_',stack_grid[i,'FILTER'],'_',j,'.fits'))) ){
           message('  Processing ',stack_grid[i,'VISIT_ID'],' ',stack_grid[i,'FILTER'], ' ', j)
@@ -1513,9 +1513,8 @@ do_gen_stack = function(input_args){
           )
           gc()
         }
-        return(NULL)
       }
-
+     return(NULL)
     }
    if(!is.null(parallel_type)){
      stopCluster(cl)

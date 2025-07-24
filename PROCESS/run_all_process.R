@@ -132,7 +132,7 @@ main = function(){
     )
    
     if(length(args) <= 1){
-      input_args$FILT = 'F277W|F356W|F444W|F250M|F300M|F335M|F360M|F410M|F430M|F460M|F480M|F323N|F405N|F466N|F470N' ## Process long wavelengths first
+      input_args$FILT = "F277W|F356W|F444W|F250M|F300M|F335M|F360M|F410M|F430M|F460M|F480M|F323N|F405N|F466N|F470N" ## Process long wavelengths first
 
     }
     
