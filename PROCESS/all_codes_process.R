@@ -16,7 +16,7 @@ library(celestial)
 library(matrixStats)
 library(checkmate)
 
-pipe_version = "1.4.4" 
+pipe_version = "1.4.5" 
 
 load_files = function(input_args, which_module, sky_info = NULL){
   ## Load the correct files for what ever task
@@ -715,19 +715,15 @@ do_super_sky = function(input_args){
     message(combine_grid[i,1], ' ', combine_grid[i,2],': ', Nsky)
     
     if(Nsky > 0){
-      sky_array = array(dim = c(temp_info[1,'naxis1'], temp_info[1,'naxis2'], Nsky)) #create empty array
-      for(j in 1:dim(temp_info)[1]){
-        #safe name (since sometimes the sky file name gets truncated due to 80 character FITS limits)
+      sky_frames_list = lapply(1:dim(temp_info)[1], function(j){
         file_sky = temp_info[j,'filesky']
         file_sky = grep(temp_info[j,'filesky'], sky_filelist, value=TRUE)
-        if(length(file_sky) == 0){
-          stop('Missing',)
+        if(length(file_sky) > 0){
+          sky_temp = Rfits_point(paste(temp_info[j,'pathsky'], file_sky, sep='/'), ext=2)  - temp_info[j,'sky']
+          return(sky_temp)
         }
-        
-        #fill array up with sky data for stacking
-        sky_array[,,j] = Rfits_read_image(paste(temp_info[j,'pathsky'], file_sky, sep='/'), ext=2, header=FALSE) - temp_info[j,'sky']
-      }
-      sky_mean = rowMeans(sky_array, na.rm = FALSE, dims = 2)
+      })
+      sky_mean = propaneStackFlatFunc(sky_frames_list, imager_func = function(xx){imager::average(xx, na.rm = TRUE)}, cores =1)$image 
     }else{
       message("No usable data for ", combine_grid[i,1]," ",combine_grid[i,2])
       temp_file = sky_info[sky_info$detector == combine_grid[i,1] & sky_info$filter == combine_grid[i,2],'fileim'][1]
