@@ -35,7 +35,12 @@ input_args = list(
   magzero_out = 23.9, ## Magzero of final mosaic. Default means matrix will have flux units of microJy
 
   program_id = NULL,  # Maybe we we just want to stack a single program e.g., Primer (1837) and not COSMOS Web (1727)
-  cores = 1 ## If NULL then use half the number of cores in the system
+  FILT = "", ## What filters to stack e.g., "F090W|F150W"
+  
+  ref_frame= NULL, ## path to frame to be used as the base astrometric grid - will get EXT=1
+  
+  cores = 1, ## Cores to use for stacking
+  cores_search = 1 ## Cores to use for finding frames on disk
 ) 
 
 ## supply exact directories 
@@ -122,15 +127,16 @@ deep_stacker = function(input_args){
       RAcen = input_args$RA,
       Deccen = input_args$Dec,
       rad = search_rad,
-      cores = 1, ## safe :)
+      extlist = 2, ## WCS for cal_sky_renorm
       plot=F, 
-      extlist = 2 ## WCS for cal_sky_renorm
+      cores = input_args$cores_search
     )
     
     find_frames$FILT = Rfits_key_scan(
       find_frames$full, 
       keylist = c("FILTER"),
-      extlist = 1
+      extlist = 1,
+      cores = input_args$cores_search
     )$FILTER
     find_frames$MAGZERO_FIX = cal_sky_info$MAGZERO_FIX[cal_sky_info$full %in% find_frames$full]
     
@@ -154,8 +160,8 @@ deep_stacker = function(input_args){
       RAcen = input_args$RA,
       Deccen = input_args$Dec,
       rad = search_rad,
-      cores = 1, ## safe :)
-      plot=F
+      plot=F,
+      cores = input_args$cores_search
     )
     filters_all = str_extract(find_frames$file, pattern = regex("F(\\d+).[W2WMN]")) ## Regex pattern all kinds of filters
     find_frames$FILT = filters_all
@@ -172,27 +178,52 @@ deep_stacker = function(input_args){
     
     file_info = find_frames[grepl(paste0(grid_size, "|MIRI"), find_frames$file), ] ## Force find MIRI
     
-    if(input_args$calstack){
-      wcs = propaneGenWCS(
-        filelist = file_info$full, 
-        rotation = input_args$rotation, 
-        pixscale = input_args$pixelscale, 
-        extlist = 2
+    if(is.null(input_args$ref_frame)){
+      if(input_args$calstack){
+        wcs = propaneGenWCS(
+          filelist = file_info$full, 
+          rotation = input_args$rotation, 
+          pixscale = input_args$pixelscale, 
+          extlist = 2,
+          cores = input_args$cores_search
         )
+      }else{
+        wcs = propaneGenWCS(
+          filelist = file_info$full, 
+          rotation = input_args$rotation, 
+          pixscale = input_args$pixelscale, 
+          extlist = 1,
+          cores = input_args$cores_search
+        )
+      }
     }else{
-      wcs = propaneGenWCS(
-        filelist = file_info$full, 
-        rotation = input_args$rotation, 
-        pixscale = input_args$pixelscale, 
-        extlist = 1
-        )
+      temp = Rfits_read_header(
+        input_args$ref_frame
+      )
+      wcs = Rwcs_setkeyvalues(
+        CRVAL1 = temp$keyvalues$CRVAL1,
+        CRVAL2 = temp$keyvalues$CRVAL2,
+        NAXIS1 = temp$keyvalues$NAXIS1,
+        NAXIS2 = temp$keyvalues$NAXIS2,
+        CRPIX1 = temp$keyvalues$CRPIX1,
+        CRPIX2 = temp$keyvalues$CRPIX2,
+        CTYPE1 = temp$keyvalues$CTYPE1,
+        CTYPE2 = temp$keyvalues$CTYPE2,
+        CUNIT1 = temp$keyvalues$CUNIT1,
+        CUNIT2 = temp$keyvalues$CUNIT2,
+        CD1_1 = temp$keyvalues$CD1_1,
+        CD1_2 = temp$keyvalues$CD1_2,
+        CD2_1 = temp$keyvalues$CD2_1,
+        CD2_2 = temp$keyvalues$CD2_2
+      )
     }
     
     ref_cat = input_args$ref_cat
     
     UNIQUE_FILTERS = unique(stack_grid$FILTER)
     UNIQUE_FILTERS = UNIQUE_FILTERS[!grepl("CLEAR", UNIQUE_FILTERS) & UNIQUE_FILTERS %in% file_info$FILT]
-    for(i in 1:length(UNIQUE_FILTERS)){
+    
+    for(i in which(grepl(input_args$FILT, UNIQUE_FILTERS))){
       
       file_info_filt = file_info[file_info$FILT == paste0(UNIQUE_FILTERS[i]),]
       filenames = file_info_filt$full
@@ -263,6 +294,7 @@ deep_stacker = function(input_args){
         dev.off()
       }
       
+      tweak_idx = c()
       for(k in 1:length(image_list)){
         
         message(
@@ -284,12 +316,22 @@ deep_stacker = function(input_args){
         
         if(any(is.na(match_cat$bestmatch))){
           tweak_cat = list(par = c(0,0,0)) ## No matches => nothing to tweak on unfortunately...
+          twIDX = NA
         }else{
           pix_cat = Rwcs_s2p(RA = ref_cat$RA, Dec = ref_cat$Dec, keyvalues = image_list[[k]]$keyvalues)
-          tweak_cat = propaneTweakCat(cat_ref = pix_cat[match_cat$bestmatch$refID, ], 
-                                      cat_pre_fix = pro_test$segstats[match_cat$bestmatch$compareID,c("xmax","ymax")],
-                                      delta_max = c(20,1),
-                                      mode = "pix")
+          propaneTweak_cat_ref = pix_cat[match_cat$bestmatch$refID, ]
+          if( is.null(dim(propaneTweak_cat_ref)) ){
+            tweak_cat = list(par = c(0,0,0))
+            twIDX = NA
+          }else{
+            tweak_cat = propaneTweakCat(
+              cat_ref = propaneTweak_cat_ref,
+              cat_pre_fix = pro_test$segstats[match_cat$bestmatch$compareID,c("xmax","ymax")],
+              delta_max = c(20,1),
+              mode = "pix"
+            )
+            twIDX = k
+          }
         }
         
         tempim = image_list[[k]][,]
@@ -318,15 +360,16 @@ deep_stacker = function(input_args){
             delta_rot = tweak_cat$par[3]
           )
         }
+        tweak_idx = c(tweak_idx, twIDX)
       }
       
-      cores = ifelse(is.null(input_args$cores), floor(detectCores()/2), input_args$cores)
+      cores = ifelse(is.null(input_args$cores), 1, input_args$cores)
       deep_frame = propaneStackWarpInVar(
-        image_list = image_list,
-        inVar_list = inVar_list,
-        weight_list = weight_list,
+        image_list = image_list[tweak_idx],
+        inVar_list = inVar_list[tweak_idx],
+        weight_list = weight_list[tweak_idx],
         keyvalues_out = wcs,
-        magzero_in = magzero_list, ## Use appropriate magzero ins
+        magzero_in = magzero_list[tweak_idx], ## Use appropriate magzero ins
         magzero_out = input_args$magzero_out,
         direction="backward",
         dump_frames = T,
@@ -375,9 +418,7 @@ deep_stacker = function(input_args){
       rm(temp)
       gc()
     }
-    
   }
-  
 }
 
 deep_stacker(input_args = input_args)
