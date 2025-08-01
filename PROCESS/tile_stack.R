@@ -360,7 +360,9 @@ deep_stacker = function(input_args){
             delta_rot = tweak_cat$par[3]
           )
         }
-        tweak_idx = c(tweak_idx, twIDX)
+        if(!is.na(twIDX)){
+          tweak_idx = c(tweak_idx, twIDX)
+        }
       }
       
       cores = ifelse(is.null(input_args$cores), 1, input_args$cores)
