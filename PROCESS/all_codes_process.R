@@ -672,7 +672,11 @@ do_super_sky = function(input_args){
   
   filelist = load_files(input_args, which_module = "super_sky")
   sky_info = fread(paste0(sky_pro_dir, '/sky_info.csv'))
-  sky_info = sky_info[gsub("//", "/", paste0(sky_info$pathsky, "/", sky_info$filesky))%in%gsub("//", "/",filelist), ]
+  
+  ## improved logic for file matching - have to match for VID/FILT
+  normalised_paths = normalizePath(paste0(sky_info$pathsky, "/", sky_info$filesky), winslash = "/", mustWork = FALSE)
+  normalised_filelist = normalizePath(filelist, winslash = "/", mustWork = FALSE)
+  sky_info = sky_info[file.exists(paste0(sky_info$pathsky, "/", sky_info$filesky)) & (normalised_paths %in% normalised_filelist), ]
 
   niriss_det = c("NIS")
   miri_det = c("MIRIMAGE")
