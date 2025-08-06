@@ -37,7 +37,7 @@ input_args = list(
   program_id = NULL,  # Maybe we we just want to stack a single program e.g., Primer (1837) and not COSMOS Web (1727)
   FILT = "", ## What filters to stack e.g., "F090W|F150W"
   
-  ref_frame= NULL, ## path to frame to be used as the base astrometric grid - will get EXT=1
+  ref_frame= NULL, ## path to frame(Extension = 1)/wcs RDS to be used as the base astrometric grid
   
   cores = 1, ## Cores to use for stacking
   cores_search = 1 ## Cores to use for finding frames on disk
@@ -187,6 +187,7 @@ deep_stacker = function(input_args){
           extlist = 2,
           cores = input_args$cores_search
         )
+        saveRDS(wcs, paste0(mosaic_dir, "/wcs_", input_args$super_name, ifelse(grid_size == "", ".rds", paste0("_", grid_size, ".rds"))))
       }else{
         wcs = propaneGenWCS(
           filelist = file_info$full, 
@@ -195,8 +196,9 @@ deep_stacker = function(input_args){
           extlist = 1,
           cores = input_args$cores_search
         )
+        saveRDS(wcs, paste0(mosaic_dir, "/wcs_", input_args$super_name, ifelse(grid_size == "", ".rds", paste0("_", grid_size, ".rds"))))
       }
-    }else{
+    }else if(endsWith(input_args$ref_frame, ".fits")){
       temp = Rfits_read_header(
         input_args$ref_frame
       )
@@ -216,6 +218,10 @@ deep_stacker = function(input_args){
         CD2_1 = temp$keyvalues$CD2_1,
         CD2_2 = temp$keyvalues$CD2_2
       )
+    }else if(endsWith(input_args$ref_frame, ".rds")){
+        wcs = readRDS(input_args$ref_frame)
+    }else{
+        stop("Invalid WCS - please supply a fits file or saved RDS.")
     }
     
     ref_cat = input_args$ref_cat
@@ -223,6 +229,7 @@ deep_stacker = function(input_args){
     UNIQUE_FILTERS = unique(stack_grid$FILTER)
     UNIQUE_FILTERS = UNIQUE_FILTERS[!grepl("CLEAR", UNIQUE_FILTERS) & UNIQUE_FILTERS %in% file_info$FILT]
     
+    count = TRUE
     for(i in which(grepl(input_args$FILT, UNIQUE_FILTERS))){
       
       file_info_filt = file_info[file_info$FILT == paste0(UNIQUE_FILTERS[i]),]
@@ -278,7 +285,7 @@ deep_stacker = function(input_args){
         magzero_list = rep(23.9, length(filenames))
       }
       
-      if(i == 1){
+      if(count){
         CairoPNG(paste0(mosaic_dir,input_args$super_name, "_footprints.png"))
         for(k in 1:length(image_list)){
           if(k == 1){
@@ -292,6 +299,7 @@ deep_stacker = function(input_args){
           }
         }
         dev.off()
+        count = FALSE
       }
       
       tweak_idx = c()
