@@ -1714,10 +1714,11 @@ do_patch = function(input_args){
   
   for(j in pixscale_list){
     invar_files = list.files(path=invar_dir, pattern = glob2rx(paste0("*stack*", j, "*.fits$")), full.names = T)
-    median_files = list.files(path=median_dir, pattern = glob2rx(paste0("*med*", j, "*.fits$")), full.names = T)
-    invar_files = invar_files[grepl(VID, invar_files) & grepl(FILT, invar_files) & !grepl("patch", invar_files)]
-    median_files = median_files[grepl(VID, median_files) & grepl(FILT, median_files) & !grepl("patch", median_files)]
-    
+    median_files = list.files(path=median_dir, pattern = glob2rx(paste0("*med*", j, "*.fits$")), full.names = T
+    ## Don't match if number precedes VID?
+    invar_files = invar_files[grepl(paste0("(?<![0-9])(", VID, ")"), invar_files, perl = TRUE) & grepl(FILT, invar_files) & !grepl("patch", invar_files)]
+    median_files = median_files[grepl(paste0("(?<![0-9])(", VID, ")"), median_files, perl = TRUE) & grepl(FILT, median_files) & !grepl("patch", median_files)]
+
     if(length(median_files)==0){
       message("No frames") 
     }else{
