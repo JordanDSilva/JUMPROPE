@@ -2249,15 +2249,6 @@ make_directory_structure = function(){
     dir.create(paste0(ref_dir, "/InVar_Stacks/"), recursive = T, showWarnings = F)
     dir.create(paste0(ref_dir, "/Median_Stacks/"), recursive = T, showWarnings = F)
     dir.create(paste0(ref_dir, "/Patch_Stacks/"), recursive = T, showWarnings = F)
-    
-    dir.create(paste0(ref_dir, "/ProFound/Data/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/ProFound/GAIA_Cats/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/ProFound/Star_Masks/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/ProFound/HST_cutout/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/ProFound/Detects/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/ProFound/Sampling/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/ProFound/Inspect/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/ProFound/Measurements/"), recursive = T, showWarnings = F)
     return(ref_dir)
   }else if(make_dirs == "F"){
     message("Continuing...")

@@ -1,54 +1,12 @@
 source("all_codes_profound.R")
 
-make_directory_structure = function(){
-  message("Should I make the directory structure for you? (T/F): ")
-  make_dirs = readLines("stdin", n = 1)
-  if(make_dirs == "T"){
-    message("Where should I make the directory (supply directory or nothing): ")
-    ref_dir = readLines("stdin", n=1)
-    if(ref_dir==""){
-      ref_dir = getwd()
-      message("No user input. Making in current working directory.")
-    }
-    
-    print(ref_dir)
-    dir.create(paste0(ref_dir, "/Pro1oF/cal/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/Pro1oF/cal_sky/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/Pro1oF/cal_sky_renorm/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/sky_pro/sky_frames/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/sky_pro/sky_super/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/dump/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/InVar_Stacks/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/Median_Stacks/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/Patch_Stacks/"), recursive = T, showWarnings = F)
-    
-    dir.create(paste0(ref_dir, "/ProFound/Data/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/ProFound/GAIA_Cats/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/ProFound/Star_Masks/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/ProFound/HST_cutout/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/ProFound/Detects/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/ProFound/Sampling/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/ProFound/Inspect/"), recursive = T, showWarnings = F)
-    dir.create(paste0(ref_dir, "/ProFound/Measurements/"), recursive = T, showWarnings = F)
-    return(ref_dir)
-  }else{
-    message("Continuing...")
-    message("Where is the reference directory (supply directory or nothing): ")
-    ref_dir = readLines("stdin", n=1)
-    if(ref_dir==""){
-      ref_dir = getwd()
-      message("No user input. Assuming everything in current working directory.")
-    }
-    return(ref_dir)
-  }
-}
-
 select_code_func = function(){
   message(" 
           ############################################################
           ############################################################
           ## Thank you for choosing ZORK for your JWST processing!  ##
           ## Press:                                                 ##
+          ## 0 = Set up directory structure                         ##
           ## 1 = Warp short to long                                 ##
           ## 2 = Copy frames                                        ##
           ## 3 = Query GAIA                                         ## 
@@ -61,6 +19,7 @@ select_code_func = function(){
           ## 10 = ProMeasure                                        ##
           ## 11 = Chop up frames                                    ##
           ## 12 = Combine chunks                                    ##
+          ## 13 = Help                                              ##
           ##                                                        ##
           ## CONTROL + /\ to EXIT                                    ##
           ############################################################
@@ -75,15 +34,13 @@ select_code_func = function(){
     )[[1]]
   )
   
-  if( sum(select_vector %in% 1:12) == 0){
+  if( sum(select_vector %in% 0:13) == 0){
     message("Oops, I think you made a mistake. Trying again.")
     select_code_func()
   }
-  else{
-    # return(c(1:10)[1:10 %in% select_vector])
-    return(select_vector)
-  }
-  
+  return(
+    select_vector+1 ## Plus one since can't index list with 0
+  )
 }
 
 
@@ -159,7 +116,9 @@ main = function(){
   
   select_code = select_code_func()
   
+  make_dir_temp_func = function(input_args){make_directory_structure()}
   code_organiser = list(
+    'make_directory_structure'=make_dir_temp_func, ## Hack to handle input_args
     'warp_short_to_long'=warp_short_to_long,
     'copy_frames'=copy_frames,
     'query_gaia'=query_gaia,
@@ -171,7 +130,8 @@ main = function(){
     'copy_hst_for_tile'=copy_hst_for_tile,
     'do_measure'=do_measure,
     'frame_chunker'=frame_chunker,
-    'combine_chunks'=combine_chunks
+    'combine_chunks'=combine_chunks,
+    'do_help' = do_help
   )
   
   for(i in 1:dim(frame_grid)[1]){
@@ -187,13 +147,13 @@ main = function(){
       cores_stack = as.numeric(env_var[["JUMPROPE_cores_stack"]])
       
     )
-    
-    lapply(select_code,
-           function(x){
-             code_organiser[[x]](input_args)
-           })
+    if(14 %in% select_code){
+      code_organiser[[14]](input_args)
+      break
+    }else{
+      lapply(select_code,function(x){code_organiser[[x]](input_args)}) 
+    }
   }
-  
 }
 
 if(sys.nframe()==0){

@@ -203,10 +203,7 @@ zork = function(){
       SIGMA_LO = NULL #keep blurring at wisp rem stage off by default
     )
     
-    lapply(select_code,
-           function(x){
-             code_organiser[[x]](input_args)
-           })
+    lapply(select_code,function(x){code_organiser[[x]](input_args)})
   }
 }
 

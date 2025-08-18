@@ -918,6 +918,9 @@ do_detect = function(input_args, detect_bands = detect_bands_load, profound_func
   names(propanes) = file_names[idx]
   
   N_frames = length(propanes)
+  if(N_frames == 0){
+    stop("No frames detected - please copy them to the Data directory!")
+  }
   message(paste0("Running ", N_frames, " frames from ", "VISIT: ", VID, ", module: ", MODULE))
   
   star_mask_file = list.files(star_mask_dir, pattern = paste0(PIXSCALE,"_star_mask.rds"), full.names = T)
@@ -1129,7 +1132,7 @@ do_measure = function(input_args){
   gc()
   
   if(dim(super_segstats)[1] == 0){
-    message("No objects to measure!")
+    stop("No objects to measure!")
   }else{
     ####### Load data images ########################
     assert(checkDirectoryExists(data_dir))
@@ -1147,6 +1150,11 @@ do_measure = function(input_args){
     filter.names[is.na(filter.names)] = sapply(data.list[is.na(filter.names)], function(x)str_split_1(x, "_")[6]) ## Filter name should hopefully always be in position 6
     
     bad_name = data.list[is.na(filter.names)]
+    
+    N_frames = length(data.list)
+    if(N_frames == 0){
+      stop("No frames detected - please copy them to the Data directory!")
+    }
     
     ext = sapply(data.list, function(x)Rfits_extname_to_ext(x, extname = "image"))
     images = Rfits_make_list(
@@ -2188,3 +2196,210 @@ copy_long = function(input_args){
   message("Done!")
   # return(c(frames_short_to_long, frames_long))
 } ##<-- Copy the long pixelscale to Data dir. File redundancy but safer option for detects.
+do_help = function(input_args){
+  
+  cat("\n")
+  message("## Help ##")
+  cat("\n")
+  
+  message("Author: Jordan C. J. D'Silva")
+  message("Date: ", Sys.Date())
+  
+  message("\n")
+  
+  message(
+    "Running zork: Rscript zork_profound.R <VID, e.g., '2738|1176261001' or 'MOSAIC'> <MODULE, e.g., 'NRCA|NRCB' or 'MOSAIC'> <PIXELSCALE e.g., 'long(default)' or 'short'>"
+  )
+  
+  message("\n")
+  
+  message("It is advised to separate the files into organised directories to avoid unwanted clashes occurring during the sub-routines.")
+  message("Recommended directory structure is, for example: ")
+  message(
+    'JP/
+  ├─ Data/
+  │  ├─ VID/
+  │  │  ├─ /MODULE/
+  ├─ Detects/
+  │  ├─ VID/
+  │  │  ├─ /MODULE/
+  ├─ GAIA_Cats/
+  │  ├─ VID/
+  │  │  ├─ /MODULE/
+  ├─ HST_cutout/
+  │  ├─ VID/
+  │  │  ├─ /MODULE/
+  ├─ Inpsect/
+  │  ├─ VID/
+  │  │  ├─ /MODULE/
+  ├─ Measurements/
+  │  ├─ VID/
+  │  │  ├─ /MODULE/
+  ├─ Sampling/
+  │  ├─ VID/
+  │  │  ├─ /MODULE/
+  ├─ Star_Masks/
+  │  ├─ VID/
+  │  │  ├─ /MODULE/'
+  )
+  
+  message("\n")
+  
+  message("Input arguments for each of the sub-routines in JP are as follows:")
+  message(
+    'input_args = list(
+      
+      ref_dir = ref_dir, ## <-- Reference directory, where you want to put your JUMPROPE files, string
+      
+      VID = VID, ## <-- 4 digit program ID or 10 digit visit ID, string, e.g., "1234567890"
+      MODULE = MODULE ## <-- NIRCam module to process or otherwise the same as VID for processing a big mosaic
+      PIXSCALE = PIXSCALE ## <-- Pixelscale to of frame to process, either long or short since JUMPROPE makes both 
+      
+      cores_stack = cores_stack, ## <-- Cores for stacking with ProPane, numeric
+      sampling_cores = cores_stack, ## <-- Cores for sky sampling, numeric
+    )'
+  )
+  
+  message("\n")
+  
+  message("Contents of ProFound_settings.R for source detection and measurement parameters with ProFound:")
+  message("Use ?ProFound::profoundProFound in R session to learn more.")
+  message(
+    'detect_bands_load = "F277W|F356W|F444W" 
+      ## Use "ALL" fo an all filter stack for source detection
+      ## Use "F277W|F356W|F444W" notation to change to 3 filter long wavelength detect 
+      
+      profound_detect_master = function(frame, skyRMS, star_mask, pix_mask=NULL, segim = NULL){
+        #Inject this function into the detect runs
+        #frame is the stack with WCS
+        #stack is for the skyRMS matrix
+        #star_mask should be 1 or 0 matrix
+        if(is.null(pix_mask)){
+          mask = is.na(frame$imDat) | star_mask
+        }else{
+          mask = is.na(frame$imDat) | star_mask | pix_mask
+        }
+        pro = profoundProFound(
+          image = frame,
+          mask = mask | (frame$imDat == 0) | (is.na(frame$imDat) | (is.infinite(frame$imDat))),
+          segim = segim,
+          rem_mask = T,
+          magzero = 23.9,
+          
+          skyRMS = skyRMS,
+          
+          skycut = 1.5,
+          pixcut = 7.0,
+          ext = 1.0,
+          
+          smooth = T,
+          sigma = 0.8,
+          
+          tolerance = 3.0,
+          reltol = -1.0,
+          cliptol = 100,
+          
+          #size = 13,
+          iters = 4,
+          
+          box = 100,
+          grid = 100,
+          boxiters = 0,
+          
+          roughpedestal = F,
+          pixelcov = F,
+          boundstats = T,
+          nearstats = T, 
+          redosky = T,
+          # redoskysize = 11,
+          
+          verbose = F,
+        )
+        message("Finished profound")
+        return(pro)
+      }
+      
+      measure_profound = function(super_img = super_img, inVar = inVar, segim=segim, mask=mask, redosegim=T, sky=NULL, redosky=T){
+        
+        if(inherits(inVar, "Rfits_image")){
+          skyRMS = inVar$imDat^-0.5
+        }else if(is.null(inVar)){
+          skyRMS = NULL
+        }else{
+          skyRMS = inVar^-0.5
+        }
+        
+        if(redosegim){
+          iters = 2
+        }else{
+          iters = 0
+        }
+        
+        super_pro = profoundProFound(
+          super_img,
+          magzero = 23.9,
+          mask = mask | super_img$imDat == 0 | is.na(super_img$imDat) | is.infinite(super_img$imDat),
+          # detection, segmentation and dilation
+          segim = segim,
+          redosegim = redosegim,
+          
+          size = 5,
+          iters = iters,
+          
+          # sky estimate
+          sky = NULL,        # Do we model the sky again?
+          skyRMS = skyRMS,
+          box = 100,
+          grid = 100,
+          boxiters = 2,
+          # measurement mode
+          dotot = T,
+          docol = T,
+          dogrp = T,
+          # stats
+          boundstats = T,
+          segstats = T,
+          # misc
+          pixelcov = T,
+          rem_mask = T,
+          verbose = F,
+          redosky = redosky,
+          redoskysize = 11
+        )
+        return(super_pro)
+    }'
+  )
+}
+make_directory_structure = function(){
+  message("Should I make the directory structure for you? (T/F): ")
+  make_dirs = readLines("stdin", n = 1)
+  if(make_dirs == "T"){
+    message("Where should I make the directory (supply directory or nothing): ")
+    ref_dir = readLines("stdin", n=1)
+    if(ref_dir==""){
+      ref_dir = getwd()
+      message("No user input. Making in current working directory.")
+    }
+    
+    print(ref_dir)
+
+    dir.create(paste0(ref_dir, "/ProFound/Data/"), recursive = T, showWarnings = F)
+    dir.create(paste0(ref_dir, "/ProFound/GAIA_Cats/"), recursive = T, showWarnings = F)
+    dir.create(paste0(ref_dir, "/ProFound/Star_Masks/"), recursive = T, showWarnings = F)
+    dir.create(paste0(ref_dir, "/ProFound/HST_cutout/"), recursive = T, showWarnings = F)
+    dir.create(paste0(ref_dir, "/ProFound/Detects/"), recursive = T, showWarnings = F)
+    dir.create(paste0(ref_dir, "/ProFound/Sampling/"), recursive = T, showWarnings = F)
+    dir.create(paste0(ref_dir, "/ProFound/Inspect/"), recursive = T, showWarnings = F)
+    dir.create(paste0(ref_dir, "/ProFound/Measurements/"), recursive = T, showWarnings = F)
+    return(ref_dir)
+  }else{
+    message("Continuing...")
+    message("Where is the reference directory (supply directory or nothing): ")
+    ref_dir = readLines("stdin", n=1)
+    if(ref_dir==""){
+      ref_dir = getwd()
+      message("No user input. Assuming everything in current working directory.")
+    }
+    return(ref_dir)
+  }
+}
