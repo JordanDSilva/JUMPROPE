@@ -16,7 +16,7 @@ library(celestial)
 library(matrixStats)
 library(checkmate)
 
-pipe_version = "1.4.5" 
+pipe_version = "1.5.0" 
 
 load_files = function(input_args, which_module, sky_info = NULL){
   ## Load the correct files for what ever task

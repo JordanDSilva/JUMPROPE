@@ -16,7 +16,7 @@ library(matrixStats)
 
 source("./ProFound_settings.R")
 
-jumprope_version = "1.4.5"
+jumprope_version = "1.5.0"
 
 frame_info = function(ref_dir){
   
