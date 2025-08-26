@@ -16,7 +16,7 @@ library(matrixStats)
 
 source("./ProFound_settings.R")
 
-jumprope_version = "1.5.0"
+jumprope_version = "1.5.1"
 
 frame_info = function(ref_dir){
   
@@ -89,10 +89,7 @@ frame_info = function(ref_dir){
   )
   
   stack_grid = unique(frame_info[,c("VISIT_ID", "MODULE", "PIXSCALE")])
-  
-  stack_grid$PROPOSAL_ID = substr(stack_grid$VISIT_ID, 1, 4)
-  stack_grid$PROPOSAL_ID[stack_grid$MODULE == stack_grid$VISIT_ID] = stack_grid$VISIT_ID[stack_grid$MODULE == stack_grid$VISIT_ID]
-  
+
   foo = foreach(i = 1:dim(stack_grid)[1], .combine = "rbind") %do% {
     wcs_info = propaneFrameFinder(
       rad = 2*pi*3600,
@@ -128,7 +125,7 @@ frame_info = function(ref_dir){
                              "RA_BR", "DEC_BR")
     
     ret = cbind(
-      stack_grid[i, c("PROPOSAL_ID","VISIT_ID", "MODULE", "PIXSCALE")],
+      stack_grid[i, c("VISIT_ID", "MODULE", "PIXSCALE")],
       
       mid_info,
       
@@ -831,36 +828,7 @@ star_mask_tile = function(input_args){
     )$image$imDat
     big_star_mask[big_star_mask != 0] = 1
     unlink(temp_fits_fname, recursive = TRUE) 
-    
-    ## Storing large matrices in a list, wtf? Try something new^
-    # read_star_masks = foreach(i = 1:length(input_VID))%do%{ 
-    #   star_mask_file = paste0(ref_dir, "/ProFound/Star_Masks/", input_VID[i], "/", 
-    #                           input_MODULE[i], "/", 
-    #                           input_VID[i], "_", input_MODULE[i], "_", PIXSCALE, "_star_mask.rds")
-    #   
-    #   message("Using: ", star_mask_file)
-    #   star_mask = readRDS(star_mask_file)
-    #   
-    #   input_file_keyvalues = Rfits_read_image(
-    #     filename = input_info$full[i],
-    #     ext = 1
-    #   )$keyvalues
-    #   
-    #   temp_warp = propaneWarp(
-    #     image_in = Rfits_create_image(star_mask$mask, keyvalues = input_file_keyvalues),
-    #     keyvalues_out = keyvalues,
-    #     doscale = F,
-    #     cores = 1
-    #   )
-    #   star_mask_warp = temp_warp$imDat
-    #   # star_mask_warp[star_mask_warp != 0 | !is.na(star_mask_warp)] = 1
-    #   star_mask_warp[is.na(star_mask_warp)] = 0
-    #   return(star_mask_warp)
-    # }
-    # 
-    # big_star_mask = Reduce("+", read_star_masks)
-    # big_star_mask[big_star_mask != 0] = 1
-    
+  
     message("Star mask complete")
     message("Saving star mask...")
     
@@ -2251,7 +2219,7 @@ do_help = function(input_args){
       
       ref_dir = ref_dir, ## <-- Reference directory, where you want to put your JUMPROPE files, string
       
-      VID = VID, ## <-- 4 digit program ID or 10 digit visit ID, string, e.g., "1234567890"
+      VID = VID, ## <-- Program ID or visit ID, string, e.g., "1234567890"
       MODULE = MODULE ## <-- NIRCam module to process or otherwise the same as VID for processing a big mosaic
       PIXSCALE = PIXSCALE ## <-- Pixelscale to of frame to process, either long or short since JUMPROPE makes both 
       

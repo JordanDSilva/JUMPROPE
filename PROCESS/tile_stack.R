@@ -13,18 +13,19 @@ library(Cairo)
 
 ## -- START OF EDIT --
 
-## User defined inputs here
-ref_cat = fread("put astrometric catalogue here") #example for HST catalogue in EGS field
-
-names(ref_cat) = c("RA", "Dec")
+## User defined inputs here, for example
+##ref_cat = fread("put astrometric catalogue here") #example for HST catalogue in EGS field
+#names(ref_cat) = c("RA", "Dec")
+#RA = colMeans(ref_cat)[1], ## Coords to search for frames
+#Dec = colMeans(ref_cat)[2],   
 
 input_args = list(
   ref_dir = "", ## Directory containing the ProPane/ProFound/JUMPROPE stuff
   super_name = "", ## Name of mosaic. Advise against including "_"  
 
-  ref_cat = ref_cat, ## Reference catalogue for alignment
-  RA = colMeans(ref_cat)[1], ## Coords to search for frames
-  Dec = colMeans(ref_cat)[2],    
+  ref_cat = NULL, ## Reference catalogue for alignment
+  RA = 180.0,
+  Dec = 0.0,
   
   calstack = FALSE, ## Make a mosaic from the input cal_sky_renorm files. Invalidates 'grid_size' argument, sets it to "". 
   grid_size = "short", ## short (0.03 asec/pixel) or long (0.06 asec/pixel) VISITID propane stack files to fetch 
@@ -59,7 +60,6 @@ additional_args = list(
 )
 
 ## -- END OF EDIT --
-
 input_args$additional_args = additional_args
 deep_stacker = function(input_args){
   
@@ -431,4 +431,6 @@ deep_stacker = function(input_args){
   }
 }
 
-deep_stacker(input_args = input_args)
+if (sys.nframe() == 0){
+  deep_stacker(input_args = input_args)
+}

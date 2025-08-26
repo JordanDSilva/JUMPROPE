@@ -63,7 +63,6 @@ select_code_func = function(){
       select_vector+1 ## Plus one since can't index list with 0
     )
   }
-  
 }
 
 zork = function(){

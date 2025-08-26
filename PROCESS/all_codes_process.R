@@ -16,7 +16,7 @@ library(celestial)
 library(matrixStats)
 library(checkmate)
 
-pipe_version = "1.5.0" 
+pipe_version = "1.5.1" 
 
 load_files = function(input_args, which_module, sky_info = NULL){
   ## Load the correct files for what ever task
@@ -606,7 +606,6 @@ do_cal_process = function(input_args, filelist = NULL){
     }else{
       return(NULL)
     }
-    
   }
   
   if(!is.null(parallel_type)){
@@ -634,10 +633,7 @@ do_regen_sky_info = function(input_args){
   # sky_frames_dir = paste0(sky_pro_dir, "/sky_frames/")
   filelist = list.files(sky_frames_dir, full.names = TRUE, pattern = glob2rx(paste0("*", input_args$VID, "*.fits")))
   filelist = grep('.fits$', filelist, value=TRUE)
-  
-  foo = list.files(sky_frames_dir, full.names = FALSE)
-  vids = substr(grep('.fits$', foo, value=TRUE), 4, 13)
-  
+
   cat('Processing',length(filelist),'files\n')
   
   sky_info = foreach(i = 1:length(filelist), .combine="rbind")%dopar%{
@@ -926,7 +922,6 @@ do_apply_super_sky = function(input_args){
     }else{
       return(NULL)
     }
-    
   }
   
   if(!is.null(parallel_type)){
@@ -1714,7 +1709,7 @@ do_patch = function(input_args){
   
   for(j in pixscale_list){
     invar_files = list.files(path=invar_dir, pattern = glob2rx(paste0("*stack*", j, "*.fits$")), full.names = T)
-    median_files = list.files(path=median_dir, pattern = glob2rx(paste0("*med*", j, "*.fits$")), full.names = T
+    median_files = list.files(path=median_dir, pattern = glob2rx(paste0("*med*", j, "*.fits$")), full.names = T)
     ## Don't match if number precedes VID?
     invar_files = invar_files[grepl(paste0("(?<![0-9])(", VID, ")"), invar_files, perl = TRUE) & grepl(FILT, invar_files) & !grepl("patch", invar_files)]
     median_files = median_files[grepl(paste0("(?<![0-9])(", VID, ")"), median_files, perl = TRUE) & grepl(FILT, median_files) & !grepl("patch", median_files)]
@@ -1943,7 +1938,6 @@ do_RGB = function(input_args){
     )
     dev.off()
   }
-
 }
 do_wisp_reverse = function(input_args){
   
@@ -2165,7 +2159,7 @@ do_help = function(input_args){
       
       magzero = 23.9, ## <-- Magnitude zero-point for ProPane mosaics, 8.9/16.4/23.9 is Jy,milliJy/microJy, numeric
       
-      VID = VID, ## <-- 4 digit program ID or 10 digit visit ID, string, e.g., "1234567890"
+      VID = VID, ## <-- Program ID or visit ID, string, e.g., "1234567890"
       FILT = FILT, ## <-- Set of filters to process, string separated by "|", e.g., "F090W|F150W" to do those 2 filters
       
       do_NIRISS = do_NIRISS, ## <-- Process NIRISS, boolean
