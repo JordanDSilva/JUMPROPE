@@ -16,33 +16,25 @@ from astropy.coordinates import SkyCoord
 from astropy.table import vstack
 import time
 
+Observations.TIMEOUT = 3600 ## Is this useful?
 #Observations.enable_cloud_dataset(provider='AWS')
 
 parser = argparse.ArgumentParser(description='Download from MAST')
-
 ## Set up input args to run from command line
-parser.add_argument('--RA', type=float, nargs="?",
-                    help='Central right ascension of catalogue (deg)', default=110.8375)
+parser.add_argument('--RA', type=float, nargs="?", help='Central right ascension of catalogue (deg)', default=110.8375)
 parser.add_argument('--DEC', type=float, nargs="?", help="Central declination of catalogue (deg)", default=-73.4391)
 parser.add_argument('--RAD', type=float, nargs="?", help="Search radius (deg)", default=1.0)
-
 parser.add_argument('--TELESCOPE', type=str, nargs="*", help="Telescope to download")
 parser.add_argument('--CAMERA', type=str, nargs="*", help="Camera to download", default = ["ALL"])
 parser.add_argument('--FILTER', type=str, nargs="*", help="Filter to download", default = ["ALL"])
-
-parser.add_argument('--STAGE', type=str, nargs="*", default = ["UNCAL"],
-                    help='Product level (e.g., UN/CAL for un/cal files)')
-
+parser.add_argument('--STAGE', type=str, nargs="*", default = ["UNCAL"], help='Product level (e.g., UN/CAL for un/cal files)')
 parser.add_argument('--VISITID', type=int, nargs="*", help="VISIT ID (e.g., 2736 for SMACS)", default = None)
-
-
-parser.add_argument('--dry_run', type=bool, nargs=1,
-                    help='Only download info table.')
-
+parser.add_argument('--dry_run', type=bool, nargs=1, help='Only download info table.')
 
 args = parser.parse_args()
 
 def check_dl_size(products_stage2):
+    """Check the download size"""
     ind = np.unique(products_stage2['obsID'], return_index = True)[1]
     TBD = np.round(np.sum(products_stage2['size'][ind]) / 10**9, decimals=2)
     Nfiles = len(products_stage2['size'][ind])           
@@ -50,20 +42,22 @@ def check_dl_size(products_stage2):
     input('Press any key to continue...')
 
 def cone_query(ref_dir, ra, dec, rad, telescope, camera, filter, stage, dl_products):
+    """Do the cone query"""
     print("Querying observation")
 
     ## Set up the search cone
     coord = SkyCoord(ra=ra, dec=dec, unit=(u.degree, u.degree), frame="icrs")
 
     ## convenience stub name for saving the astropy tables
-    stub_name = str(round(ra, 2)) + "_" + str(round(dec, 2)) + "_" + str(round(rad, 2)) + \
-                "_" + telescope + "_" + camera + "_" + filter + "_" + stage
+    stub_name = str(round(ra, 2)) + "_" + str(round(dec, 2)) + "_" + str(round(rad, 2)) + "_" + telescope + "_" + camera + "_" + filter + "_" + stage
 
     ## where we will put the downloaded frames
-    dl_dir = os.path.join(ref_dir, telescope,
-                          str(round(ra, 2)) + "_" + str(round(dec, 2)) + "_" +
-                          str(round(rad, 2)),
-                          stage) + str("/")
+    dl_dir = os.path.join(
+        ref_dir, telescope,
+        str(round(ra, 2)) + "_" + str(round(dec, 2)) + "_" +
+        str(round(rad, 2)),
+        stage
+    ) + str("/")
 
     ## Make sure that we get all HST frames that are part of HAP or HLA products
     telescopes = [telescope]
@@ -73,31 +67,37 @@ def cone_query(ref_dir, ra, dec, rad, telescope, camera, filter, stage, dl_produ
 
     ## Now the meat of the code. Query MAST.
     if camera == filter == "ALL":
-        obs_table = Observations.query_criteria(coordinates=coord,
-                                                radius=rad * u.degree,
-                                                project=telescopes,
-                                                dataproduct_type=["IMAGE", "image"]
-                                                )
+        obs_table = Observations.query_criteria(
+            coordinates=coord,
+            radius=rad * u.degree,
+            project=telescopes,
+            dataproduct_type=["IMAGE", "image"]
+        )
     elif filter == "ALL" and camera != "ALL":
-        obs_table = Observations.query_criteria(coordinates=coord,
-                                        radius=rad * u.degree,
-                                        project=telescopes,
-                                        dataproduct_type=["IMAGE", "image"],
-                                        instrument_name=[camera, camera + "/IMAGE"])
+        obs_table = Observations.query_criteria(
+            coordinates=coord,
+            radius=rad * u.degree,
+            project=telescopes,
+            dataproduct_type=["IMAGE", "image"],
+            instrument_name=[camera, camera + "/IMAGE"]
+        )
     elif camera == "ALL" and filter != "ALL":
-        obs_table = Observations.query_criteria(coordinates=coord,
-                                                radius=rad * u.degree,
-                                                project=telescopes,
-                                                dataproduct_type=["IMAGE", "image"],
-                                                filters = filter)
+        obs_table = Observations.query_criteria(
+            coordinates=coord,
+            radius=rad * u.degree,
+            project=telescopes,
+            dataproduct_type=["IMAGE", "image"],
+            filters = filter
+        )
     else:
-        obs_table = Observations.query_criteria(coordinates=coord,
-                                                radius=rad * u.degree,
-                                                project=telescopes,
-                                                dataproduct_type=["IMAGE", "image"],
-                                                instrument_name=[camera, camera + "/IMAGE"],
-                                                filters = filter)
-
+        obs_table = Observations.query_criteria(
+            coordinates=coord,
+            radius=rad * u.degree,
+            project=telescopes,
+            dataproduct_type=["IMAGE", "image"],
+            instrument_name=[camera, camera + "/IMAGE"],
+            filters = filter
+        )
 
     if len(obs_table) == 0:
         pass
@@ -106,10 +106,11 @@ def cone_query(ref_dir, ra, dec, rad, telescope, camera, filter, stage, dl_produ
         product_list = [Observations.get_product_list(obs) for obs in obs_table]
         data_products = vstack(product_list)
 
-        products_stage2 = Observations.filter_products(data_products,
-                                                       extension="fits",
-                                                       productSubGroupDescription=stage
-                                                       )
+        products_stage2 = Observations.filter_products(
+            data_products,
+            extension="fits",
+            productSubGroupDescription=stage
+        )
 
         if "HAP-SVM" in set(products_stage2["project"]):
             products_stage2 = products_stage2[products_stage2["project"] == "HAP-SVM"]
@@ -119,29 +120,23 @@ def cone_query(ref_dir, ra, dec, rad, telescope, camera, filter, stage, dl_produ
         else:
 
             os.makedirs(dl_dir, exist_ok=True)
-
-            # sh_files = glob.glob(dl_dir + "*.sh")
-            # for file in sh_files:
-            #     os.remove(file)
-            # csv_files = glob.glob(dl_dir + "*.csv")
-            # for file in csv_files:
-            #     os.remove(file)
-
-            ascii.write(obs_table, dl_dir + stub_name +
-                        '_obs_table.csv', overwrite=True, format='csv')
-            ascii.write(products_stage2, dl_dir + stub_name +
-                        '_info.csv', overwrite=True, format='csv')
+            ascii.write(obs_table, dl_dir + stub_name + '_obs_table.csv', overwrite=True, format='csv')
+            ascii.write(products_stage2, dl_dir + stub_name + '_info.csv', overwrite=True, format='csv')
 
             if dl_products:
-                Observations.download_products(products_stage2,
-                                              download_dir=dl_dir,
-                                              curl_flag=False,
-                                              cache=True)
+                Observations.download_products(
+                    products_stage2,
+                    download_dir=dl_dir,
+                    curl_flag=False,
+                    cache=True
+                )
             else:
                 check_dl_size(products_stage2)
             return obs_table
 
 def vid_query(ref_dir, visit_id, stage, dl_products=False):
+    """Do the VID query"""
+
     pid = str(visit_id)[0:4]
 
     ## where we will put the downloaded frames
@@ -151,17 +146,19 @@ def vid_query(ref_dir, visit_id, stage, dl_products=False):
     os.makedirs(dl_dir, exist_ok=True)
 
     print("Querying observation")
-    obs_table = Observations.query_criteria(proposal_id=pid,
-                                            project='JWST',
-                                            dataproduct_type = ["IMAGE", "image"]
-                                            )
+    obs_table = Observations.query_criteria(
+        proposal_id=pid,
+        project='JWST',
+        dataproduct_type = ["IMAGE", "image"]
+    )
 
     product_list = [Observations.get_product_list(obs) for obs in obs_table]
     data_products = vstack(product_list)
-    products_stage2 = Observations.filter_products(data_products,
-                                                   extension="fits",
-                                                   productSubGroupDescription=stage,
-                                                   )
+    products_stage2 = Observations.filter_products(
+        data_products,
+        extension="fits",
+        productSubGroupDescription=stage,
+    )
 
     visit_ids = np.array([obs[3:13] for obs in products_stage2["obs_id"]])
     idx = np.flatnonzero(np.core.defchararray.find(visit_ids,str(visit_id))!=-1)
@@ -172,17 +169,18 @@ def vid_query(ref_dir, visit_id, stage, dl_products=False):
     ascii.write(obs_table, dl_dir + pid + '_' + stage + '_obs_table.csv', overwrite=True, format='csv')
 
     if dl_products:
-        Observations.download_products(products_stage2[idx],
-                                   download_dir=dl_dir,
-                                   curl_flag=False,
-                                   cache=True)
+        Observations.download_products(
+            products_stage2[idx],
+            download_dir=dl_dir,
+            curl_flag=False,
+            cache=True
+        )
 
     else:
         check_dl_size(products_stage2)
     return obs_table
 
 def main(args_dict):
-
     JUMPROPE_MAST_TOKEN = os.getenv('JUMPROPE_MAST_TOKEN')
     JUMPROPE_DOWNLOAD_DIR = os.getenv('JUMPROPE_DOWNLOAD_DIR')
 

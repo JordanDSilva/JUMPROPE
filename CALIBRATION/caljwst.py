@@ -19,13 +19,8 @@ parser.add_argument('--RA', type=float, nargs="?",
                     help='Central right ascension of catalogue (deg)', default=110.8375)
 parser.add_argument('--DEC', type=float, nargs="?", help="Central declination of catalogue (deg)", default=-73.4391)
 parser.add_argument('--RAD', type=float, nargs="?", help="Search radius (deg)", default=1.0)
-
 parser.add_argument('--VISITID', type=str, help="VISIT ID (e.g., 2736 for SMACS)", default = None)
-
-parser.add_argument("--redo",
-                    type=bool,
-                    help="Should we redo the calibration even if files exist?",
-                    default=False)
+parser.add_argument("--redo",type=bool,help="Should we redo the calibration even if files exist?",default=False)
 parser.add_argument("--max_cores", help="How many cores. Must be written as e.g., 'half', 'quarter' or 'all'", default="half")
 args = parser.parse_args()
 
@@ -68,17 +63,22 @@ def run1(input_data, rate_dir, cal_dir, files_bad_dir):
         return None
 
 def cal(ref_dir, ra, dec, rad, visitid):
+    """Do the work"""
 
     if visitid is None:
         print("CALJWST in region")
-        uncal_dir = os.path.join(ref_dir, "JWST",
-                                 str(round(ra, 2)) + "_" + str(round(dec, 2)) + "_" +
-                                 str(round(rad, 2)),
-                                 "UNCAL") + str("/")
-        files_bad_dir = os.path.join(ref_dir, "JWST",
-                                 str(round(ra, 2)) + "_" + str(round(dec, 2)) + "_" +
-                                 str(round(rad, 2)),
-                                 "bad") + str("/")
+        uncal_dir = os.path.join(
+            ref_dir, "JWST",
+            str(round(ra, 2)) + "_" + str(round(dec, 2)) + "_" +
+            str(round(rad, 2)),
+            "UNCAL"
+        ) + str("/")
+        files_bad_dir = os.path.join(
+            ref_dir, "JWST",
+            str(round(ra, 2)) + "_" + str(round(dec, 2)) + "_" +
+            str(round(rad, 2)),
+            "bad"
+        ) + str("/")
     else:
         print("CALJWST in region")
         uncal_dir = os.path.join(ref_dir, str(visitid), "UNCAL") + str("/")
@@ -89,12 +89,11 @@ def cal(ref_dir, ra, dec, rad, visitid):
     files = glob.glob(uncal_dir + "/**/*fits", recursive = True)
     uncal_files = [foo.split("_uncal")[0].split("/")[-1] for foo in files]
 
-
     rate_dir = []
     rate_files = []
-
     cal_dir = []
     cal_files = []
+
     for i in range(len(files)):
         getUncalPath = os.path.dirname(files[i])
 
