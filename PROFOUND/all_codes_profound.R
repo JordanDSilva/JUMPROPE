@@ -53,7 +53,8 @@ frame_info = function(ref_dir){
       full.names = F)
   )
   
-  VID_list = unname(sapply(filenames, function(x){
+  if(length(filelist) > 0){
+    VID_list = unname(sapply(filenames, function(x){
     split_fname = str_split(x, "_")[[1]]
     split_fname = split_fname[!(grepl("patch|stack|short|long|F.+W|F.+M|F.+N|MIRIMAGE|.fits", split_fname))]
     vid = split_fname[1]
@@ -64,81 +65,86 @@ frame_info = function(ref_dir){
     }
   }))
   
-  MODULE_list = unname(sapply(filenames, function(x){
-    split_fname = str_split(x, "_")[[1]]
-    split_fname = split_fname[!(grepl("patch|stack|short|long|F.+W|F.+M|F.+N|MIRIMAGE|.fits", split_fname))]
-    if(is.na(split_fname[2])){
-      module = split_fname[1]
-    }else{
-      module = split_fname[2]
+    MODULE_list = unname(sapply(filenames, function(x){
+      split_fname = str_split(x, "_")[[1]]
+      split_fname = split_fname[!(grepl("patch|stack|short|long|F.+W|F.+M|F.+N|MIRIMAGE|.fits", split_fname))]
+      if(is.na(split_fname[2])){
+        module = split_fname[1]
+      }else{
+        module = split_fname[2]
+      }
+      return(module)
+    }))
+    
+    PIX_list = unname(sapply(filenames, function(x){
+      split_fname = tail(str_split(x, "_")[[1]], 1)
+      pixscale_ = str_split_1(split_fname, ".fits")[1]
+      return(pixscale_)
+    }))
+
+    frame_info = data.frame(
+      "filenames" = filenames,
+      "VISIT_ID" = VID_list,
+      "MODULE" = MODULE_list,
+      "PIXSCALE" = PIX_list
+    )
+    
+    stack_grid = unique(frame_info[,c("VISIT_ID", "MODULE", "PIXSCALE")])
+
+    foo = foreach(i = 1:dim(stack_grid)[1], .combine = "rbind") %do% {
+      wcs_info = propaneFrameFinder(
+        rad = 2*pi*3600,
+        filelist = filelist[
+          grepl(stack_grid$VISIT_ID[i], filelist) & grepl(stack_grid$MODULE[i], filelist)
+        ][1],
+        plot = F
+      )
+      
+      mid_info = data.frame(
+        cbind("RA_MBL" = (wcs_info$centre_RA + wcs_info$corner_BL_RA)/2.0, "DEC_MBL" = (wcs_info$centre_Dec + wcs_info$corner_BL_Dec)/2.0),
+        cbind("RA_MTL" = (wcs_info$centre_RA + wcs_info$corner_TL_RA)/2.0, "DEC_MTL" = (wcs_info$centre_Dec + wcs_info$corner_TL_Dec)/2.0),
+        cbind("RA_MTR" = (wcs_info$centre_RA + wcs_info$corner_BR_RA)/2.0, "DEC_MTR" = (wcs_info$centre_Dec + wcs_info$corner_BR_Dec)/2.0),
+        cbind("RA_MBR" = (wcs_info$centre_RA + wcs_info$corner_TR_RA)/2.0, "DEC_MBR" = (wcs_info$centre_Dec + wcs_info$corner_TR_Dec)/2.0)
+      )
+      
+      mid_corner_info = data.frame(
+        cbind( "RA_CL" = (wcs_info$corner_BL_RA + wcs_info$corner_TL_RA)/2.0,  "DEC_CL" = (wcs_info$corner_BL_Dec + wcs_info$corner_TL_Dec)/2.0),
+        cbind( "RA_CT" = (wcs_info$corner_TL_RA + wcs_info$corner_TR_RA)/2.0,  "DEC_CT" = (wcs_info$corner_TL_Dec + wcs_info$corner_TR_Dec)/2.0),
+        cbind( "RA_CR" = (wcs_info$corner_TR_RA + wcs_info$corner_BR_RA)/2.0,  "DEC_CR" = (wcs_info$corner_TR_Dec + wcs_info$corner_BR_Dec)/2.0),
+        cbind( "RA_CB" = (wcs_info$corner_BL_RA + wcs_info$corner_BR_RA)/2.0,  "DEC_CB" = (wcs_info$corner_BL_Dec + wcs_info$corner_BR_Dec)/2.0)
+      )
+      
+      wcs_info_trim = wcs_info[, c("centre_RA", "centre_Dec", 
+                                  "corner_BL_RA", "corner_BL_Dec",
+                                  "corner_TL_RA", "corner_TL_Dec",
+                                  "corner_TR_RA", "corner_TR_Dec",
+                                  "corner_BR_RA", "corner_BR_Dec")]
+      names(wcs_info_trim) = c("RA_CEN", "DEC_CEN", 
+                              "RA_BL", "DEC_BL", 
+                              "RA_TL", "DEC_TL",
+                              "RA_TR", "DEC_TR",
+                              "RA_BR", "DEC_BR")
+      
+      ret = cbind(
+        stack_grid[i, c("VISIT_ID", "MODULE", "PIXSCALE")],
+        
+        mid_info,
+        
+        wcs_info_trim,
+        
+        mid_corner_info
+      )
+      return(ret)
     }
-    return(module)
-  }))
-  
-  PIX_list = unname(sapply(filenames, function(x){
-    split_fname = tail(str_split(x, "_")[[1]], 1)
-    pixscale_ = str_split_1(split_fname, ".fits")[1]
-    return(pixscale_)
-  }))
-
-  frame_info = data.frame(
-    "filenames" = filenames,
-    "VISIT_ID" = VID_list,
-    "MODULE" = MODULE_list,
-    "PIXSCALE" = PIX_list
-  )
-  
-  stack_grid = unique(frame_info[,c("VISIT_ID", "MODULE", "PIXSCALE")])
-
-  foo = foreach(i = 1:dim(stack_grid)[1], .combine = "rbind") %do% {
-    wcs_info = propaneFrameFinder(
-      rad = 2*pi*3600,
-      filelist = filelist[
-        grepl(stack_grid$VISIT_ID[i], filelist) & grepl(stack_grid$MODULE[i], filelist)
-      ][1],
-      plot = F
-    )
     
-    mid_info = data.frame(
-      cbind("RA_MBL" = (wcs_info$centre_RA + wcs_info$corner_BL_RA)/2.0, "DEC_MBL" = (wcs_info$centre_Dec + wcs_info$corner_BL_Dec)/2.0),
-      cbind("RA_MTL" = (wcs_info$centre_RA + wcs_info$corner_TL_RA)/2.0, "DEC_MTL" = (wcs_info$centre_Dec + wcs_info$corner_TL_Dec)/2.0),
-      cbind("RA_MTR" = (wcs_info$centre_RA + wcs_info$corner_BR_RA)/2.0, "DEC_MTR" = (wcs_info$centre_Dec + wcs_info$corner_BR_Dec)/2.0),
-      cbind("RA_MBR" = (wcs_info$centre_RA + wcs_info$corner_TR_RA)/2.0, "DEC_MBR" = (wcs_info$centre_Dec + wcs_info$corner_TR_Dec)/2.0)
-    )
-    
-    mid_corner_info = data.frame(
-      cbind( "RA_CL" = (wcs_info$corner_BL_RA + wcs_info$corner_TL_RA)/2.0,  "DEC_CL" = (wcs_info$corner_BL_Dec + wcs_info$corner_TL_Dec)/2.0),
-      cbind( "RA_CT" = (wcs_info$corner_TL_RA + wcs_info$corner_TR_RA)/2.0,  "DEC_CT" = (wcs_info$corner_TL_Dec + wcs_info$corner_TR_Dec)/2.0),
-      cbind( "RA_CR" = (wcs_info$corner_TR_RA + wcs_info$corner_BR_RA)/2.0,  "DEC_CR" = (wcs_info$corner_TR_Dec + wcs_info$corner_BR_Dec)/2.0),
-      cbind( "RA_CB" = (wcs_info$corner_BL_RA + wcs_info$corner_BR_RA)/2.0,  "DEC_CB" = (wcs_info$corner_BL_Dec + wcs_info$corner_BR_Dec)/2.0)
-    )
-    
-    wcs_info_trim = wcs_info[, c("centre_RA", "centre_Dec", 
-                                 "corner_BL_RA", "corner_BL_Dec",
-                                 "corner_TL_RA", "corner_TL_Dec",
-                                 "corner_TR_RA", "corner_TR_Dec",
-                                 "corner_BR_RA", "corner_BR_Dec")]
-    names(wcs_info_trim) = c("RA_CEN", "DEC_CEN", 
-                             "RA_BL", "DEC_BL", 
-                             "RA_TL", "DEC_TL",
-                             "RA_TR", "DEC_TR",
-                             "RA_BR", "DEC_BR")
-    
-    ret = cbind(
-      stack_grid[i, c("VISIT_ID", "MODULE", "PIXSCALE")],
-      
-      mid_info,
-      
-      wcs_info_trim,
-      
-      mid_corner_info
-    )
-    return(ret)
+    foo[["jumprope_version"]] = rep(jumprope_version, dim(foo)[1])
+    csv_stub = paste0(ref_dir, "/ProFound/warp_info.csv")
+    fwrite(foo, csv_stub)
+    return(TRUE)
+  }else{
+    return(FALSE)
   }
   
-  foo[["jumprope_version"]] = rep(jumprope_version, dim(foo)[1])
-  csv_stub = paste0(ref_dir, "/ProFound/warp_info.csv")
-  fwrite(foo, csv_stub)
 } ##<--Compute the long warp frame info needed for querying GAIA and HST via MAST
 
 ## Moving files for source detection codes
@@ -1154,7 +1160,6 @@ do_measure = function(input_args){
       message(paste0("Running ProMeasure on: ", ff, "\n"))
       filt = images[[ff]][,]
       filt_invar = inVar[[ff]][,]
-      # filt[[ff]]$imDat[filt[[ff]]$imDat==0L] = NA
       
       dum_pro = measure_profound(filt, inVar = filt_invar, segim, mask)
       gc()
@@ -1162,7 +1167,6 @@ do_measure = function(input_args){
       img = filt$imDat - dum_pro$sky
       img[img == 0L] = NA
       img[mask] = NA
-      # sample_mask = (dum_pro$objects_redo | mask)
       
       message("\n ...Error sampling... \n")
       random_aperture_errs = .err_sampler(
@@ -1278,7 +1282,7 @@ do_measure = function(input_args){
         dum_aperture_phot_N
       )
       aperture_photometry_csvout = cbind(aperture_photometry_csvout, aperture_phot_csvout_temp)
-      rm(aperture_photometry_csvout)
+      rm(aperture_phot_csvout_temp)
       gc()
       
       CairoPDF(file.path(inspect_dir,paste0("profound_",ff,"_inspect.pdf")), width = 10, height = 10 )
@@ -1327,7 +1331,7 @@ do_measure = function(input_args){
       gc()
     }
     write.csv(csvout, file = file.path(measurements_dir,paste(VID,MODULE,PIXSCALE,"photometry.csv",sep='_')))
-    write.csv(aperture_photometry_csvout, file = file.path(measurements_dir,paste(VID,MODULE,PIXSCALE,"aperture_photometry_photometry.csv",sep='_')))
+    write.csv(aperture_photometry_csvout, file = file.path(measurements_dir,paste(VID,MODULE,PIXSCALE,"aperture_photometry.csv",sep='_')))
   }
 }
 
@@ -2258,6 +2262,7 @@ convert_to_propane = function(input_args){
   ref_dir = input_args$ref_dir
   VID = input_args$VID
   MODULE = VID
+  PIXSCALE = VID ## historical thing, would either have been short/long corresponding to 0.03/0.06 pixscale NIRCAM frames
 
   if(is.null(in_dir) & !is.null(in_file)){
     in_files = c(in_file)
@@ -2284,7 +2289,7 @@ convert_to_propane = function(input_args){
   
   for(i in 1:length(in_files)){
     fstub = in_files_stub[i]
-    fstub_out = gsub(".fits", "_propane.fits", fstub)
+    fstub_out = gsub(".fits", "_propane_", PIXSCALE, ".fits", fstub)
     frame = Rfits_read(in_files[i], pointer = FALSE) ## load into memory just so later keyvalues don't get messed up
 
     ## check the extensions 

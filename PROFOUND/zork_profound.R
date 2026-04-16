@@ -90,29 +90,38 @@ main = function(){
     ref_dir = make_directory_structure()
   }
   
-  frame_info(ref_dir)
-  
-  frame_info_file = data.frame(
-    fread(
-      paste0(ref_dir, "/ProFound/warp_info.csv")
-    ) 
-  )
-  
-  frame_grid_unique = unique(frame_info_file[, c("PROPOSAL_ID", "VISIT_ID", "MODULE", "PIXSCALE")])
-  
-  frame_grid = frame_grid_unique[
-    grepl(paste0("^",VID,"$"), frame_grid_unique$VISIT_ID) & grepl(paste0("^",MODULE,"$"), frame_grid_unique$MODULE, ignore.case = TRUE) & grepl(PIXSCALE, frame_grid_unique$PIXSCALE),
-  ]
-  if(dim(frame_grid)[1]==0){
+  frame_info_result = frame_info(ref_dir)
+  if(frame_info_result){
+      frame_info_stub = paste0(ref_dir, "/ProFound/warp_info.csv")
+      frame_info_file = data.frame(
+        fread(
+          frame_info_stub
+        ) 
+    )
+    
+    frame_grid_unique = unique(frame_info_file[, c("PROPOSAL_ID", "VISIT_ID", "MODULE", "PIXSCALE")])
+    
     frame_grid = frame_grid_unique[
-      grepl(paste0("^",VID,"$"), frame_grid_unique$PROPOSAL_ID) & grepl(paste0("^",MODULE,"$"), frame_grid_unique$MODULE, ignore.case = TRUE) & grepl(PIXSCALE, frame_grid_unique$PIXSCALE),
+      grepl(paste0("^",VID,"$"), frame_grid_unique$VISIT_ID) & grepl(paste0("^",MODULE,"$"), frame_grid_unique$MODULE, ignore.case = TRUE) & grepl(PIXSCALE, frame_grid_unique$PIXSCALE),
     ]
+    if(dim(frame_grid)[1]==0){
+      frame_grid = frame_grid_unique[
+        grepl(paste0("^",VID,"$"), frame_grid_unique$PROPOSAL_ID) & grepl(paste0("^",MODULE,"$"), frame_grid_unique$MODULE, ignore.case = TRUE) & grepl(PIXSCALE, frame_grid_unique$PIXSCALE),
+      ]
+    }
+    
+    message("Using this frame grid:")
+    print(
+      frame_grid
+    )
+  }else{
+    frame_grid = data.frame(
+      "VISIT_ID" = VID,
+      "MODULE" = MODULE,
+      "PIXSCALE" = PIXSCALE
+    )
   }
-  
-  message("Using this frame grid:")
-  print(
-    frame_grid
-  )
+
   
   select_code = select_code_func()
   

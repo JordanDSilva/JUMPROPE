@@ -1,5 +1,5 @@
 
-detect_bands_load = "F277W|F356W|F444W" 
+detect_bands_load = "ALL" 
 ## Use "ALL" fo an all filter stack for source detection
 ## Use "F277W|F356W|F444W" notation to change to 3 filter long wavelength detect 
 

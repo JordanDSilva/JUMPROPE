@@ -4,7 +4,7 @@ export JUMPROPE_CRDS_PATH='/Volumes/Expansion/crds'
 export JUMPROPE_CRDS_CONTEXT='jwst_1140.pmap'
 
 
-#export JUMPROPE_REF_DIR='/Volumes/Expansion/JWST/prof' ## I recommend you keep this commented. Only add when you are certain the directory structure has been made. The code will auto prompt you to create it on first run.
+#export JUMPROPE_REF_DIR='/Volumes/Expansion/JWST/' ## I recommend you keep this commented. Only add when you are certain the directory structure has been made. The code will auto prompt you to create it on first run.
 export JUMPROPE_RAW_DIR='/Volumes/Expansion/JWST/'
 
 export JUMPROPE_do_NIRISS=F
