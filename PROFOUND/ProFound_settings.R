@@ -3,11 +3,15 @@ detect_bands_load = "F277W|F356W|F444W"
 ## Use "ALL" fo an all filter stack for source detection
 ## Use "F277W|F356W|F444W" notation to change to 3 filter long wavelength detect 
 
-profound_detect_master = function(frame, skyRMS, star_mask, pix_mask=NULL, segim = NULL){
-  #Inject this function into the detect runs
-  #frame is the stack with WCS
-  #stack is for the skyRMS matrix
-  #star_mask should be 1 or 0 matrix
+r_aperture_photometry = c(0.16, 0.32, 0.5, 0.6)
+## radii in asec for multiband forced circular aperture photometry
+
+profound_detect_master = function(frame, skyRMS, star_mask, pix_mask = NULL, segim = NULL){
+  ## Inject this function into the detect runs
+  ## frame is the stack with WCS
+  ## stack is for the skyRMS matrix
+  ## star_mask should be 1 or 0 matrix
+
   if(is.null(pix_mask)){
     mask = is.na(frame$imDat) | star_mask
   }else{
@@ -17,7 +21,7 @@ profound_detect_master = function(frame, skyRMS, star_mask, pix_mask=NULL, segim
     image = frame,
     mask = mask | (frame$imDat == 0) | (is.na(frame$imDat) | (is.infinite(frame$imDat))),
     segim = segim,
-    rem_mask = T,
+    rem_mask = TRUE,
     magzero = 23.9,
     
     skyRMS = skyRMS,
@@ -26,7 +30,7 @@ profound_detect_master = function(frame, skyRMS, star_mask, pix_mask=NULL, segim
     pixcut = 7.0,
     ext = 1.0,
     
-    smooth = T,
+    smooth = TRUE,
     sigma = 0.8,
     
     tolerance = 3.0,
@@ -40,21 +44,26 @@ profound_detect_master = function(frame, skyRMS, star_mask, pix_mask=NULL, segim
     grid = 100,
     boxiters = 0,
     
-    roughpedestal = F,
-    pixelcov = F,
-    boundstats = T,
-    nearstats = T, 
-    redosky = T,
+    roughpedestal = FALSE,
+    pixelcov = FALSE,
+    boundstats = TRUE,
+    nearstats = TRUE, 
+    redosky = TRUE,
     # redoskysize = 11,
+
+    fluxtype = "microjansky",
+    pixscale = pixscale(frame, unit = "asec"),
     
-    verbose = F,
+    verbose = FALSE,
   )
   message("Finished profound")
   return(pro)
 }
 
-measure_profound = function(super_img = super_img, inVar = inVar, segim=segim, mask=mask, redosegim=T, sky=NULL, redosky=T){
-  
+measure_profound = function(super_img, inVar, segim, mask, redosegim = TRUE, sky = NULL, redosky = TRUE){
+  ## Do multiband measurements with ProFound
+  ## set sky = 0 and redosky = FALSE if frames are already sky subtracted and you don't want another sky model
+
   if(inherits(inVar, 'Rfits_image')){
     skyRMS = inVar$imDat^-0.5
   }else if(is.null(inVar)){
@@ -87,18 +96,23 @@ measure_profound = function(super_img = super_img, inVar = inVar, segim=segim, m
     grid = 100,
     boxiters = 2,
     # measurement mode
-    dotot = T,
-    docol = T,
-    dogrp = T,
+    dotot = TRUE,
+    docol = TRUE,
+    dogrp = TRUE,
     # stats
-    boundstats = T,
-    segstats = T,
+    boundstats = TRUE,
+    segstats = TRUE,
     # misc
-    pixelcov = T,
-    rem_mask = T,
-    verbose = F,
+    pixelcov = TRUE,
+    rem_mask = TRUE,
     redosky = redosky,
-    redoskysize = 11
+    redoskysize = 11,
+    
+    # image units
+    fluxtype = "microjansky",
+    pixscale = pixscale(super_img, unit = "asec"),
+
+    verbose = FALSE,
   )
   return(super_pro)
 }

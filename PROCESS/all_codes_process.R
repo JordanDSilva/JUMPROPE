@@ -16,7 +16,7 @@ library(celestial)
 library(matrixStats)
 library(checkmate)
 
-pipe_version = "1.5.1" 
+pipe_version = "2.0.0" 
 
 load_files = function(input_args, which_module, sky_info = NULL){
   ## Load the correct files for what ever task
@@ -1130,11 +1130,13 @@ do_cal_sky_info = function(input_args){
   pmap = cal_sky_info[,list(PHOTMJSR=mean(PHOTMJSR)), keyby=list(CRDS_CTX,DETECTOR,FILTER)]
   
   cal_sky_info$MAGZERO_FIX = 0.0
+  ## get most recent pmap
+  most_recent_pmap_ctx = max(unique(gsub(".*jwst_(\\d+)\\.pmap.*", "\\1", s)))
   
   for(i in 1:dim(cal_sky_info)[1]){
     #below is then Eqn [1] below
     ## Tie to pmap 1179 for now
-    temp_MAGZERO_FIX = cal_sky_info[i,MAGZERO] -2.5*log10(as.numeric(pmap[CRDS_CTX=='jwst_1179.pmap' & DETECTOR==cal_sky_info[i,'DETECTOR'] & FILTER==cal_sky_info[i,'FILTER'],PHOTMJSR]) / cal_sky_info[i,PHOTMJSR])
+    temp_MAGZERO_FIX = cal_sky_info[i,MAGZERO] -2.5*log10(as.numeric(pmap[CRDS_CTX==paste0('jwst_', most_recent_pmap_ctx, '.pmap') & DETECTOR==cal_sky_info[i,'DETECTOR'] & FILTER==cal_sky_info[i,'FILTER'],PHOTMJSR]) / cal_sky_info[i,PHOTMJSR])
     if(length(temp_MAGZERO_FIX) == 1){
       cal_sky_info[i,MAGZERO_FIX := temp_MAGZERO_FIX] 
     }else{

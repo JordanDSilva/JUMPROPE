@@ -16,7 +16,7 @@ library(matrixStats)
 
 source("./ProFound_settings.R")
 
-jumprope_version = "1.5.1"
+jumprope_version = "2.0.0"
 
 frame_info = function(ref_dir){
   
@@ -397,12 +397,6 @@ star_mask = function(input_args){
     
     bn = 1.9992*n - 0.3271
     
-    # Iprime = Ib * 2^(-1*gamma_/alpha) * exp(bn * (2^(1/alpha) * Rb/Re)^(1/n))
-    # term1 = (1 + (Rb/R)^(alpha))^(gamma_/alpha)
-    # term2 = exp(-1*bn * ( (R^alpha + Rb^alpha)/Re^alpha )^(1/(alpha*n)))
-    # 
-    # tot_ = log10( Iprime * term1 * term2 )
-    
     ## Compute log directly to avoid infinities in exponents later on
     Iprime_log = log10(Ib) + log10(2)*(-1*gamma_/alpha) + log10(exp(1))*(bn * (2^(1/alpha) * Rb/Re)^(1/n))
     term1_log = log10(1 + (Rb/R)^(alpha))*(gamma_/alpha)
@@ -639,7 +633,7 @@ star_mask = function(input_args){
     rem_mask = TRUE, 
     cliptol = 50,
     boundstats = TRUE
-    )
+  )
   
   match_gaia = coordmatch(
     coordref = gaia_trim[, c("ra_fix", "dec_fix")],
@@ -882,6 +876,14 @@ do_detect = function(input_args, detect_bands = detect_bands_load, profound_func
     idx = grepl(VID, file_list) & grepl(MODULE, file_list)  & grepl("patch", file_list) & grepl(detect_bands, file_list)
   }
   
+  if(sum(idx) == 0){
+    if(detect_bands == "ALL"){
+      idx = grepl(VID, file_list) & grepl(MODULE, file_list) & grepl("propane", file_list)
+    }else{
+      idx = grepl(VID, file_list) & grepl(MODULE, file_list)  & grepl("propane", file_list) & grepl(detect_bands, file_list, ignore.case = TRUE)
+    }
+  }
+  
   propanes = lapply(file_list[idx], function(x) Rfits_read(filename = x))
   names(propanes) = file_names[idx]
   
@@ -986,63 +988,36 @@ do_detect = function(input_args, detect_bands = detect_bands_load, profound_func
 }
 
 ## ProFound measurement codes
-getCircle = function(r){
-  d = 2*r
-  m = matrix(1:d^2,d,d)
-  g = expand.grid(1:d, 1:d)
-  if(d%%2==0){c=r+0.5}
-  if(d%%2==1){c=r+1}
-  g$d2 = sqrt((g$Var1-c)^2 + (g$Var2-c)^2)
-  g$inside = g$d2 <= r
-  return(m[as.matrix(g[g$inside, c('Var1', 'Var2')])])
+.err_sampler = function(random_aperture_radii, fname, pixscale, imdat, mask, segim, root=root_sample){
+
+  imdat[mask] = NA
+  random_apertures = profoundAperRan(
+    image = imdat,
+    segim = segim,
+    app_diam = random_aperture_radii * 2, 
+    magzero = 23.9,
+    pixscale = pixscale,
+    fluxtype = "microjansky", 
+    Nran = 200,
+    depth = 5,
+    correction = TRUE
+  )
+  apertures_sizes_in_pixels = (random_aperture_radii/pixscale)^2 * pi
+  random_apertures_model = lm(log10(random_apertures$errors) ~ log10(apertures_sizes_in_pixels))
+  random_aperture_model_alpha <- 10^(coef(random_apertures_model)[1])
+  random_aperture_model_beta  <- coef(random_apertures_model)[2]
+
+  out = list(
+    "random_aperture_size" = pi * (random_aperture_radii/pixscale)^2, 
+    "errors" = random_apertures$errors, 
+    "scale_coeffs" = c("alpha" = as.numeric(unname(random_aperture_model_alpha)), "beta" = as.numeric(unname(random_aperture_model_beta)))
+  )
+  return(out)
 }
-err_sampler = function(r, imdat, fname, mask, root=root_sample){ 
-  use = getCircle(r)
-  check = getCircle(r*1.5)
-  set.seed(r)
-  collect = c()
-  n=1
-  whilebreak_thresh = 10000
-  whilebreak = 0
-  dum_imdat = imdat
-  dum_imdat[mask] = NA
-  
-  CairoPDF(file.path(root,paste0(fname,'_',r,'.pdf')))
-  magimage(dum_imdat, qdiff=T)
-  xy = dim(imdat)
-  while(n <= 200){
-    if(whilebreak>=whilebreak_thresh){
-      message(paste0("Can't find a spot for the ", n, "th aperture in ", whilebreak_thresh, " tries :("))
-      break
-    }
-    x = sample(1:xy[1], 1)
-    y = sample(1:xy[2], 1)
-    if(x-1.5*r<1 | x+1.5*r>xy[1] | y-1.5*r<1 | y+1.5*r>xy[2]){
-      next
-    }
-    mask2d = mask[(x-1.5*r):(x+1.5*r-1),(y-1.5*r):(y+1.5*r-1)]
-    
-    cut2d = imdat[(x-r):(x+r-1), (y-r):(y+r-1)]
-    out = cut2d[use]
-    if( any(is.na(mask2d[check])) | any(is.nan(mask2d[check])) | any(mask2d[check]) | (any(is.na(out)) | any(is.nan(out))) ){
-      whilebreak = whilebreak + 1
-      next
-    }else{
-      n = n+1
-      profoundDrawEllipse(x, y, r, col='red')
-      collect = rbind(collect, data.frame(id = n, sum=sum(out)))                # options to output more stats mean=mean(out), sd=sd(out)
-      mask[(x-r):(x+r-1), (y-r):(y+r-1)][use] = NA  # un-comment to avoid re-sampling the same pixels
-    }
-  }
-  q = unname(quantile(collect$sum, probs=c(0.5, 0.16), na.rm=F))
-  maghist(collect$sum, breaks = 50, verbose = F)
-  abline(v=q, col=c('red','red'), lty=c(2,2))
-  dev.off()
-  return(collect)
-}
-error_scaling = function(flux_err, N100, m, c){
-  flux_err[!is.na(flux_err) & (flux_err < N100^m * 10^c)] = N100[!is.na(flux_err) & (flux_err < N100^m * 10^c)]^m * 10^c
-  return(flux_err)
+.err_scaling = function(flux_err, N100, alpha, beta){
+  scaled_temp = N100^beta * alpha
+  new_err = pmax(flux_err, scaled_temp)
+  return(new_err)
 }
 do_measure = function(input_args){
   
@@ -1107,12 +1082,12 @@ do_measure = function(input_args){
     
     data.list = list.files(data_dir, 
                            pattern = paste0(PIXSCALE, ".fits$"), 
-                           full.names = T, 
-                           recursive = T)
+                           full.names = TRUE, 
+                           recursive = TRUE)
     data.names = list.files(data_dir, 
                             pattern = paste0(PIXSCALE, ".fits$"), 
-                            full.names = F, 
-                            recursive = T)
+                            full.names = FALSE, 
+                            recursive = TRUE)
     
     filter.names = toupper(str_extract(data.list, "F\\d{3,}[A-Z]{1,}|f\\d{3,}[a-z]{1,}"))
     filter.names[is.na(filter.names)] = sapply(data.list[is.na(filter.names)], function(x)str_split_1(x, "_")[6]) ## Filter name should hopefully always be in position 6
@@ -1128,7 +1103,7 @@ do_measure = function(input_args){
     images = Rfits_make_list(
       filelist = data.list,
       extlist = ext,
-      pointer = T
+      pointer = TRUE
     )
     names(images) = filter.names      
     
@@ -1148,8 +1123,7 @@ do_measure = function(input_args){
     # filter ordering is not important
     
     ####### Initiate for sampling error #############
-    r = seq(2,10)
-    master = data.frame(r=r, a=unlist(lapply(r, function(x) length(getCircle(x)))))
+    random_aperture_radii = seq(0.05, 5.05, 0.05) * 0.5 ## arcsecs
     
     if(!dir.exists(sampling_dir)){dir.create(sampling_dir, recursive = T)}else{
       message("Unlinking sample dir")
@@ -1158,10 +1132,11 @@ do_measure = function(input_args){
     }                           # Create directory for the sampling stuff
     
     error_file = file.path(sampling_dir,paste(VID,MODULE,PIXSCALE,'error_fit.txt', sep='_'))
-    cat('Filters','Slopes','Intercepts','\n', file = error_file, sep='\t')          # Create file for the fitted relation of error sampling
+    cat('Filters','Intercepts','Slopes','\n', file = error_file, sep='\t')          # Create file for the fitted relation of error sampling
     
     ####### Initiate csv for saving output ##########
-    csvout = data.frame(segID=super_segstats$segID)
+    csvout = data.frame("segID_multi "= super_segstats$segID)
+    aperture_photometry_csvout = data.frame("segID_app" = super_segstats$segID)
     
     if(!dir.exists(measurements_dir)){dir.create(measurements_dir, recursive = T)}else{
       message("Unlinking measurement dir")
@@ -1182,44 +1157,129 @@ do_measure = function(input_args){
       # filt[[ff]]$imDat[filt[[ff]]$imDat==0L] = NA
       
       dum_pro = measure_profound(filt, inVar = filt_invar, segim, mask)
-      csvout[paste0(ff,'_fluxt')] = dum_pro$segstats$flux
-      csvout[paste0(ff,'_fluxt_err')] = dum_pro$segstats$flux_err
       gc()
-      
-      csvout[paste0(ff,'_maskfrac')] = dum_pro$segstats$Nmask/dum_pro$segstats$Nedge
-      
+            
       img = filt$imDat - dum_pro$sky
       img[img == 0L] = NA
       img[mask] = NA
-      sample_mask = (dum_pro$objects_redo | mask)
+      # sample_mask = (dum_pro$objects_redo | mask)
       
       message("\n ...Error sampling... \n")
-      row=foreach(rr = r, .combine="c")%do%{
-        dum = err_sampler(rr, img, ff, mask = sample_mask, root=sampling_dir)
-        q = unname(quantile(dum$sum, probs=c(0.5, 0.16), na.rm=F))
-        sig = q[1]-q[2]
-        std = sd(dum$sum)
-        # print(c(sig,std))
-        sig
-      }
+      random_aperture_errs = .err_sampler(
+        random_aperture_radii = random_aperture_radii,
+        fname = ff,
+        pixscale = pixscale(filt, unit = "asec"),
+        imdat = img,
+        mask = mask,
+        segim = segim_col
+      )
       
-      master[ff] = row
       Nsam = sample(length(dum_pro$segstats$segID), 200)
-      fit_samp = lm(log10(master[[ff]]) ~ poly(log10(master$a), 1, raw = T))
-      slope = unname(fit_samp$coefficients)[2]
-      intercept = unname(fit_samp$coefficients)[1]
-      cat(ff, slope, intercept, '\n', file = error_file, sep = '\t', append = T)      # Save the fitted relation
+      aperture_sizes_pix = random_aperture_errs$random_aperture_size
+      fitted_scaled_errs = random_aperture_errs$errors
+      scale_coeffs = random_aperture_errs$scale_coeffs
+      cat(ff, scale_coeffs['alpha'], scale_coeffs['beta'], '\n', file = error_file, sep = '\t', append = T)      # Save the fitted relation
       
-      csvout[paste0(ff,'_scaled_fluxt_err')] = error_scaling(dum_pro$segstats$flux_err, dum_pro$segstats$N100, slope, intercept)
+      csvout[paste0(ff,'_maskfrac')] = dum_pro$segstats$Nmask/dum_pro$segstats$Nedge
+      csvout[paste0(ff,'_fluxt')] = dum_pro$segstats$flux
+      csvout[paste0(ff,'_fluxt_err')] = dum_pro$segstats$flux_err
+      csvout[paste0(ff,'_scaled_fluxt_err')] = .err_scaling(
+        dum_pro$segstats$flux_err, 
+        dum_pro$segstats$N100, 
+        alpha = scale_coeffs['alpha'], 
+        beta = scale_coeffs['beta']
+      )
       
+      ## Run colour photometry with undilated segments
       message(("\n ...Running colour photometry... \n"))
       dum_pro_col = measure_profound(filt, inVar = filt_invar, segim_col, mask, redosegim = F) #don't redilate segments e.g., colour photometry mode
       csvout[paste0(ff,'_fluxc')] = dum_pro_col$segstats$flux
       csvout[paste0(ff,'_fluxc_err')] = dum_pro_col$segstats$flux_err
-      csvout[paste0(ff,'_scaled_fluxc_err')] = error_scaling(dum_pro_col$segstats$flux_err, dum_pro_col$segstats$N100, slope, intercept)
+      csvout[paste0(ff,'_scaled_fluxc_err')] = .err_scaling(
+        dum_pro$segstats$flux_err, 
+        dum_pro$segstats$N100, 
+        alpha = scale_coeffs['alpha'], 
+        beta = scale_coeffs['beta']
+      )
       rm(dum_pro_col)
       gc()
       saveRDS(dum_pro, file.path(measurements_dir,paste(VID,MODULE,PIXSCALE,ff,"results.rds",sep='_')))
+
+      ## Run aperture photometry
+      message(paste0("\n ...Running aperture photometry with the following aperture sizes: ", paste(r_aperture_photometry, collapse = ", "), "/asec... \n"))
+      dum_aperture_phot = profoundAperPhot(
+        image = filt,
+        segim = dum_pro$segim,
+        app_diam = r_aperture_photometry/dum_pro$pixscale * 2, 
+        magzero = dum_pro$magzero,
+        pixscale = dum_pro$pixscale,
+        fluxtype = "microjansky", 
+        depth = 5,
+        correction = TRUE
+      )
+      dum_aperture_phot_uncorr = profoundAperPhot(
+        image = filt,
+        segim = dum_pro$segim,
+        app_diam = r_aperture_photometry/dum_pro$pixscale * 2, 
+        magzero = dum_pro$magzero,
+        pixscale = dum_pro$pixscale,
+        fluxtype = "microjansky", 
+        depth = 5,
+        correction = FALSE
+      )
+      dum_aperture_phot_err = profoundAperPhot(
+        image = filt_invar$imDat^-1, ## turn into variance that we can sum up flux in aperture then take sqrt later on
+        segim = dum_pro$segim,
+        keyvalues = dum_pro$keyvalues,
+        app_diam = r_aperture_photometry/dum_pro$pixscale * 2, 
+        magzero = dum_pro$magzero,
+        pixscale = dum_pro$pixscale,
+        fluxtype = "microjansky", 
+        depth = 5,
+        correction = TRUE
+      )
+      
+      ## scale the flux errors
+      dum_aperture_phot_err_scaled_temp = dum_aperture_phot_err[,grep("^N_app", names(dum_aperture_phot_err), value = TRUE)]^scale_coeffs['beta'] * scale_coeffs['alpha']
+      names(dum_aperture_phot_err_scaled_temp) = str_replace_all(names(dum_aperture_phot_err_scaled_temp), "N", "flux")
+
+      magzero_factor = err_corr_factor = 10^((dum_pro$magzero - 23.9) * -0.4) ## microjansky
+      dum_aperture_phot_err[,grep("^flux_app", names(dum_aperture_phot_err), value = TRUE)] = sqrt(
+        dum_aperture_phot_err[,grep("^flux_app", names(dum_aperture_phot_err), value = TRUE)]
+      ) * magzero_factor ## put into microjansky
+      m1_temp = as.matrix(dum_aperture_phot_err_scaled_temp)
+      m2_temp = as.matrix(dum_aperture_phot_err[, grep("^flux_app", names(dum_aperture_phot_err), value = TRUE)])
+      dum_aperture_phot_err_scaled = as.matrix(pmax(m1_temp, m2_temp))
+      dum_aperture_phot_err_scaled[is.infinite(dum_aperture_phot_err_scaled)] = NA
+      dum_aperture_phot_err_scaled = as.data.frame(dum_aperture_phot_err_scaled)
+
+      rm(dum_aperture_phot_err_scaled_temp)
+      rm(m1_temp)
+      rm(m2_temp)
+      gc()
+
+      dum_aperture_phot_fluxes = dum_aperture_phot[, grep("^flux_app", names(dum_aperture_phot), value = TRUE)]
+      dum_aperture_phot_flux_errs = dum_aperture_phot_err[,grep("^flux_app", names(dum_aperture_phot_err), value = TRUE)]
+      dum_aperture_phot_corr_factor = dum_aperture_phot[, grep("^flux_app", names(dum_aperture_phot), value = TRUE)]/dum_aperture_phot_uncorr[, grep("^flux_app", names(dum_aperture_phot_uncorr), value = TRUE)]
+      dum_aperture_phot_N = dum_aperture_phot[, grep("^N_app", names(dum_aperture_phot), value = TRUE)]
+      
+      ## change the column names
+      names(dum_aperture_phot_fluxes) = paste0(ff, "_flux_app_", r_aperture_photometry)
+      names(dum_aperture_phot_err) = paste0(ff, "_flux_err_app_", r_aperture_photometry)
+      names(dum_aperture_phot_err_scaled) = paste0(ff, "_scaled_flux_err_app_", r_aperture_photometry)
+      names(dum_aperture_phot_corr_factor) = paste0(ff, "_ap_correction_app_", r_aperture_photometry)
+      names(dum_aperture_phot_N) = paste0(ff, "_N_app_", r_aperture_photometry)
+      
+      aperture_phot_csvout_temp = data.frame(
+        dum_aperture_phot_fluxes,
+        dum_aperture_phot_flux_errs,
+        dum_aperture_phot_err_scaled,
+        dum_aperture_phot_corr_factor,
+        dum_aperture_phot_N
+      )
+      aperture_photometry_csvout = cbind(aperture_photometry_csvout, aperture_phot_csvout_temp)
+      rm(aperture_photometry_csvout)
+      gc()
       
       CairoPDF(file.path(inspect_dir,paste0("profound_",ff,"_inspect.pdf")), width = 10, height = 10 )
       plot_profound(dum_pro)
@@ -1229,20 +1289,45 @@ do_measure = function(input_args){
       dev.off()
       
       CairoPDF(file.path(sampling_dir,paste0(ff,"_sample_error.pdf")))                            # Plot the sampled relation
-      magplot(master$a, master[[ff]], col='white', pch=1,
-              log='xy', xlim = c(5,5000), ylim = c(0.0001,1.0),
-              main = paste(ff,VID,MODULE,sep='_'), ylab = 'Error/micro Jy', xlab = 'Area/pix')
-      points(dum_pro$segstats[Nsam, 'N100'], dum_pro$segstats[Nsam, 'flux_err'], col='darkgrey', cex=0.3, pch=3)
-      scaled_error = error_scaling(dum_pro$segstats[Nsam, 'flux_err'], dum_pro$segstats[Nsam, 'N100'], slope, intercept)
-      points(dum_pro$segstats[Nsam, 'N100'], scaled_error, col='black', cex=0.5, pch=1)
-      points(master$a, master[[ff]], col='red')
-      abline(intercept, slope, col='red', lty=2)
+      magplot(
+        aperture_sizes_pix,
+        fitted_scaled_errs,
+        log = "xy", 
+        xlim = c(5, 6000),
+        ylim = c(0.0001, max(fitted_scaled_errs, na.rm = TRUE)*2.0),
+        xlab = 'Area/pix',
+        ylab = 'Error/micro Jy',
+        main = paste(ff,VID,MODULE,sep='_'),
+        col = "red"
+      )
+      points(
+        dum_pro$segstats[Nsam, 'N100'], 
+        dum_pro$segstats[Nsam, 'flux_err'], 
+        col='darkgrey', 
+        cex=0.3, 
+        pch=3
+      )
+      scaled_flux_error_plot = .err_scaling(
+        dum_pro$segstats[Nsam, 'flux_err'], 
+        dum_pro$segstats[Nsam, 'N100'], 
+        alpha = scale_coeffs['alpha'], 
+        beta = scale_coeffs['beta']
+      )
+      points(
+        dum_pro$segstats[Nsam, 'N100'], 
+        scaled_flux_error_plot, 
+        col='black', 
+        cex=0.5, 
+        pch=1
+      )
+      abline(log10(scale_coeffs['alpha']), scale_coeffs['beta'], col='red', lty=2)
       legend('bottomright', legend = c('sample', 'profound', 'corrected'), col = c('red','darkgrey','black'), pch = c(1,3,1), cex=1.2)
       dev.off()
       
       gc()
     }
     write.csv(csvout, file = file.path(measurements_dir,paste(VID,MODULE,PIXSCALE,"photometry.csv",sep='_')))
+    write.csv(aperture_photometry_csvout, file = file.path(measurements_dir,paste(VID,MODULE,PIXSCALE,"aperture_photometry_photometry.csv",sep='_')))
   }
 }
 
@@ -1255,6 +1340,7 @@ hst_warp_stack = function(input_args){
   VID = input_args$VID
   MODULE = input_args$MODULE
   cores_stack = input_args$cores_stack
+  do_sky_rem = input$args$hst_sky_rem
   
   if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID){
     MODULE = paste0("NRC", MODULE)
@@ -1367,8 +1453,6 @@ hst_warp_stack = function(input_args){
          prod(dim(hst_key_scan[,c("FILTER","DETECTOR","INSTRUME")]))){
         do_sky_rem = F
         message("Skipping sky rem. No FILTER, DETECTOR, INSTRUME keyword. Big mosaic?")
-      }else{
-        do_sky_rem = F
       }
       
       filters_na = na.exclude(
@@ -1643,7 +1727,6 @@ copy_hst_for_tile = function(input_args){
     do_sky_rem = F
   }
 }
-
 
 ## Chop up the large mosaic
 frame_chunker = function(input_args){
@@ -2100,7 +2183,6 @@ query_hst = function(input_args){
   return(NULL)
 }
 
-
 copy_long = function(input_args){
   
   ## Copy the long pixel scale from the PROCESS dirs to the DATA dir
@@ -2164,6 +2246,80 @@ copy_long = function(input_args){
   message("Done!")
   # return(c(frames_short_to_long, frames_long))
 } ##<-- Copy the long pixelscale to Data dir. File redundancy but safer option for detects.
+
+convert_to_propane = function(input_args){
+  cat("\n")
+  message("## Converting JWST pipeline mosaics to ProPane ##")
+  cat("\n")
+  
+  in_file = input_args$in_file ## where the one .fits files to be converted is
+  in_dir = input_args$in_dir ## where the .fits files to be converted are
+  out_dir = input_args$out_dir ## where to put the propanes after conversion
+  ref_dir = input_args$ref_dir
+  VID = input_args$VID
+  MODULE = VID
+
+  if(is.null(in_dir) & !is.null(in_file)){
+    in_files = c(in_file)
+    in_files_stub = basename(in_file)
+  }else{
+    in_files = list.files(
+      in_dir,
+      full.names = TRUE,
+      pattern = ".fits",
+      recursive = FALSE
+  )
+    in_files_stub = list.files(
+      in_dir,
+      full.names = FALSE,
+      pattern = ".fits",
+      recursive = FALSE
+    )
+  }
+
+  if(is.null(out_dir) & !is.null(ref_dir)){
+    out_dir = paste0(ref_dir, "/ProFound/Data/", VID, "/", MODULE, "/") 
+    dir.create(out_dir, recursive = TRUE)
+  }
+  
+  for(i in 1:length(in_files)){
+    fstub = in_files_stub[i]
+    fstub_out = gsub(".fits", "_propane.fits", fstub)
+    frame = Rfits_read(in_files[i], pointer = FALSE) ## load into memory just so later keyvalues don't get messed up
+
+    ## check the extensions 
+    if(!is.null(frame$SCI) & !is.null(frame$ERR)){ ## must have SCI and ERR at least
+      if(frame$SCI$keyvalues$BUNIT == "MJy/sr"){
+        magzero_in = -6.10 - 2.5*log10(frame$SCI$keyvalues$PIXAR_SR)
+      }else{
+        stop("Unknown image units - cannot proceed with unknown MAGZERO point!")
+      }
+
+      magzero_scale = 10^(-0.4 * (magzero_in - 23.9))
+      out = list(
+        "image" = frame$SCI[,] * magzero_scale,
+        "inVar" = frame$ERR[,]^-2 / magzero_scale^2,
+        "weight" = frame$WHT[,],
+        "exp" = frame$EXP[,]
+      )
+      class(out) = "ProPane"
+      out$image$keyvalues$EXTNAME = "image"
+      out$inVar$keyvalues$EXTNAME = "inVar"
+      out$weight$keyvalues$EXTNAME = "weight"
+      out$exp$keyvalues$EXTNAME = "exp"
+
+      out$image$keyvalues$MAGZERO = 23.9 ## microjansky
+      out$image$keycomments$MAGZERO = "Mag zero point"
+      out$image$keynames = names(out$image$keyvalues)
+
+      Rfits_write(
+        out,
+        filename = paste0(out_dir, "/", fstub_out)
+      )
+    }
+  }
+} ##<-- Convert pipeline multi-extension FITS to ProPane
+
 do_help = function(input_args){
   
   cat("\n")
@@ -2225,6 +2381,7 @@ do_help = function(input_args){
       
       cores_stack = cores_stack, ## <-- Cores for stacking with ProPane, numeric
       sampling_cores = cores_stack, ## <-- Cores for sky sampling, numeric
+      hst_sky_rem = TRUE/FALSE ## <-- Whether HST frames should have additional sky removal before warping to JWST 
     )'
   )
   
