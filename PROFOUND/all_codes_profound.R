@@ -7,7 +7,6 @@ library(magicaxis)
 library(foreach)
 library(doParallel)
 library(data.table)
-library(Cairo)
 library(stringr)
 library(checkmate)
 library(dplyr)
@@ -17,7 +16,7 @@ library(RANN)
 
 source("./ProFound_settings.R")
 
-jumprope_version = "2.1.0"
+jumprope_version = "2.1.1"
 
 frame_info = function(ref_dir){
   
@@ -651,7 +650,7 @@ star_mask = function(input_args){
     ## calculate radius of stars/diffraction spikes
     
     plot_stub = paste0(ref_dir, "/ProFound/Star_Masks/", VID, "/", MODULE, "/", VID, "_", MODULE, "_", PIXSCALE, "_star_mask.pdf")
-    CairoPDF(plot_stub, width = 10, height = 10)
+    pdf(plot_stub, width = 10, height = 10)
     
     star_mask_save = star_masker(ref$image, gaia_trim, pro_stars, psf_mask)
     
@@ -978,7 +977,7 @@ do_detect = function(input_args, detect_bands = detect_bands_load, profound_func
     }
     
     plot_stub = paste0(detect_dir, "/", VID, "_", MODULE, "_", PIXSCALE, "_profound_plot.pdf")
-    CairoPDF(plot_stub, width = 10, height = 10)
+    pdf(plot_stub, width = 10, height = 10)
     plot_profound(profound)
     par(mfrow = c(1,2), mar = rep(0,4), oma = c(1.5, 1.5, 0.5, 0.5), mai = rep(0,4))
     profoundSegimPlot(image = profound$image, segim = profound$segim, header = profound$header, mask = profound$mask, sparse=1)
@@ -1302,14 +1301,14 @@ do_measure = function(input_args, profound_function = profound_measure_master){
       rm(aperture_phot_csvout_temp)
       gc()
       
-      CairoPDF(file.path(inspect_dir,paste0("profound_",ff,"_inspect.pdf")), width = 10, height = 10 )
+      pdf(file.path(inspect_dir,paste0("profound_",ff,"_inspect.pdf")), width = 10, height = 10 )
       plot_profound(dum_pro)
       par(mfrow = c(1,2), mar = rep(0,4), oma = rep(0,4))
       profoundSegimPlot(dum_pro, sparse=1, sky = dum_pro$sky, qdiff = T)
       legend(x="topleft", legend="Total photometry")
       dev.off()
       
-      CairoPDF(file.path(sampling_dir,paste0(ff,"_sample_error.pdf")))                            # Plot the sampled relation
+      pdf(file.path(sampling_dir,paste0(ff,"_sample_error.pdf")))                            # Plot the sampled relation
       magplot(
         aperture_sizes_pix,
         fitted_scaled_errs,

@@ -6,7 +6,6 @@ library(ProPane)
 library(ProFound)
 library(stringr)
 library(utils)
-library(Cairo)
 library(data.table)
 library(foreach)
 library(doParallel)
@@ -16,7 +15,7 @@ library(celestial)
 library(matrixStats)
 library(checkmate)
 
-pipe_version = "2.1.0" 
+pipe_version = "2.1.1" 
 
 load_files = function(input_args, which_module, sky_info = NULL){
   ## Load the correct files for what ever task
@@ -1924,7 +1923,7 @@ do_RGB = function(input_args){
     im_height = im_width * (temp_proj$NAXIS2 / temp_proj$NAXIS1)
     
     filestub = paste0(patch_dir, '/RGB_patch_image_',VID, "_all", "_clear.png")
-    CairoPNG(filename = filestub, width=im_width, height=im_height, 
+    png(filename = filestub, width=im_width, height=im_height, 
              units='in', res=400, quality=100)
     par(mar=c(0,0,0,0), oma=rep(0,4))
     Rwcs_imageRGB(
