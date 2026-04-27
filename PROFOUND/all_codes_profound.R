@@ -13,10 +13,11 @@ library(checkmate)
 library(dplyr)
 library(Highlander)
 library(matrixStats)
+library(RANN)
 
 source("./ProFound_settings.R")
 
-jumprope_version = "2.0.0"
+jumprope_version = "2.1.0"
 
 frame_info = function(ref_dir){
   
@@ -849,6 +850,7 @@ star_mask_tile = function(input_args){
 
 ## ProFound source detection codes
 do_detect = function(input_args, detect_bands = detect_bands_load, profound_function = profound_detect_master){
+  # user_star_mask_file = path to a pre-made mask file, must be boolean TRUE/FALSE matrix saved in RDS format
   
   message("Running ProDetect")
   
@@ -994,7 +996,7 @@ do_detect = function(input_args, detect_bands = detect_bands_load, profound_func
 }
 
 ## ProFound measurement codes
-.err_sampler = function(random_aperture_radii, fname, pixscale, imdat, mask, segim, root=root_sample){
+.err_sampler = function(random_aperture_radii, fname, pixscale, imdat, mask, segim, root=root_sample, fluxtype = "microjansky"){
 
   imdat[mask] = NA
   random_apertures = profoundAperRan(
@@ -1003,8 +1005,8 @@ do_detect = function(input_args, detect_bands = detect_bands_load, profound_func
     app_diam = random_aperture_radii * 2, 
     magzero = 23.9,
     pixscale = pixscale,
-    fluxtype = "microjansky", 
-    Nran = 200,
+    fluxtype = fluxtype, 
+    Nran = 10000,
     depth = 5,
     correction = TRUE
   )
@@ -1016,7 +1018,8 @@ do_detect = function(input_args, detect_bands = detect_bands_load, profound_func
   out = list(
     "random_aperture_size" = pi * (random_aperture_radii/pixscale)^2, 
     "errors" = random_apertures$errors, 
-    "scale_coeffs" = c("alpha" = as.numeric(unname(random_aperture_model_alpha)), "beta" = as.numeric(unname(random_aperture_model_beta)))
+    "scale_coeffs" = c("alpha" = as.numeric(unname(random_aperture_model_alpha)), "beta" = as.numeric(unname(random_aperture_model_beta))),
+    "AperPhot" = random_apertures$AperPhot
   )
   return(out)
 }
@@ -1025,7 +1028,7 @@ do_detect = function(input_args, detect_bands = detect_bands_load, profound_func
   new_err = pmax(flux_err, scaled_temp)
   return(new_err)
 }
-do_measure = function(input_args){
+do_measure = function(input_args, profound_function = profound_measure_master){
   
   plot_profound = function(x){
     tryCatch(
@@ -1052,8 +1055,7 @@ do_measure = function(input_args){
   VID = input_args$VID
   MODULE = input_args$MODULE
   PIXSCALE = input_args$PIXSCALE
-  sampling_cores = input_args$sampling_cores
-  
+
   if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID){
     MODULE = paste0("NRC", MODULE)
   }
@@ -1161,7 +1163,7 @@ do_measure = function(input_args){
       filt = images[[ff]][,]
       filt_invar = inVar[[ff]][,]
       
-      dum_pro = measure_profound(filt, inVar = filt_invar, segim, mask)
+      dum_pro = profound_function(filt, inVar = filt_invar, segim, mask)
       gc()
             
       img = filt$imDat - dum_pro$sky
@@ -1175,36 +1177,44 @@ do_measure = function(input_args){
         pixscale = pixscale(filt, unit = "asec"),
         imdat = img,
         mask = mask,
-        segim = segim_col
+        segim = segim_col, 
+        fluxtype = dum_pro$call[["fluxtype"]]
       )
-      
+     
       Nsam = sample(length(dum_pro$segstats$segID), 200)
       aperture_sizes_pix = random_aperture_errs$random_aperture_size
       fitted_scaled_errs = random_aperture_errs$errors
       scale_coeffs = random_aperture_errs$scale_coeffs
       cat(ff, scale_coeffs['alpha'], scale_coeffs['beta'], '\n', file = error_file, sep = '\t', append = T)      # Save the fitted relation
       
+      nearest_apertures_idx = RANN::nn2(
+        data = random_aperture_errs$AperPhot[, c("xcen", "ycen")],
+        query = dum_pro$segstats[, c("xmax", "ymax")], 
+        k = 200
+      )
+      ## calc local depths
+
+      local_depths = sapply(1:dim(nearest_apertures_idx$nn.idx)[1], function(x){
+        closest_apertures = random_aperture_errs$AperPhot[, paste0("flux_app_", which.min(abs(aperture_sizes_pix - dum_pro$segstats$N100[x])))]
+        sd(closest_apertures, na.rm = TRUE)
+      })
+      
       csvout[paste0(ff,'_maskfrac')] = dum_pro$segstats$Nmask/dum_pro$segstats$Nedge
       csvout[paste0(ff,'_fluxt')] = dum_pro$segstats$flux
       csvout[paste0(ff,'_fluxt_err')] = dum_pro$segstats$flux_err
-      csvout[paste0(ff,'_scaled_fluxt_err')] = .err_scaling(
-        dum_pro$segstats$flux_err, 
-        dum_pro$segstats$N100, 
-        alpha = scale_coeffs['alpha'], 
-        beta = scale_coeffs['beta']
-      )
+      csvout[paste0(ff,'_scaled_fluxt_err')] = pmax(local_depths, dum_pro$segstats$flux_err)
+      csvout[paste0(ff,'_1sigma_local_depth')] = local_depths
       
       ## Run colour photometry with undilated segments
       message(("\n ...Running colour photometry... \n"))
-      dum_pro_col = measure_profound(filt, inVar = filt_invar, segim_col, mask, redosegim = F) #don't redilate segments e.g., colour photometry mode
+      dum_pro_col = profound_function(filt, inVar = filt_invar, segim_col, mask, redosegim = FALSE) #don't redilate segments e.g., colour photometry mode
+      local_depths_col = sapply(1:dim(nearest_apertures_idx$nn.idx)[1], function(x){
+        closest_apertures = random_aperture_errs$AperPhot[, paste0("flux_app_", which.min(abs(aperture_sizes_pix - dum_pro_col$segstats$N100[x])))]
+        sd(closest_apertures, na.rm = TRUE)
+      })
       csvout[paste0(ff,'_fluxc')] = dum_pro_col$segstats$flux
       csvout[paste0(ff,'_fluxc_err')] = dum_pro_col$segstats$flux_err
-      csvout[paste0(ff,'_scaled_fluxc_err')] = .err_scaling(
-        dum_pro$segstats$flux_err, 
-        dum_pro$segstats$N100, 
-        alpha = scale_coeffs['alpha'], 
-        beta = scale_coeffs['beta']
-      )
+      csvout[paste0(ff,'_scaled_fluxc_err')] =  pmax(local_depths_col, dum_pro_col$segstats$flux_err)
       rm(dum_pro_col)
       gc()
       saveRDS(dum_pro, file.path(measurements_dir,paste(VID,MODULE,PIXSCALE,ff,"results.rds",sep='_')))
@@ -1217,7 +1227,7 @@ do_measure = function(input_args){
         app_diam = r_aperture_photometry/dum_pro$pixscale * 2, 
         magzero = dum_pro$magzero,
         pixscale = dum_pro$pixscale,
-        fluxtype = "microjansky", 
+        fluxtype = dum_pro$call[["fluxtype"]], 
         depth = 5,
         correction = TRUE
       )
@@ -1227,7 +1237,7 @@ do_measure = function(input_args){
         app_diam = r_aperture_photometry/dum_pro$pixscale * 2, 
         magzero = dum_pro$magzero,
         pixscale = dum_pro$pixscale,
-        fluxtype = "microjansky", 
+        fluxtype = dum_pro$call[["fluxtype"]], 
         depth = 5,
         correction = FALSE
       )
@@ -1236,28 +1246,33 @@ do_measure = function(input_args){
         segim = dum_pro$segim,
         keyvalues = dum_pro$keyvalues,
         app_diam = r_aperture_photometry/dum_pro$pixscale * 2, 
-        magzero = dum_pro$magzero,
+        # magzero = dum_pro$magzero,
         pixscale = dum_pro$pixscale,
-        fluxtype = "microjansky", 
+        fluxtype = "Raw", 
         depth = 5,
         correction = TRUE
       )
       
-      ## scale the flux errors
-      dum_aperture_phot_err_scaled_temp = dum_aperture_phot_err[,grep("^N_app", names(dum_aperture_phot_err), value = TRUE)]^scale_coeffs['beta'] * scale_coeffs['alpha']
-      names(dum_aperture_phot_err_scaled_temp) = str_replace_all(names(dum_aperture_phot_err_scaled_temp), "N", "flux")
+      ## calculate the local depths
+      Nphot_app = dum_aperture_phot[,grep("^N_app", names(dum_aperture_phot), value = TRUE)]
+      local_depths_app = lapply(1:dim(nearest_apertures_idx$nn.idx)[1], function(x){
+        closest_apertures = random_aperture_errs$AperPhot[, paste0("flux_app_", sapply(Nphot_app[x,], function(y) which.min(abs(aperture_sizes_pix - y))))]
+        colSds(
+          as.matrix(closest_apertures[nearest_apertures_idx$nn.idx[x,],]), na.rm = TRUE
+        )
+      })
+      local_depths_app = do.call(rbind, local_depths_app)
 
       magzero_factor = err_corr_factor = 10^((dum_pro$magzero - 23.9) * -0.4) ## microjansky
       dum_aperture_phot_err[,grep("^flux_app", names(dum_aperture_phot_err), value = TRUE)] = sqrt(
         dum_aperture_phot_err[,grep("^flux_app", names(dum_aperture_phot_err), value = TRUE)]
       ) * magzero_factor ## put into microjansky
-      m1_temp = as.matrix(dum_aperture_phot_err_scaled_temp)
+      m1_temp = as.matrix(local_depths_app)
       m2_temp = as.matrix(dum_aperture_phot_err[, grep("^flux_app", names(dum_aperture_phot_err), value = TRUE)])
       dum_aperture_phot_err_scaled = as.matrix(pmax(m1_temp, m2_temp))
       dum_aperture_phot_err_scaled[is.infinite(dum_aperture_phot_err_scaled)] = NA
       dum_aperture_phot_err_scaled = as.data.frame(dum_aperture_phot_err_scaled)
 
-      rm(dum_aperture_phot_err_scaled_temp)
       rm(m1_temp)
       rm(m2_temp)
       gc()
@@ -1273,13 +1288,15 @@ do_measure = function(input_args){
       names(dum_aperture_phot_err_scaled) = paste0(ff, "_scaled_flux_err_app_", r_aperture_photometry)
       names(dum_aperture_phot_corr_factor) = paste0(ff, "_ap_correction_app_", r_aperture_photometry)
       names(dum_aperture_phot_N) = paste0(ff, "_N_app_", r_aperture_photometry)
+      names(local_depths_app) = paste0(ff, "_1sigma_local_depth_", r_aperture_photometry)
       
       aperture_phot_csvout_temp = data.frame(
         dum_aperture_phot_fluxes,
         dum_aperture_phot_flux_errs,
         dum_aperture_phot_err_scaled,
         dum_aperture_phot_corr_factor,
-        dum_aperture_phot_N
+        dum_aperture_phot_N,
+        local_depths_app
       )
       aperture_photometry_csvout = cbind(aperture_photometry_csvout, aperture_phot_csvout_temp)
       rm(aperture_phot_csvout_temp)
@@ -1298,9 +1315,9 @@ do_measure = function(input_args){
         fitted_scaled_errs,
         log = "xy", 
         xlim = c(5, 6000),
-        ylim = c(0.0001, max(fitted_scaled_errs, na.rm = TRUE)*2.0),
+        ylim = c(min(fitted_scaled_errs, na.rm = TRUE)/2.0, max(fitted_scaled_errs, na.rm = TRUE)*2.0),
         xlab = 'Area/pix',
-        ylab = 'Error/micro Jy',
+        ylab = paste0('Error/flux', dum_pro$call["fluxtype"]),
         main = paste(ff,VID,MODULE,sep='_'),
         col = "red"
       )
@@ -2289,7 +2306,7 @@ convert_to_propane = function(input_args){
   
   for(i in 1:length(in_files)){
     fstub = in_files_stub[i]
-    fstub_out = gsub(".fits", "_propane_", PIXSCALE, ".fits", fstub)
+    fstub_out = gsub(".fits", paste0("_propane_", PIXSCALE, ".fits"), fstub)
     frame = Rfits_read(in_files[i], pointer = FALSE) ## load into memory just so later keyvalues don't get messed up
 
     ## check the extensions 
@@ -2297,7 +2314,8 @@ convert_to_propane = function(input_args){
       if(frame$SCI$keyvalues$BUNIT == "MJy/sr"){
         magzero_in = -6.10 - 2.5*log10(frame$SCI$keyvalues$PIXAR_SR)
       }else{
-        stop("Unknown image units - cannot proceed with unknown MAGZERO point!")
+        message("Unknown image units - cannot proceed with unknown MAGZERO point!")
+        next 
       }
 
       magzero_scale = 10^(-0.4 * (magzero_in - 23.9))

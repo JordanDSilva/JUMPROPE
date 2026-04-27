@@ -60,7 +60,7 @@ profound_detect_master = function(frame, skyRMS, star_mask, pix_mask = NULL, seg
   return(pro)
 }
 
-measure_profound = function(super_img, inVar, segim, mask, redosegim = TRUE, sky = NULL, redosky = TRUE){
+profound_measure_master = function(super_img, inVar, segim, mask, redosegim = TRUE, sky = NULL, redosky = TRUE){
   ## Do multiband measurements with ProFound
   ## set sky = 0 and redosky = FALSE if frames are already sky subtracted and you don't want another sky model
 
