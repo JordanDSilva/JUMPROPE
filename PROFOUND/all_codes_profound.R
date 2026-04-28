@@ -934,6 +934,8 @@ do_detect = function(input_args, detect_bands = detect_bands_load, profound_func
     fwrite(profound$segstats, file = catalogue_stub)
     
     profound_stub = paste0(detect_dir, "/", VID, "_", MODULE, "_", PIXSCALE, "_profound.rds")
+    
+    profound$jumprope_version = jumprope_version
     saveRDS(profound, file = profound_stub)
     
     ## I have no idea why plot.profound spits out and error 
@@ -988,12 +990,12 @@ do_detect = function(input_args, detect_bands = detect_bands_load, profound_func
     magzero = 23.9,
     pixscale = pixscale,
     fluxtype = fluxtype, 
-    Nran = 10000,
+    Nran = 100000,
     depth = 5,
     correction = TRUE
   )
   apertures_sizes_in_pixels = (random_aperture_radii/pixscale)^2 * pi
-  random_apertures_model = lm(log10(random_apertures$errors) ~ log10(apertures_sizes_in_pixels))
+  random_apertures_model = lm(log10(random_apertures$errors[random_apertures$errors>0]) ~ log10(apertures_sizes_in_pixels[random_apertures$errors>0]))
   random_aperture_model_alpha <- 10^(coef(random_apertures_model)[1])
   random_aperture_model_beta  <- coef(random_apertures_model)[2]
 
@@ -1206,7 +1208,11 @@ do_measure = function(input_args, profound_function = profound_measure_master){
       csvout[paste0(ff,'_scaled_fluxc_err')] =  pmax(local_depths_col, dum_pro_col$segstats$flux_err)
       rm(dum_pro_col)
       gc()
+      dum_pro$jumprope_version = jumprope_version
       saveRDS(dum_pro, file.path(measurements_dir,paste(VID,MODULE,PIXSCALE,ff,"results.rds",sep='_')))
+      
+      random_aperture_errs$jumprope_version = jumprope_version
+      saveRDS(random_aperture_errs, file.path(sampling_dir,paste(VID,MODULE,PIXSCALE,ff,"random_sampling.rds",sep='_')))
 
       ## Run aperture photometry
       message(paste0("\n ...Running aperture photometry with the following aperture sizes: ", paste(r_aperture_photometry, collapse = ", "), "/asec... \n"))
