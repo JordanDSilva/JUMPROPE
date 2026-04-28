@@ -1,0 +1,20 @@
+## required packages
+library(celestial)
+library(magicaxis)
+library(imager)
+library(Rfits)
+library(Rwcs)
+library(ProFound)
+library(ProPane)
+library(Highlander)
+library(foreach)
+library(doParallel)
+library(checkmate)
+library(dplyr)
+library(data.table)
+library(matrixStats)
+library(RANN)
+library(stringr)
+library(utils)
+
+jumprope_version = "2.1.2" 

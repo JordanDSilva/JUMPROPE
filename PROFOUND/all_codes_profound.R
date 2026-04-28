@@ -1,22 +1,5 @@
-library(Rfits)
-library(Rwcs)
-library(ProFound)
-library(ProPane)
-library(celestial)
-library(magicaxis)
-library(foreach)
-library(doParallel)
-library(data.table)
-library(stringr)
-library(checkmate)
-library(dplyr)
-library(Highlander)
-library(matrixStats)
-library(RANN)
-
-source("./ProFound_settings.R")
-
-jumprope_version = "2.1.1"
+source(file.path(dirname(sys.frame(1)$ofile), "..", "config.R"))
+source("ProFound_settings.R")
 
 frame_info = function(ref_dir){
   
@@ -2276,9 +2259,9 @@ convert_to_propane = function(input_args){
   in_dir = input_args$in_dir ## where the .fits files to be converted are
   out_dir = input_args$out_dir ## where to put the propanes after conversion
   ref_dir = input_args$ref_dir
-  VID = input_args$VID
-  MODULE = VID
-  PIXSCALE = VID ## historical thing, would either have been short/long corresponding to 0.03/0.06 pixscale NIRCAM frames
+  VID = input_args$VID ## might be program or field name
+  MODULE = input_args$MODULE ## might be the instrument name NIRCam/MIRI
+  PIXSCALE = input_args$PIXSCALE ## historical thing, would either have been short/long corresponding to 0.03/0.06 pixscale NIRCAM frames
 
   if(is.null(in_dir) & !is.null(in_file)){
     in_files = c(in_file)

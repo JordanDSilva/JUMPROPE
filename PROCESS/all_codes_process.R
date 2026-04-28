@@ -1,21 +1,4 @@
-## Required packages
-library(magicaxis)
-library(Rwcs)
-library(Rfits)
-library(ProPane)
-library(ProFound)
-library(stringr)
-library(utils)
-library(data.table)
-library(foreach)
-library(doParallel)
-library(dplyr)
-library(imager)
-library(celestial)
-library(matrixStats)
-library(checkmate)
-
-pipe_version = "2.1.1" 
+source(file.path(dirname(sys.frame(1)$ofile), "..", "config.R"))
 
 load_files = function(input_args, which_module, sky_info = NULL){
   ## Load the correct files for what ever task
@@ -387,7 +370,7 @@ do_cal_process = function(input_args, filelist = NULL){
   lo_loop = 1
   hi_loop = dim(obs_info)[1]
   
-  dummy = foreach(i = lo_loop:hi_loop, .inorder=FALSE, .packages = c("Rfits", "Rwcs", "ProFound"), .export = c("pipe_version"))%dopar%{
+  dummy = foreach(i = lo_loop:hi_loop, .inorder=FALSE, .packages = c("Rfits", "Rwcs", "ProFound"), .export = c("jumprope_version"))%dopar%{
     if(i %% 100 == 0){
       message('File ',i,' of ', hi_loop)
     }
@@ -566,7 +549,7 @@ do_cal_process = function(input_args, filelist = NULL){
         PATHIM = dirname(file_image),
         FILESKY = basename(file_sky),
         PATHSKY = dirname(file_sky),
-        VERSION = pipe_version,
+        VERSION = jumprope_version,
         VISIT_ID = obs_info$VISIT_ID[i],
         OBS_ID = obs_info$OBS_ID[i],
         EXPOSURE = obs_info$EXPOSURE[i],
