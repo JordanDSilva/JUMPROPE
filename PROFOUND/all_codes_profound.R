@@ -225,7 +225,7 @@ copy_frames = function(input_args){
   MODULE = input_args$MODULE
   PIXSCALE = input_args$PIXSCALE
   
-  if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID){
+ if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID & any(MODULE == c("A", "B"))){
     MODULE = paste0("NRC", MODULE)
   }
   
@@ -297,7 +297,7 @@ star_mask = function(input_args){
   MODULE = input_args$MODULE
   PIXSCALE = input_args$PIXSCALE
   
-  if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID){
+ if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID & any(MODULE == c("A", "B"))){
     MODULE = paste0("NRC", MODULE)
   }
   
@@ -679,7 +679,7 @@ star_mask_tile = function(input_args){
   MODULE = input_args$MODULE
   PIXSCALE = input_args$PIXSCALE
   
-  if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID){
+ if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID & any(MODULE == c("A", "B"))){
     MODULE = paste0("NRC", MODULE)
   }
   
@@ -841,7 +841,7 @@ do_detect = function(input_args, detect_bands = detect_bands_load, profound_func
   MODULE = input_args$MODULE
   PIXSCALE = input_args$PIXSCALE
   
-  if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID){
+  if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID & any(MODULE == c("A", "B"))){
     MODULE = paste0("NRC", MODULE)
   }
   
@@ -1038,7 +1038,7 @@ do_measure = function(input_args, profound_function = profound_measure_master){
   MODULE = input_args$MODULE
   PIXSCALE = input_args$PIXSCALE
 
-  if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID){
+ if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID & any(MODULE == c("A", "B"))){
     MODULE = paste0("NRC", MODULE)
   }
   
@@ -1115,7 +1115,9 @@ do_measure = function(input_args, profound_function = profound_measure_master){
     ####### Initiate for sampling error #############
     random_aperture_radii = seq(0.05, 5.05, 0.05) * 0.5 ## arcsecs
     
-    if(!dir.exists(sampling_dir)){dir.create(sampling_dir, recursive = T)}else{
+    if(!dir.exists(sampling_dir)){
+      dir.create(sampling_dir, recursive = T)
+    }else{
       message("Unlinking sample dir")
       unlink(sampling_dir, recursive = T)
       dir.create(sampling_dir, recursive = T)
@@ -1128,17 +1130,22 @@ do_measure = function(input_args, profound_function = profound_measure_master){
     csvout = data.frame("segID_multi "= super_segstats$segID)
     aperture_photometry_csvout = data.frame("segID_app" = super_segstats$segID)
     
-    if(!dir.exists(measurements_dir)){dir.create(measurements_dir, recursive = T)}else{
+    if(!dir.exists(measurements_dir)){
+      dir.create(measurements_dir, recursive = T)
+    }else{
       message("Unlinking measurement dir")
       unlink(measurements_dir, recursive = T)
       dir.create(measurements_dir, recursive = T)
     }                                                    # Create directory for the output stuff
     
-    if(!dir.exists(inspect_dir)){dir.create(inspect_dir, recursive = T)}else{
+    if(!dir.exists(inspect_dir)){
+      dir.create(inspect_dir, recursive = T)
+    }else{
       message("Unlinking inspect dir")
       unlink(inspect_dir, recursive = T)
       dir.create(inspect_dir, recursive = T)
     }                                                    # Create directory for inspection plots
+    
     ###### Main #############
     for(ff in names(images)){
       message(paste0("Running ProMeasure on: ", ff, "\n"))
@@ -1243,12 +1250,17 @@ do_measure = function(input_args, profound_function = profound_measure_master){
           as.matrix(closest_apertures[nearest_apertures_idx$nn.idx[x,],]), na.rm = TRUE
         )
       })
-      local_depths_app = do.call(rbind, local_depths_app)
+      local_depths_app = data.frame(do.call(rbind, local_depths_app))
 
-      magzero_factor = err_corr_factor = 10^((dum_pro$magzero - 23.9) * -0.4) ## microjansky
+      if(dum_pro$call[["fluxtype"]] == "microjansky"){
+        magzero_factor = 10^((dum_pro$magzero - 23.9) * -0.4)
+      }else if (dum_pro$call[["fluxtype"]] == "Jansky"){
+        magzero_factor = 10^((dum_pro$magzero - 8.9) * -0.4)
+      }
+      
       dum_aperture_phot_err[,grep("^flux_app", names(dum_aperture_phot_err), value = TRUE)] = sqrt(
         dum_aperture_phot_err[,grep("^flux_app", names(dum_aperture_phot_err), value = TRUE)]
-      ) * magzero_factor ## put into microjansky
+      ) * magzero_factor 
       m1_temp = as.matrix(local_depths_app)
       m2_temp = as.matrix(dum_aperture_phot_err[, grep("^flux_app", names(dum_aperture_phot_err), value = TRUE)])
       dum_aperture_phot_err_scaled = as.matrix(pmax(m1_temp, m2_temp))
@@ -1266,11 +1278,11 @@ do_measure = function(input_args, profound_function = profound_measure_master){
       
       ## change the column names
       names(dum_aperture_phot_fluxes) = paste0(ff, "_flux_app_", r_aperture_photometry)
-      names(dum_aperture_phot_err) = paste0(ff, "_flux_err_app_", r_aperture_photometry)
+      names(dum_aperture_phot_flux_errs) = paste0(ff, "_flux_err_app_", r_aperture_photometry)
       names(dum_aperture_phot_err_scaled) = paste0(ff, "_scaled_flux_err_app_", r_aperture_photometry)
       names(dum_aperture_phot_corr_factor) = paste0(ff, "_ap_correction_app_", r_aperture_photometry)
       names(dum_aperture_phot_N) = paste0(ff, "_N_app_", r_aperture_photometry)
-      names(local_depths_app) = paste0(ff, "_1sigma_local_depth_", r_aperture_photometry)
+      names(local_depths_app) = paste0(ff, "_1sig_locdepth_app_", r_aperture_photometry)
       
       aperture_phot_csvout_temp = data.frame(
         dum_aperture_phot_fluxes,
@@ -1345,7 +1357,7 @@ hst_warp_stack = function(input_args){
   cores_stack = input_args$cores_stack
   do_sky_rem = input$args$hst_sky_rem
   
-  if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID){
+ if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID & any(MODULE == c("A", "B"))){
     MODULE = paste0("NRC", MODULE)
   }
   
@@ -1663,7 +1675,7 @@ copy_hst_for_tile = function(input_args){
   
   HST_cutout_dir = paste0(ref_dir, "/ProFound/HST_cutout/", VID, "/", MODULE, "/") ## Holding pen for the MAST Hubble MVMs / HAPs
   
-  if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID){
+ if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID & any(MODULE == c("A", "B"))){
     MODULE = paste0("NRC", MODULE)
   }
   
@@ -1747,7 +1759,7 @@ frame_chunker = function(input_args){
   MODULE = input_args$MODULE
   PIXSCALE = input_args$PIXSCALE
   
-  if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID){
+ if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID & any(MODULE == c("A", "B"))){
     MODULE = paste0("NRC", MODULE)
   }
   
@@ -1983,7 +1995,7 @@ combine_chunks = function(input_args){
   
   message(paste0("Combining chunks for ", VID, "-", MODULE, "-", PIXSCALE, "..."))
   
-  if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID){
+ if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID & any(MODULE == c("A", "B"))){
     MODULE = paste0("NRC", MODULE)
   }
   
@@ -2137,7 +2149,7 @@ query_hst = function(input_args){
   PIXSCALE = input_args$PIXSCALE
   ref_dir = input_args$ref_dir
   
-  if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID){
+ if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID & any(MODULE == c("A", "B"))){
     MODULE = paste0("NRC", MODULE)
   }
   
@@ -2198,7 +2210,7 @@ copy_long = function(input_args){
   VID = input_args$VID
   MODULE = input_args$MODULE
   
-  if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID){
+ if(!(grepl("NRC", MODULE, fixed = T)) & MODULE != VID & any(MODULE == c("A", "B"))){
     MODULE = paste0("NRC", MODULE)
   }
   
