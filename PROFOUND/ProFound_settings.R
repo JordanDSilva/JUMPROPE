@@ -22,7 +22,7 @@ profound_detect_master = function(frame, skyRMS, star_mask, pix_mask = NULL, seg
     mask = mask | (frame$imDat == 0) | (is.na(frame$imDat) | (is.infinite(frame$imDat))),
     segim = segim,
     rem_mask = TRUE,
-    magzero = 23.9,
+    magzero = frame$keyvalues$MAGZERO,
     
     skyRMS = skyRMS,
     
@@ -80,7 +80,7 @@ profound_measure_master = function(super_img, inVar, segim, mask, redosegim = TR
   
   super_pro = profoundProFound(
     super_img,
-    magzero = 23.9,
+    magzero = super_img$keyvalues$MAGZERO,
     mask = mask | super_img$imDat == 0 | is.na(super_img$imDat) | is.infinite(super_img$imDat),
     # detection, segmentation and dilation
     segim = segim,

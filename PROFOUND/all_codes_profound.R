@@ -602,7 +602,7 @@ star_mask = function(input_args){
       image = ref, 
       segim = all_mask$mask, 
       sky = pro$sky,
-      magzero = 23.9, 
+      magzero = ref$keyvalues$MAGZERO, 
       rem_mask = TRUE, 
       cliptol = 50, 
       tolerance = Inf
@@ -618,7 +618,7 @@ star_mask = function(input_args){
   ref$image$imDat[is.na(ref$image$imDat) | is.infinite(ref$image$imDat)] = NA ## For safefty just get rid of any Infs or NA...
   pro_stars = profoundProFound(
     image = ref$image, 
-    magzero = 23.9, 
+    magzero = ref$image$keyvalues$MAGZERO, 
     rem_mask = TRUE, 
     cliptol = 50,
     boundstats = TRUE
@@ -895,9 +895,13 @@ do_detect = function(input_args, detect_bands = detect_bands_load, profound_func
   
   message(paste0("Stacking detect band ", names(propanes), collapse="\n"))
   
-  stack_image = propaneStackFlatInVar(image_list = lapply(propanes, function(x)x$image[,]), 
-                                      skyRMS_list = lapply(propanes, function(x){1 / sqrt(x$inVar[,]$imDat)}),
-                                      magzero_in = 23.9, magzero_out = 23.9)
+  
+  stack_image = propaneStackFlatInVar(
+    image_list = lapply(propanes, function(x){x$image[,]}), 
+    skyRMS_list = lapply(propanes, function(x){1 / sqrt(x$inVar[,]$imDat)}),
+    magzero_in = sapply(propanes, function(x){x$image$keyvalues$MAGZERO}),
+    magzero_out = propanes[[1]]$image$keyvalues$MAGZERO
+  )
   stack_image_fits = Rfits_create_image(
     data = stack_image$image,
     keyvalues = propanes[[1]]$image$keyvalues
@@ -913,9 +917,11 @@ do_detect = function(input_args, detect_bands = detect_bands_load, profound_func
   )
 
   message("Finding sources with ProFound...")
-  profound = profound_function(frame = patch_stack_image$image, 
-                               skyRMS = stack_image$skyRMS, 
-                               star_mask = star_mask$mask)
+  profound = profound_function(
+    frame = patch_stack_image$image, 
+    skyRMS = stack_image$skyRMS, 
+    star_mask = star_mask$mask
+  )
   if(dim(profound$segstats)[1] == 0){
     message("No objects found!")
   }else{
@@ -980,17 +986,17 @@ do_detect = function(input_args, detect_bands = detect_bands_load, profound_func
 }
 
 ## ProFound measurement codes
-.err_sampler = function(random_aperture_radii, fname, pixscale, imdat, mask, segim, root=root_sample, fluxtype = "microjansky"){
+.err_sampler = function(random_aperture_radii, fname, pixscale, imdat, mask, segim, magzero = 23.9, fluxtype = "microjansky", root=root_sample){
 
   imdat[mask] = NA
   random_apertures = profoundAperRan(
     image = imdat,
     segim = segim,
     app_diam = random_aperture_radii * 2, 
-    magzero = 23.9,
+    magzero = magzero,
     pixscale = pixscale,
     fluxtype = fluxtype, 
-    Nran = 100000,
+    Nran = 10000,
     depth = 5,
     correction = TRUE
   )
@@ -1169,6 +1175,7 @@ do_measure = function(input_args, profound_function = profound_measure_master){
         imdat = img,
         mask = mask,
         segim = segim_col, 
+        magzero = dum_pro$call[["magzero"]],
         fluxtype = dum_pro$call[["fluxtype"]]
       )
      
@@ -1181,7 +1188,7 @@ do_measure = function(input_args, profound_function = profound_measure_master){
       nearest_apertures_idx = RANN::nn2(
         data = random_aperture_errs$AperPhot[, c("xcen", "ycen")],
         query = dum_pro$segstats[, c("xmax", "ymax")], 
-        k = 200
+        k = 100
       )
       ## calc local depths
 
@@ -1190,11 +1197,17 @@ do_measure = function(input_args, profound_function = profound_measure_master){
         sd(closest_apertures, na.rm = TRUE)
       })
       
-      csvout[paste0(ff,'_maskfrac')] = dum_pro$segstats$Nmask/dum_pro$segstats$Nedge
       csvout[paste0(ff,'_fluxt')] = dum_pro$segstats$flux
       csvout[paste0(ff,'_fluxt_err')] = dum_pro$segstats$flux_err
       csvout[paste0(ff,'_scaled_fluxt_err')] = pmax(local_depths, dum_pro$segstats$flux_err)
       csvout[paste0(ff,'_1sigma_local_depth')] = local_depths
+      csvout[paste0(ff,'_maskfrac')] = dum_pro$segstats$Nmask/dum_pro$segstats$Nedge
+      csvout[paste0(ff, '_R50')] = dum_pro$segstats$R50
+      csvout[paste0(ff, '_R90')] = dum_pro$segstats$R90
+      csvout[paste0(ff, '_R100')] = dum_pro$segstats$R100
+      csvout[paste0(ff, '_N50')] = dum_pro$segstats$N50
+      csvout[paste0(ff, '_N90')] = dum_pro$segstats$N90
+      csvout[paste0(ff, '_N100')] = dum_pro$segstats$N100
       
       ## Run colour photometry with undilated segments
       message(("\n ...Running colour photometry... \n"))
@@ -1315,7 +1328,7 @@ do_measure = function(input_args, profound_function = profound_measure_master){
         fitted_scaled_errs,
         log = "xy", 
         xlim = c(5, 6000),
-        ylim = c(min(fitted_scaled_errs, na.rm = TRUE)/2.0, max(fitted_scaled_errs, na.rm = TRUE)*2.0),
+        ylim = c(min(fitted_scaled_errs[fitted_scaled_errs>0], na.rm = TRUE)/2.0, max(fitted_scaled_errs, na.rm = TRUE)*2.0),
         xlab = 'Area/pix',
         ylab = paste0('Error/flux', dum_pro$call["fluxtype"]),
         main = paste(ff,VID,MODULE,sep='_'),
@@ -1426,7 +1439,7 @@ hst_warp_stack = function(input_args){
       tolerance = Inf,
       box = dim(target$image)/10.0,
       mask = is.infinite(target$image[,]$imDat) | is.na(target$image[,]$imDat),
-      magzero = 23.9,
+      magzero = targer$image$keyvalues$MAGZERO,
       rem_mask = T
     )
   }
@@ -1638,7 +1651,7 @@ hst_warp_stack = function(input_args){
           output_stack = propaneStackWarpInVar(image_list = image_list,
                                                # inVar_list = inVar_list,
                                                magzero_in = hst_magzero,
-                                               magzero_out = 23.9,
+                                               magzero_out = target$image$keyvalues$MAGZERO,
                                                keyvalues_out = target$image$keyvalues,
                                                cores = cores_stack,
                                                cores_warp = 1)
@@ -2318,10 +2331,10 @@ convert_to_propane = function(input_args){
         next 
       }
 
-      magzero_scale = 10^(-0.4 * (magzero_in - 23.9))
+      # magzero_scale = 10^(-0.4 * (magzero_in - 23.9))
       out = list(
-        "image" = frame$SCI[,] * magzero_scale,
-        "inVar" = frame$ERR[,]^-2 / magzero_scale^2,
+        "image" = frame$SCI[,],
+        "inVar" = frame$ERR[,]^-2,
         "weight" = frame$WHT[,],
         "exp" = frame$EXP[,]
       )
@@ -2331,7 +2344,7 @@ convert_to_propane = function(input_args){
       out$weight$keyvalues$EXTNAME = "weight"
       out$exp$keyvalues$EXTNAME = "exp"
 
-      out$image$keyvalues$MAGZERO = 23.9 ## microjansky
+      out$image$keyvalues$MAGZERO = magzero_in
       out$image$keycomments$MAGZERO = "Mag zero point"
       out$image$keynames = names(out$image$keyvalues)
 
