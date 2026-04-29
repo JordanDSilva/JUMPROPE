@@ -17,4 +17,4 @@ library(RANN)
 library(stringr)
 library(utils)
 
-jumprope_version = "2.1.4" 
+jumprope_version = "2.1.5" 
