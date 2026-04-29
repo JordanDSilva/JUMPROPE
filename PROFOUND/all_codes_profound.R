@@ -986,7 +986,7 @@ do_detect = function(input_args, detect_bands = detect_bands_load, profound_func
 }
 
 ## ProFound measurement codes
-.err_sampler = function(random_aperture_radii, fname, pixscale, imdat, mask, segim, magzero = 23.9, fluxtype = "microjansky", root=root_sample){
+.err_sampler = function(random_aperture_radii, fname, pixscale, imdat, mask, segim, magzero, fluxtype = "microjansky", root=root_sample){
 
   imdat[mask] = NA
   random_apertures = profoundAperRan(
