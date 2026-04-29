@@ -1175,7 +1175,7 @@ do_measure = function(input_args, profound_function = profound_measure_master){
         imdat = img,
         mask = mask,
         segim = segim_col, 
-        magzero = dum_pro$call[["magzero"]],
+        magzero = filt$keyvalues$MAGZERO,
         fluxtype = dum_pro$call[["fluxtype"]]
       )
      
