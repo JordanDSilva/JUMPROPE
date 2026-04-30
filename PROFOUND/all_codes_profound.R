@@ -830,6 +830,40 @@ star_mask_tile = function(input_args){
   }
 } ## <-- Create star mask for a big mosaic using per VID star masks
 
+## error sampling codes 
+.err_sampler = function(random_aperture_radii, pixscale, imdat, mask, segim, magzero, fluxtype = "microjansky", root=root_sample){
+  
+  imdat[mask] = NA
+  random_apertures = profoundAperRan(
+    image = imdat,
+    segim = segim,
+    app_diam = random_aperture_radii * 2, 
+    magzero = magzero,
+    pixscale = pixscale,
+    fluxtype = fluxtype, 
+    Nran = 10000,
+    depth = 5,
+    correction = TRUE
+  )
+  apertures_sizes_in_pixels = (random_aperture_radii/pixscale)^2 * pi
+  random_apertures_model = lm(log10(random_apertures$errors[random_apertures$errors>0]) ~ log10(apertures_sizes_in_pixels[random_apertures$errors>0]))
+  random_aperture_model_alpha <- 10^(coef(random_apertures_model)[1])
+  random_aperture_model_beta  <- coef(random_apertures_model)[2]
+  
+  out = list(
+    "random_aperture_size" = pi * (random_aperture_radii/pixscale)^2, 
+    "errors" = random_apertures$errors, 
+    "scale_coeffs" = c("alpha" = as.numeric(unname(random_aperture_model_alpha)), "beta" = as.numeric(unname(random_aperture_model_beta))),
+    "AperPhot" = random_apertures$AperPhot
+  )
+  return(out)
+}
+.err_scaling = function(flux_err, N100, alpha, beta){
+  scaled_temp = N100^beta * alpha
+  new_err = pmax(flux_err, scaled_temp)
+  return(new_err)
+}
+
 ## ProFound source detection codes
 do_detect = function(input_args, detect_bands = detect_bands_load, profound_function = profound_detect_master){
   # user_star_mask_file = path to a pre-made mask file, must be boolean TRUE/FALSE matrix saved in RDS format
@@ -928,6 +962,33 @@ do_detect = function(input_args, detect_bands = detect_bands_load, profound_func
     profound$segstats$MODULE = rep(MODULE, dim(profound$segstats)[1])
     profound$segstats$VID = rep(VID, dim(profound$segstats)[1])
     
+    ## error sample detect band
+    random_aperture_radii = seq(0.05, 5.05, 0.05) * 0.5 ## arcsecs
+    message("\n ...Error sampling... \n")
+    random_aperture_errs = .err_sampler(
+      random_aperture_radii = random_aperture_radii,
+      fname = "",
+      pixscale = pixscale(patch_stack_image, unit = "asec"),
+      imdat = profound$image - profound$sky,
+      mask = profound$mask,
+      segim = profound$segim, 
+      magzero = profound$keyvalues$MAGZERO,
+      fluxtype = profound$call[["fluxtype"]]
+    )
+    
+    nearest_apertures_idx = RANN::nn2(
+      data = random_aperture_errs$AperPhot[, c("xcen", "ycen")],
+      query = profound$segstats[, c("xmax", "ymax")], 
+      k = 100
+    )
+    ## calc local depths
+    aperture_sizes_pix = random_aperture_errs$random_aperture_size
+    local_depths = sapply(1:dim(nearest_apertures_idx$nn.idx)[1], function(x){
+      closest_apertures = random_aperture_errs$AperPhot[, paste0("flux_app_", which.min(abs(aperture_sizes_pix - profound$segstats$N100[x])))]
+      sd(closest_apertures, na.rm = TRUE)
+    })
+    profound$segstats$det_1sig_local_depth = local_depths
+    
     stack_stub = paste0(detect_dir, "/", VID, "_", MODULE, "_", PIXSCALE, "_profound_stack.fits")
     profound_stack = list(
       stack = patch_stack_image$image[,],
@@ -986,38 +1047,6 @@ do_detect = function(input_args, detect_bands = detect_bands_load, profound_func
 }
 
 ## ProFound measurement codes
-.err_sampler = function(random_aperture_radii, fname, pixscale, imdat, mask, segim, magzero, fluxtype = "microjansky", root=root_sample){
-
-  imdat[mask] = NA
-  random_apertures = profoundAperRan(
-    image = imdat,
-    segim = segim,
-    app_diam = random_aperture_radii * 2, 
-    magzero = magzero,
-    pixscale = pixscale,
-    fluxtype = fluxtype, 
-    Nran = 10000,
-    depth = 5,
-    correction = TRUE
-  )
-  apertures_sizes_in_pixels = (random_aperture_radii/pixscale)^2 * pi
-  random_apertures_model = lm(log10(random_apertures$errors[random_apertures$errors>0]) ~ log10(apertures_sizes_in_pixels[random_apertures$errors>0]))
-  random_aperture_model_alpha <- 10^(coef(random_apertures_model)[1])
-  random_aperture_model_beta  <- coef(random_apertures_model)[2]
-
-  out = list(
-    "random_aperture_size" = pi * (random_aperture_radii/pixscale)^2, 
-    "errors" = random_apertures$errors, 
-    "scale_coeffs" = c("alpha" = as.numeric(unname(random_aperture_model_alpha)), "beta" = as.numeric(unname(random_aperture_model_beta))),
-    "AperPhot" = random_apertures$AperPhot
-  )
-  return(out)
-}
-.err_scaling = function(flux_err, N100, alpha, beta){
-  scaled_temp = N100^beta * alpha
-  new_err = pmax(flux_err, scaled_temp)
-  return(new_err)
-}
 do_measure = function(input_args, profound_function = profound_measure_master){
   
   plot_profound = function(x){
@@ -1170,7 +1199,6 @@ do_measure = function(input_args, profound_function = profound_measure_master){
       message("\n ...Error sampling... \n")
       random_aperture_errs = .err_sampler(
         random_aperture_radii = random_aperture_radii,
-        fname = ff,
         pixscale = pixscale(filt, unit = "asec"),
         imdat = img,
         mask = mask,
@@ -1200,7 +1228,7 @@ do_measure = function(input_args, profound_function = profound_measure_master){
       csvout[paste0(ff,'_fluxt')] = dum_pro$segstats$flux
       csvout[paste0(ff,'_fluxt_err')] = dum_pro$segstats$flux_err
       csvout[paste0(ff,'_scaled_fluxt_err')] = pmax(local_depths, dum_pro$segstats$flux_err)
-      csvout[paste0(ff,'_1sigma_local_depth')] = local_depths
+      csvout[paste0(ff,'_1sig_local_depth')] = local_depths
       csvout[paste0(ff,'_maskfrac')] = dum_pro$segstats$Nmask/dum_pro$segstats$Nedge
       csvout[paste0(ff, '_R50')] = dum_pro$segstats$R50
       csvout[paste0(ff, '_R90')] = dum_pro$segstats$R90
@@ -1301,7 +1329,7 @@ do_measure = function(input_args, profound_function = profound_measure_master){
       names(dum_aperture_phot_err_scaled) = paste0(ff, "_scaled_flux_err_app_", r_aperture_photometry)
       names(dum_aperture_phot_corr_factor) = paste0(ff, "_ap_correction_app_", r_aperture_photometry)
       names(dum_aperture_phot_N) = paste0(ff, "_N_app_", r_aperture_photometry)
-      names(local_depths_app) = paste0(ff, "_1sig_locdepth_app_", r_aperture_photometry)
+      names(local_depths_app) = paste0(ff, "_1sig_local_depth_app_", r_aperture_photometry)
       
       aperture_phot_csvout_temp = data.frame(
         dum_aperture_phot_fluxes,
