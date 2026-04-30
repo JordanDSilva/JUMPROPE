@@ -964,11 +964,10 @@ do_detect = function(input_args, detect_bands = detect_bands_load, profound_func
     
     ## error sample detect band
     random_aperture_radii = seq(0.05, 5.05, 0.05) * 0.5 ## arcsecs
-    message("\n ...Error sampling... \n")
+    message("Error sampling...")
     random_aperture_errs = .err_sampler(
       random_aperture_radii = random_aperture_radii,
-      fname = "",
-      pixscale = pixscale(patch_stack_image, unit = "asec"),
+      pixscale = pixscale(stack_image_fits, unit = "asec"),
       imdat = profound$image - profound$sky,
       mask = profound$mask,
       segim = profound$segim, 
