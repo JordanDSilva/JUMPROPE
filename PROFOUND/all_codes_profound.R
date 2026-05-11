@@ -841,7 +841,7 @@ star_mask_tile = function(input_args){
     magzero = magzero,
     pixscale = pixscale,
     fluxtype = fluxtype, 
-    Nran = 10000,
+    Nran = 100000,
     depth = 5,
     correction = TRUE
   )
@@ -929,7 +929,6 @@ do_detect = function(input_args, detect_bands = detect_bands_load, profound_func
   
   message(paste0("Stacking detect band ", names(propanes), collapse="\n"))
   
-  
   stack_image = propaneStackFlatInVar(
     image_list = lapply(propanes, function(x){x$image[,]}), 
     skyRMS_list = lapply(propanes, function(x){1 / sqrt(x$inVar[,]$imDat)}),
@@ -963,7 +962,7 @@ do_detect = function(input_args, detect_bands = detect_bands_load, profound_func
     profound$segstats$VID = rep(VID, dim(profound$segstats)[1])
     
     ## error sample detect band
-    random_aperture_radii = seq(0.05, 5.05, 0.05) * 0.5 ## arcsecs
+    random_aperture_radii = seq(0.05, 2.05, length.out = 20) * 0.5 ## arcsecs
     message("Error sampling...")
     random_aperture_errs = .err_sampler(
       random_aperture_radii = random_aperture_radii,
@@ -1067,7 +1066,7 @@ do_measure = function(input_args, profound_function = profound_measure_master){
     )
   }
   
-  message("\n Running ProMeasure \n")
+  message("Running ProMeasure")
   
   ref_dir = input_args$ref_dir
   VID = input_args$VID
@@ -1149,7 +1148,7 @@ do_measure = function(input_args, profound_function = profound_measure_master){
     # filter ordering is not important
     
     ####### Initiate for sampling error #############
-    random_aperture_radii = seq(0.05, 5.05, 0.05) * 0.5 ## arcsecs
+    random_aperture_radii = seq(0.05, 2.05, length.out = 20) * 0.5 ## arcsecs
     
     if(!dir.exists(sampling_dir)){
       dir.create(sampling_dir, recursive = T)
@@ -1184,7 +1183,7 @@ do_measure = function(input_args, profound_function = profound_measure_master){
     
     ###### Main #############
     for(ff in names(images)){
-      message(paste0("Running ProMeasure on: ", ff, "\n"))
+      message(paste0("Running ProMeasure on: ", ff))
       filt = images[[ff]][,]
       filt_invar = inVar[[ff]][,]
       
@@ -1195,7 +1194,7 @@ do_measure = function(input_args, profound_function = profound_measure_master){
       img[img == 0L] = NA
       img[mask] = NA
       
-      message("\n ...Error sampling... \n")
+      message("Error sampling...")
       random_aperture_errs = .err_sampler(
         random_aperture_radii = random_aperture_radii,
         pixscale = pixscale(filt, unit = "asec"),
@@ -1237,7 +1236,7 @@ do_measure = function(input_args, profound_function = profound_measure_master){
       csvout[paste0(ff, '_N100')] = dum_pro$segstats$N100
       
       ## Run colour photometry with undilated segments
-      message(("\n ...Running colour photometry... \n"))
+      message(("Running colour photometry..."))
       dum_pro_col = profound_function(filt, inVar = filt_invar, segim_col, mask, redosegim = FALSE) #don't redilate segments e.g., colour photometry mode
       local_depths_col = sapply(1:dim(nearest_apertures_idx$nn.idx)[1], function(x){
         closest_apertures = random_aperture_errs$AperPhot[, paste0("flux_app_", which.min(abs(aperture_sizes_pix - dum_pro_col$segstats$N100[x])))]
@@ -1255,7 +1254,7 @@ do_measure = function(input_args, profound_function = profound_measure_master){
       saveRDS(random_aperture_errs, file.path(sampling_dir,paste(VID,MODULE,PIXSCALE,ff,"random_sampling.rds",sep='_')))
 
       ## Run aperture photometry
-      message(paste0("\n ...Running aperture photometry with the following aperture sizes: ", paste(r_aperture_photometry, collapse = ", "), "/asec... \n"))
+      message(paste0("Running aperture photometry with the following aperture sizes: ", paste(r_aperture_photometry, collapse = ", "), "/asec..."))
       dum_aperture_phot = profoundAperPhot(
         image = filt,
         segim = dum_pro$segim,
@@ -1390,6 +1389,7 @@ do_measure = function(input_args, profound_function = profound_measure_master){
     write.csv(csvout, file = file.path(measurements_dir,paste(VID,MODULE,PIXSCALE,"photometry.csv",sep='_')))
     write.csv(aperture_photometry_csvout, file = file.path(measurements_dir,paste(VID,MODULE,PIXSCALE,"aperture_photometry.csv",sep='_')))
   }
+  return(NULL)
 }
 
 ## HST codes
@@ -2021,7 +2021,6 @@ frame_chunker = function(input_args){
   }
   
   combine_chunks(input_args) ## combine for a final catalogue at the end
-  return(NULL)
 }
 ## Combine chunk catalogue
 combine_chunks = function(input_args){
@@ -2174,7 +2173,6 @@ combine_chunks = function(input_args){
     clean_measure_cat,
     clean_measure_stub
   )
-  
 }
 
 ## python codes. Super sketchy :P
@@ -2309,9 +2307,7 @@ copy_long = function(input_args){
 } ##<-- Copy the long pixelscale to Data dir. File redundancy but safer option for detects.
 
 convert_to_propane = function(input_args){
-  cat("\n")
   message("## Converting JWST pipeline mosaics to ProPane ##")
-  cat("\n")
   
   in_file = input_args$in_file ## where the one .fits files to be converted is
   in_dir = input_args$in_dir ## where the .fits files to be converted are
@@ -2385,9 +2381,7 @@ convert_to_propane = function(input_args){
 
 do_help = function(input_args){
   
-  cat("\n")
   message("## Help ##")
-  cat("\n")
   
   message("Author: Jordan C. J. D'Silva")
   message("Date: ", Sys.Date())
@@ -2557,6 +2551,7 @@ do_help = function(input_args){
         return(super_pro)
     }'
   )
+  return(NULL)
 }
 make_directory_structure = function(){
   message("Should I make the directory structure for you? (T/F): ")
