@@ -999,9 +999,13 @@ do_detect = function(input_args, detect_bands = detect_bands_load, profound_func
     fwrite(profound$segstats, file = catalogue_stub)
     
     profound_stub = paste0(detect_dir, "/", VID, "_", MODULE, "_", PIXSCALE, "_profound.rds")
+    profound_random_apertures_stub = paste0(detect_dir, "/", VID, "_", MODULE, "_", PIXSCALE, "_random_sampling.rds")
     
     profound$jumprope_version = jumprope_version
     saveRDS(profound, file = profound_stub)
+    
+    random_aperture_errs$jumprope_version = jumprope_version
+    saveRDS(random_aperture_errs, profound_random_apertures_stub)
     
     ## I have no idea why plot.profound spits out and error 
     ## Error in Rwcs_p2s(rep(xlo, leny), ylo:yhi, keyvalues = keyvalues, pixcen = "R",  : 
