@@ -1092,7 +1092,7 @@ do_measure = function(input_args, profound_function = profound_measure_master){
   measurements_dir = paste0(ref_dir, "/ProFound/Measurements/", VID, "/", MODULE)
   
   ######## Load segim and mask ####################
-  pro_path = list.files(detect_dir, pattern = glob2rx(paste0("*", VID, "*", MODULE, "*", PIXSCALE, "*rds")), full.names = T)
+  pro_path = list.files(detect_dir, pattern = glob2rx(paste0("*", VID, "*", MODULE, "*", PIXSCALE, "*profound.rds")), full.names = T)
   assert(checkFileExists(pro_path))
   
   super_pro = readRDS(pro_path)
