@@ -1291,6 +1291,14 @@ do_measure = function(input_args, profound_function = profound_measure_master){
         correction = TRUE
       )
       
+      aperture_phot_save = list(
+        "phot" = dum_aperture_phot,
+        "uncorr" = dum_aperture_phot_uncorr,
+        "err" = dum_aperture_phot_err
+      )
+      aperture_phot_save$jumprope_version = jumprope_version
+      saveRDS(aperture_phot_save, file.path(measurements_dir,paste(VID,MODULE,PIXSCALE,ff,"aperture_phot.rds",sep='_')))
+      
       ## calculate the local depths
       Nphot_app = dum_aperture_phot[,grep("^N_app", names(dum_aperture_phot), value = TRUE)]
       local_depths_app = lapply(1:dim(nearest_apertures_idx$nn.idx)[1], function(x){
