@@ -1262,7 +1262,7 @@ do_measure = function(input_args, profound_function = profound_measure_master){
       dum_aperture_phot = profoundAperPhot(
         image = filt,
         segim = dum_pro$segim,
-        app_diam = r_aperture_photometry/dum_pro$pixscale * 2, 
+        app_diam = r_aperture_photometry * 2, 
         magzero = dum_pro$magzero,
         pixscale = dum_pro$pixscale,
         fluxtype = dum_pro$call[["fluxtype"]], 
@@ -1272,7 +1272,7 @@ do_measure = function(input_args, profound_function = profound_measure_master){
       dum_aperture_phot_uncorr = profoundAperPhot(
         image = filt,
         segim = dum_pro$segim,
-        app_diam = r_aperture_photometry/dum_pro$pixscale * 2, 
+        app_diam = r_aperture_photometry * 2, 
         magzero = dum_pro$magzero,
         pixscale = dum_pro$pixscale,
         fluxtype = dum_pro$call[["fluxtype"]], 
@@ -1283,7 +1283,7 @@ do_measure = function(input_args, profound_function = profound_measure_master){
         image = filt_invar$imDat^-1, ## turn into variance that we can sum up flux in aperture then take sqrt later on
         segim = dum_pro$segim,
         keyvalues = dum_pro$keyvalues,
-        app_diam = r_aperture_photometry/dum_pro$pixscale * 2, 
+        app_diam = r_aperture_photometry * 2, 
         # magzero = dum_pro$magzero,
         pixscale = dum_pro$pixscale,
         fluxtype = "Raw", 
